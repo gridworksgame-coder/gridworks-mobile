@@ -1092,6 +1092,40 @@
     setTimeout(() => b.remove(), 20000);
   }
 
+  // Inside a frame (itch.io embeds HTML games in an iframe): a framed page
+  // can't set its own viewport, so the layout comes out at desktop size,
+  // and installing / true full screen aren't available either. Offer to
+  // open the game on its own (same files, same saves — same origin), where
+  // all of that works. "Play here" keeps the self-fitting fallbacks.
+  function framedPrompt() {
+    let framed = false;
+    try { framed = window.self !== window.top; } catch (_) { framed = true; }
+    if (!framed) return;
+    try { if (sessionStorage.getItem('gwm.playHere') === '1') return; } catch (_) {}
+    if ($('gwm-frame')) return;
+    const ov = el('div', '', `
+      <div class="gwm-frame-card">
+        <div class="gwm-frame-title">GRIDWORKS on your phone</div>
+        <div class="gwm-frame-text">For the best fit and real full screen, open the game on its own page.</div>
+        <button type="button" class="gwm-frame-go">▶ Play full screen</button>
+        <button type="button" class="gwm-frame-here">Play here instead</button>
+      </div>`);
+    ov.id = 'gwm-frame';
+    const stop = (e) => e.stopPropagation();
+    for (const t of ['touchstart', 'mousedown', 'pointerdown']) ov.addEventListener(t, stop);
+    ov.querySelector('.gwm-frame-go').addEventListener('click', (e) => {
+      e.preventDefault();
+      const w = window.open(location.href, '_blank');
+      if (!w) location.href = location.href;   // pop-up blocked: navigate the frame
+    });
+    ov.querySelector('.gwm-frame-here').addEventListener('click', (e) => {
+      e.preventDefault();
+      try { sessionStorage.setItem('gwm.playHere', '1'); } catch (_) {}
+      ov.remove();
+    });
+    document.body.appendChild(ov);
+  }
+
   // ── 7. Boot ────────────────────────────────────────────────────────
   function boot() {
     buildUI();
@@ -1099,6 +1133,9 @@
     if (cv) bindCanvas(cv);
     setInterval(sync, 250);
     fsPrompt();
+    framedPrompt();
+    // The game's start-up screens can clear it away: put it back once loaded.
+    window.addEventListener('load', () => setTimeout(framedPrompt, 1500));
     watchAnchored(); setInterval(watchAnchored, 2000);   // some are built later
     // Cutscenes: switch to the desktop-height screen the moment one's root
     // is added, and back when it goes.
@@ -1169,5 +1206,5 @@
   window.addEventListener('load', () => setTimeout(importBundled, 300));
 
   // Exposed for debugging from the console.
-  window.GWMobile = { applyViewport, showHelp, toast, setShift, setPick, fsPrompt };
+  window.GWMobile = { applyViewport, showHelp, toast, setShift, setPick, fsPrompt, framedPrompt };
 })();

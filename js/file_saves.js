@@ -37,6 +37,7 @@ const FileSaves = (() => {
 
   function isSupported() {
     if (desk()) return true;
+    if (window.GW_MOBILE) return false;   // mobile: saves stay in the browser (IndexedDB)
     return typeof window !== 'undefined'
       && typeof window.showDirectoryPicker === 'function'
       && window.isSecureContext;
