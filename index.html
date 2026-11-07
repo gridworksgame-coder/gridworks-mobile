@@ -3776,6 +3776,9 @@
   body.apocalypse #btn-drones, body.apocalypse #btn-meridian,
   body.apocalypse #btn-compendium,
   body.apocalypse #blueprint-stamp-hud { opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+  /* !important: the checklist sets pointer-events inline, so without it the
+     faded-out panel would still catch clicks over the cinematic. */
+  body.apocalypse #contract-checklist, body.apocalypse #contract-board { opacity: 0 !important; pointer-events: none !important; transition: opacity 1.2s ease; }
 
   /* ── New-game intro cinematic (js/intro_cinematic.js) ─────────────
      The HUD is hidden while it plays and fades back in as it ends. */
