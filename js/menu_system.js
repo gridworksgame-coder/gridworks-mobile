@@ -2006,7 +2006,7 @@ const MenuSystem = (() => {
     });
   }
 
-  return { init, showConfirm };
+  return { init, showConfirm, updateLoadButtonVisibility };   // mobile: refresh after bundled saves import
 })();
 
 // Version labels (main menu, pause footer) read package.json — the same

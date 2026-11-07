@@ -1115,7 +1115,11 @@
         console.warn('[GW mobile] could not import bundled save', file, err);
       }
     }
-    if (added) toast(`${added} save${added > 1 ? 's' : ''} from the PC added: open LOAD GAME`);
+    if (added) {
+      // The menu drew its buttons before these existed: redraw so CONTINUE shows.
+      try { gameGlobal('MenuSystem')?.updateLoadButtonVisibility?.(); } catch (_) {}
+      toast(`${added} save${added > 1 ? 's' : ''} from the PC added: open LOAD GAME`);
+    }
   }
   window.addEventListener('load', () => setTimeout(importBundled, 300));
 
