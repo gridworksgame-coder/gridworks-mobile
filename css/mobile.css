@@ -256,3 +256,15 @@ html.gw-mobile #req-panel { zoom: calc(var(--gwm-panel-zoom, 0.8) / var(--gwm-ho
   background: rgba(20, 120, 190, 0.92); border: 1px solid #8fd8ff; border-radius: 22px;
   padding: 12px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); touch-action: manipulation;
 }
+
+/* ── Camera cutout (viewport-fit=cover; insets set by mobile.js) ───── */
+/* Each element's own zoom scales its margins, so the inset is divided by it. */
+html.gw-mobile #topbar .title-block { margin-left: calc(var(--gwm-safe-l, 0px) / 0.75); }
+html.gw-mobile #stats { margin-right: calc(var(--gwm-safe-r, 0px) / 0.75); }
+html.gw-mobile #notif-stack { margin-left: calc(var(--gwm-safe-l, 0px) / var(--gwm-panel-zoom, 0.8)); }
+html.gw-mobile #tutorial-card { margin-left: calc(var(--gwm-safe-l, 0px) / (var(--gwm-panel-zoom, 0.8) * 0.88)); }
+html.gw-mobile #clock,
+html.gw-mobile #playback-controls { margin-left: calc(var(--gwm-safe-l, 0px) / var(--gwm-bar-zoom, 0.7)); }
+html.gw-mobile #contract-checklist { margin-left: var(--gwm-safe-l, 0px); }
+html.gw-mobile #gwm-root { left: calc(var(--gwm-safe-l, 0px) / var(--gwm-ctl-zoom, 1));
+                           right: calc(var(--gwm-safe-r, 0px) / var(--gwm-ctl-zoom, 1)); }

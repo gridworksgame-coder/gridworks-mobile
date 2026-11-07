@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm6';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm7';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -131,7 +131,23 @@
   // to the page's own fit, so it reads 1 after we zoom out, and re-sizing
   // from it undid the zoom on every resize) and not screen.* (counts the
   // camera cutout and browser bars).
+  // Installed app (display: fullscreen / standalone) or browser full
+  // screen: the page has the whole screen, so size from screen.* (with
+  // viewport-fit=cover that includes the camera-cutout strip). This also
+  // catches the window growing after start-up, which a size worked out
+  // from our own earlier numbers never noticed (it left an empty strip).
+  const isAppMode = () => {
+    try {
+      return matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches
+        || !!navigator.standalone || !!(document.fullscreenElement || document.webkitFullscreenElement);
+    } catch (_) { return false; }
+  };
   function physSize() {
+    if (isAppMode() && screen.width > 0 && screen.height > 0) {
+      const a = screen.width, b = screen.height, long = Math.max(a, b), short = Math.min(a, b);
+      const land = matchMedia('(orientation: landscape)').matches;
+      return land ? { w: long, h: short, land } : { w: short, h: long, land };
+    }
     const iw = innerWidth, ih = innerHeight;
     let w = iw, h = ih;
     if (_applied && Math.abs(iw - _applied.vw) <= 2) { w = iw * _applied.s; h = ih * _applied.s; }
@@ -151,7 +167,7 @@
   const CINE_H = 1000;
   let cineMode = false;
   let _lastVp = '', _replaced = 0;
-  const DEVICE_VP = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+  const DEVICE_VP = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
   function setMeta(content, applied) {
     _applied = applied;
     if (content === _lastVp) return;
@@ -190,7 +206,7 @@
     }
     const s = +(w / vw).toFixed(4);
     setCtlZoom(s);
-    setMeta(`width=${vw}, initial-scale=${s}, minimum-scale=${s}, maximum-scale=${s}, user-scalable=no`, { vw, s });
+    setMeta(`width=${vw}, initial-scale=${s}, minimum-scale=${s}, maximum-scale=${s}, user-scalable=no, viewport-fit=cover`, { vw, s });
   }
   function setCineMode(on) {
     if (cineMode === on) return;
@@ -206,6 +222,8 @@
   const onOrient = () => { clearTimeout(_vpT); _vpT = setTimeout(applyViewport, 150); };
   window.addEventListener('orientationchange', () => { _applied = null; setMeta(DEVICE_VP, null); onOrient(); });
   window.addEventListener('resize', onOrient);
+  document.addEventListener('fullscreenchange', onOrient);
+  try { matchMedia('(display-mode: fullscreen)').addEventListener('change', onOrient); } catch (_) {}
 
   // ── Helpers ────────────────────────────────────────────────────────
   const $ = (id) => document.getElementById(id);
@@ -707,7 +725,7 @@
     if (!root.classList.contains('show')) return;
     const cv = $('canvas');
     const z = ctlZoom;
-    const x = innerWidth - (12 + 12) * z;
+    const x = innerWidth - safeR - (12 + 12) * z;
     let left = Infinity;
     for (const y of [70, 95, 120].map(v => v * z)) {
       for (const n of document.elementsFromPoint(x, y)) {
@@ -764,6 +782,7 @@
           `\n${BUILD} · page ${innerWidth}×${innerHeight} · asked ${_applied ? _applied.vw + ' @ ' + _applied.s : 'device-width'} → ${ok}` +
           ` · vv ${Math.round(visualViewport?.width || 0)}×${Math.round(visualViewport?.height || 0)} @ ${(visualViewport?.scale || 0).toFixed(3)}` +
           ` · outer ${outerWidth}×${outerHeight} · dpr ${devicePixelRatio.toFixed(2)}${cineMode ? ' · CUTSCENE' : ''}` +
+          `\n${isAppMode() ? 'APP/fullscreen' : 'browser tab'} · screen ${screen.width}×${screen.height} · cutout L${safeL} R${safeR}` +
           `\n${navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 110)}`;
         n = 0; t0 = now; worst = 0;
       }
@@ -832,7 +851,11 @@
     const honored = _applied && Math.abs(innerWidth - _applied.vw) <= 2;
     const want = Math.min(1, ICON_ZOOM / (honored ? _applied.s : 1));
     const z = Math.max(0.3, Math.min(want, room / natural)).toFixed(3);
-    for (const [n] of icons) if (n.style.zoom !== z) n.style.zoom = z;
+    for (const [n] of icons) {
+      if (n.style.zoom !== z) n.style.zoom = z;
+      const mr = (safeR / parseFloat(z)).toFixed(1) + 'px';
+      if (n.style.marginRight !== mr) n.style.marginRight = mr;
+    }
   }
   // Scale an overlay card so it fits in the given share of the screen
   // (its desktop size is the cap). Used for the GRID COMPLETE victory card.
@@ -923,6 +946,27 @@
     if (L.style.zoom !== z) L.style.zoom = z;
   }
 
+  // Camera cutout: with viewport-fit=cover the page reaches under it, so
+  // the HUD pieces on the left and right edges move in by the cutout's
+  // width. env(safe-area-inset-*) read through a probe element, in page px.
+  let _safeProbe = null, safeL = 0, safeR = 0;
+  function readSafeArea() {
+    if (!_safeProbe) {
+      _safeProbe = el('div', '', '');
+      _safeProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+        'padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)';
+      document.body.appendChild(_safeProbe);
+    }
+    const cs = getComputedStyle(_safeProbe);
+    const l = Math.round(parseFloat(cs.paddingLeft) || 0), r = Math.round(parseFloat(cs.paddingRight) || 0);
+    if (l !== safeL || r !== safeR) {
+      safeL = l; safeR = r;
+      const st = document.documentElement.style;
+      st.setProperty('--gwm-safe-l', l + 'px');
+      st.setProperty('--gwm-safe-r', r + 'px');
+    }
+  }
+
   // ── 6. State sync loop ─────────────────────────────────────────────
   let helpShownThisRun = false;
   function sync() {
@@ -937,6 +981,7 @@
     rotBtn.style.display = t ? '' : 'none';
     quick.querySelector('.gwm-pick').style.display = t ? 'none' : '';
     quick.querySelector('.gwm-shift').style.display = (t || pickMode) ? 'none' : '';
+    readSafeArea();
     if (playing) dodgePanels();
     fitTopBar();
     fitLetter();
