@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "static",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["C:\\Users\\pierc\\AppData\\Local\\Temp\\claude\\C--Users-pierc-OneDrive-Desktop-GRIDWORKS-Gridworks---JS-js\\35374f4d-1afd-4467-a712-bac5f3017ef3\\scratchpad\\nocache_server.py", ".."],
+      "port": 8080,
+      "autoPort": true
+    }
+  ]
+}

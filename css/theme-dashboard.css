@@ -1,0 +1,473 @@
+/* ═══════════════════════════════════════════════════════════════════
+   THEME: MODERN UTILITY DASHBOARD
+   Loaded after the base <style> block in index.html, so it restyles the
+   existing markup rather than replacing it. A grid-operator control room:
+   dark translucent glass panels, rounded corners, Inter throughout with
+   tabular numbers, one electric-blue accent, and green / amber / red kept
+   strictly for status.
+
+   Layout, sizes and behaviour stay in the base stylesheet — this layer only
+   changes surfaces, type, colour and interaction states. Delete the <link>
+   to get the old look back.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* surfaces */
+  --bg:           #0a0e15;
+  --grid-line:    #121824;
+  --glass:        rgba(15, 20, 30, 0.78);
+  --glass-strong: rgba(13, 18, 27, 0.92);
+  --glass-hover:  rgba(255, 255, 255, 0.045);
+  --ui-bg:        var(--glass-strong);
+  --ui-border:    rgba(150, 180, 215, 0.13);
+  --ui-border-b:  rgba(150, 180, 215, 0.20);
+  --hairline:     rgba(150, 180, 215, 0.08);
+
+  /* type */
+  --text:        #c3d0de;
+  --text-dim:    #7a8b9f;
+  --text-hi:     #f0f5fb;
+  --font:        'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* accent + status */
+  --accent:       #3b9eff;
+  --accent-hi:    #6cb8ff;
+  --accent-faint: rgba(59, 158, 255, 0.12);
+  --accent-ring:  0 0 0 1px rgba(59, 158, 255, 0.55), 0 0 0 4px rgba(59, 158, 255, 0.15);
+  --gold:         #f5c451;
+  --good:         #3ddc84;
+  --warn:         #f5b83d;
+  --bad:          #ff5d5d;
+
+  /* shape + depth */
+  --r:           8px;
+  --r-lg:        12px;
+  --r-pill:      999px;
+  --shadow-sm:   0 2px 10px rgba(0, 0, 0, 0.30);
+  --shadow:      0 10px 30px rgba(0, 0, 0, 0.40), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow-lg:   0 18px 50px rgba(0, 0, 0, 0.50), 0 2px 6px rgba(0, 0, 0, 0.35);
+  --glow-accent: 0 0 0 transparent;
+  --blur:        blur(18px) saturate(140%);
+
+  --wire-on:     #3b9eff;
+}
+
+/* ── Type: Inter everywhere, numbers line up ─────────────────────────── */
+/* The intro's black-screen terminal text (.gi-term) keeps its mono font. */
+body,
+body *:not(canvas):not(svg):not(svg *):not(.menu-logo-title):not(.menu-logo-title *):not(.gw-emblem):not(.gw-emblem *):not(.menu-btn):not(.menu-btn *):not(.gi-term):not(.gi-term *) {
+  font-family: var(--font) !important;
+}
+body { font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }
+.value, .gp-value, .ep-value, .sp-value, .ibd-val, .zp-val, .wp-val, .req-dval,
+#stat-income, #stat-balance, #stat-population, #stat-approval, #stat-cityscore,
+#clock, #clock * { font-variant-numeric: tabular-nums; }
+
+/* Wide-tracked uppercase was the old terminal look — tighten it up */
+.stat .label, .grid-tab, #btn-menu, #btn-progress, .cat-popup-header, .cat-label,
+.pause-btn, .ep-action-btn, .req-btn, .dev-btn, .pb-btn,
+.cmp-section-header, .ibd-section-title {
+  letter-spacing: 0.04em !important;
+}
+
+/* ── Glass panels ────────────────────────────────────────────────────── */
+#stats, #hotbar, .cat-popup, #tooltip,
+#grid-panel, #weather-panel, #progress-tracker, #msg-log-panel,
+#achievements-panel, #trucks-panel, #compendium-panel, #population-panel,
+#income-breakdown, #zone-panel, #entity-panel, #dev-panel, #solar-panel,
+#refinery-panel, #fuelgen-panel, #coalgen-panel, #turbine-panel, #shaftgen-panel,
+#shaft-panel, #dam-panel, #waste-panel, #wire-panel, #research-panel,
+#blueprint-stamp-hud, #weather-event-banner, .notif-card, .tut-card, .pause-box {
+  background: var(--glass) !important;
+  border: 1px solid var(--ui-border-b) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: var(--shadow) !important;
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+}
+/* Below high graphics quality (body.gfx-lite, set by GfxQuality) the glass
+   is tinted, not frosted. A backdrop-filter re-blurs whatever is under it on
+   every frame the world changes beneath it, and a usual screen has about
+   seventeen of them (top bar, dock buttons, tabs, notification cards): on
+   integrated graphics ~4.5ms of the browser GPU process's time per frame,
+   time the world's own drawing was short of. A denser tint stands in for the
+   blur. The pause menu keeps its blur: the city under it is a still frame. */
+body.gfx-lite { --glass: rgba(15, 20, 30, 0.88); }
+body.gfx-lite *:not(#pause-menu):not(.pause-box), body.gfx-lite *::before, body.gfx-lite *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+#entity-panel, .cat-popup, #tooltip, .pause-box, #compendium-panel, #achievements-panel, #research-panel {
+  background: var(--glass-strong) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+/* Top highlight line gives the glass an edge to catch light on */
+#stats, #hotbar, #entity-panel, #grid-panel, #progress-tracker, .pause-box, .cat-popup {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0) 40px) !important;
+}
+
+/* Panel headers and dividers */
+.pause-header, .ep-header, .pt-header, .gp-header, .cat-popup-header, .ibd-section-title, .cmp-section-header {
+  border-color: var(--hairline) !important;
+}
+.stat-divider { background: var(--hairline) !important; width: 1px !important; }
+
+/* ── Top bar ─────────────────────────────────────────────────────────── */
+#topbar { padding: 12px 16px 0 !important; }
+.title-block h1 {
+  color: var(--text-hi) !important;
+  text-shadow: none !important;
+  letter-spacing: 0.22em !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+}
+.title-block h1::before {
+  content: '⚡';
+  margin-right: 6px;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+.title-block .subtitle, #help { color: var(--text-dim) !important; }
+#stats { padding: 7px 10px !important; gap: 2px !important; }
+.stat {
+  padding: 3px 12px !important;
+  border-radius: var(--r) !important;
+  transition: background 0.15s;
+}
+.stat:hover { background: var(--glass-hover); }
+.stat .label { font-size: 9.5px !important; font-weight: 600 !important; color: var(--text-dim) !important; }
+.stat .value { font-weight: 700 !important; font-size: 14px !important; color: var(--text-hi); }
+.value.good { color: var(--good) !important; }
+.value.gold { color: var(--gold) !important; }
+.value.bad  { color: var(--bad)  !important; }
+
+/* Pill tabs (Grid / Weather / Progress / Menu) */
+.grid-tab, #btn-progress, #btn-menu {
+  background: var(--glass) !important;
+  border: 1px solid var(--ui-border-b) !important;
+  color: var(--text) !important;
+  border-radius: var(--r-pill) !important;
+  padding: 6px 14px !important;
+  font-weight: 600 !important;
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-sm) !important;
+  transition: background 0.15s, border-color 0.15s, color 0.15s !important;
+}
+.grid-tab:hover, #btn-progress:hover, #btn-menu:hover {
+  background: rgba(40, 52, 70, 0.85) !important;
+  color: var(--text-hi) !important;
+  border-color: rgba(150, 180, 215, 0.32) !important;
+}
+.grid-tab.active, .grid-tab.open, #btn-progress.active, #btn-progress.open {
+  background: var(--accent-faint) !important;
+  border-color: rgba(59, 158, 255, 0.6) !important;
+  color: var(--accent-hi) !important;
+}
+
+/* ── Hotbar ──────────────────────────────────────────────────────────── */
+#hotbar-row { padding-bottom: 14px !important; }
+#hotbar { padding: 8px !important; gap: 6px !important; }
+.cat-face {
+  border-radius: 10px !important;
+  border: 1px solid var(--ui-border) !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s !important;
+}
+.cat-face canvas { image-rendering: auto !important; }
+.cat-btn:hover .cat-face {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(150, 180, 215, 0.3) !important;
+  transform: translateY(-2px);
+}
+.cat-btn.open .cat-face, .cat-btn.has-active .cat-face {
+  background: var(--accent-faint) !important;
+  border-color: rgba(59, 158, 255, 0.7) !important;
+  box-shadow: 0 0 0 3px rgba(59, 158, 255, 0.15) !important;
+}
+.cat-btn.has-active .cat-label, .cat-btn.open .cat-label { color: var(--accent-hi) !important; }
+.cat-label { font-size: 9.5px !important; font-weight: 600 !important; color: var(--text-dim) !important; }
+.cat-face .cat-key {
+  font-size: 9px !important; font-weight: 700 !important;
+  color: var(--text-dim) !important;
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px; padding: 0 4px; line-height: 14px;
+}
+.cat-btn.delete-cat.open .cat-face, .cat-btn.delete-cat.has-active .cat-face {
+  background: rgba(255, 93, 93, 0.10) !important;
+  border-color: rgba(255, 93, 93, 0.7) !important;
+  box-shadow: 0 0 0 3px rgba(255, 93, 93, 0.14) !important;
+}
+
+/* Category popup tools */
+.cat-popup { padding: 12px !important; }
+.cat-popup-header { font-size: 10px !important; color: var(--text-dim) !important; }
+.tool-item {
+  border-radius: 10px !important;
+  border: 1px solid transparent !important;
+  transition: background 0.12s, border-color 0.12s !important;
+}
+.tool-item:hover:not(.tool-locked) { background: rgba(255,255,255,0.05) !important; border-color: var(--ui-border-b) !important; }
+.tool-item.active, .tool-item.selected {
+  background: var(--accent-faint) !important;
+  border-color: rgba(59, 158, 255, 0.7) !important;
+}
+.tool-item canvas { image-rendering: auto !important; }
+.tool-item .tool-tip-label { border-radius: var(--r) !important; }
+
+/* ── Side dock buttons ───────────────────────────────────────────────── */
+#btn-recenter, #btn-dev, #btn-msglog, #btn-achievements, #btn-compendium, #btn-trucks, #btn-requests {
+  background: var(--glass) !important;
+  border: 1px solid var(--ui-border-b) !important;
+  border-radius: 10px !important;
+  color: var(--text) !important;
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: var(--shadow-sm) !important;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s !important;
+}
+#btn-recenter:hover, #btn-dev:hover, #btn-msglog:hover, #btn-achievements:hover, #btn-compendium:hover, #btn-trucks:hover {
+  background: rgba(40, 52, 70, 0.9) !important;
+  border-color: rgba(150, 180, 215, 0.34) !important;
+  transform: translateX(-2px);
+}
+#btn-dev.active { border-color: rgba(245, 184, 61, 0.7) !important; color: var(--warn) !important; }
+
+/* ── Generic buttons ─────────────────────────────────────────────────── */
+.ep-action-btn, .req-btn, .dev-btn, .pb-btn, .bp-btn, .bp-select-btn, .rp-unlock-btn,
+.save-slot-btn, .tut-continue, .req-loc-btn, .pause-btn {
+  border-radius: var(--r) !important;
+  border: 1px solid var(--ui-border-b) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--text-hi) !important;
+  font-weight: 600 !important;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s !important;
+}
+.ep-action-btn:hover, .req-btn:hover, .dev-btn:hover, .pb-btn:hover, .bp-btn:hover, .bp-select-btn:hover,
+.rp-unlock-btn:hover, .save-slot-btn:hover, .tut-continue:hover, .req-loc-btn:hover, .pause-btn:hover {
+  background: rgba(59, 158, 255, 0.14) !important;
+  border-color: rgba(59, 158, 255, 0.6) !important;
+  color: #ffffff !important;
+}
+.ep-action-btn:active, .req-btn:active, .dev-btn:active, .pb-btn:active, .pause-btn:active, .tut-continue:active { transform: translateY(1px); }
+/* Placement option buttons (A / B / C on a property request) glow so they
+   read as the thing to click — matching the glowing pins on the map. */
+.req-loc-btn {
+  border-color: rgba(0, 212, 255, 0.75) !important;
+  color: #7fe8ff !important;
+  background: rgba(0, 212, 255, 0.12) !important;
+  text-shadow: 0 0 6px rgba(0, 212, 255, 0.9);
+  animation: reqLocGlow 1.8s ease-in-out infinite;
+}
+.req-loc-btn:nth-child(2) { animation-delay: 0.3s; }
+.req-loc-btn:nth-child(3) { animation-delay: 0.6s; }
+.req-loc-btn:hover {
+  background: rgba(0, 212, 255, 0.28) !important;
+  border-color: #00d4ff !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 16px 3px rgba(0, 212, 255, 0.75) !important;
+  animation: none;
+}
+@keyframes reqLocGlow {
+  0%, 100% { box-shadow: 0 0 4px 0 rgba(0, 212, 255, 0.35), inset 0 0 4px rgba(0, 212, 255, 0.15); }
+  50%      { box-shadow: 0 0 14px 3px rgba(0, 212, 255, 0.7), inset 0 0 8px rgba(0, 212, 255, 0.3); }
+}
+/* Playback bar: the current speed stays lit whether it was set by click or
+   by hotkey (Space / Alt). The generic button colours above are !important,
+   so the base .pb-btn.active rule in index.html never showed on its own. */
+.pb-btn.active {
+  background: rgba(59, 158, 255, 0.22) !important;
+  border-color: rgba(59, 158, 255, 0.85) !important;
+  color: #7cc4ff !important;
+  box-shadow: 0 0 10px rgba(59, 158, 255, 0.35);
+}
+#pb-pause.active {
+  background: rgba(255, 128, 64, 0.18) !important;
+  border-color: rgba(255, 128, 64, 0.8) !important;
+  color: #ffa070 !important;
+  box-shadow: 0 0 10px rgba(255, 128, 64, 0.3);
+}
+.tut-continue {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #04101f !important;
+}
+.tut-continue:hover { background: var(--accent-hi) !important; color: #04101f !important; }
+
+/* Close buttons */
+.pause-close, .log-close, .notif-dismiss, .ibd-close, .zp-close, .ep-close, .req-close, .sp-close, .wp-close, .rp-close {
+  border-radius: var(--r-pill) !important;
+  border: 1px solid transparent !important;
+  color: var(--text-dim) !important;
+  transition: background 0.12s, color 0.12s !important;
+}
+.pause-close:hover, .log-close:hover, .notif-dismiss:hover, .ibd-close:hover, .zp-close:hover,
+.ep-close:hover, .req-close:hover, .sp-close:hover, .wp-close:hover, .rp-close:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-hi) !important;
+}
+
+/* Inputs */
+input[type="text"], input[type="search"], input[type="number"], select, textarea, .cn-input, #cmp-search {
+  background: rgba(0, 0, 0, 0.28) !important;
+  border: 1px solid var(--ui-border-b) !important;
+  border-radius: var(--r) !important;
+  color: var(--text-hi) !important;
+}
+input:focus, select:focus, textarea:focus, .cn-input:focus, #cmp-search:focus {
+  outline: none !important;
+  box-shadow: var(--accent-ring) !important;
+  border-color: transparent !important;
+}
+button:focus-visible { outline: none; box-shadow: var(--accent-ring) !important; }
+/* The item search's pill draws its own frame and focus ring. */
+.tool-search input[type="text"], .tool-search input[type="text"]:focus {
+  background: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Toggles and sliders */
+.opt-toggle-slider { border-radius: var(--r-pill) !important; }
+input[type="range"] { accent-color: var(--accent); }
+
+/* ── Entity info panel ───────────────────────────────────────────────── */
+#entity-panel { width: 348px !important; }
+.ep-status {
+  border-radius: var(--r-pill) !important;
+  padding: 2px 9px !important;
+  font-size: 9.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+}
+.ep-status.good    { background: rgba(61, 220, 132, 0.13) !important; color: var(--good) !important; border: 1px solid rgba(61, 220, 132, 0.35) !important; }
+.ep-status.bad     { background: rgba(255, 93, 93, 0.13) !important;  color: var(--bad)  !important; border: 1px solid rgba(255, 93, 93, 0.35) !important; }
+.ep-status.neutral { background: rgba(150, 180, 215, 0.10) !important; color: var(--text) !important; border: 1px solid var(--ui-border-b) !important; }
+.ep-value.good { color: var(--good) !important; }
+.ep-value.bad  { color: var(--bad)  !important; }
+.ep-value.warn { color: var(--warn, #f0b040) !important; }
+.ep-value.dim  { color: var(--text-dim) !important; }
+
+/* ── Research Station panel ──────────────────────────────────────────── */
+/* UNLOCK is the panel's one primary action, so it stays a solid violet
+   button rather than taking the generic outlined look above. */
+#research-panel .rp-unlock-btn {
+  background: var(--rp) !important;
+  border-color: var(--rp) !important;
+  color: #140b2e !important;
+  font-weight: 700 !important;
+}
+#research-panel .rp-unlock-btn:hover {
+  background: var(--rp-hi) !important;
+  border-color: var(--rp-hi) !important;
+  color: #140b2e !important;
+}
+#research-panel .rp-filter:focus-visible, #research-panel .rp-unlock-btn:focus-visible {
+  box-shadow: 0 0 0 1px var(--rp-line), 0 0 0 4px var(--rp-faint) !important;
+}
+
+/* ── Notifications ───────────────────────────────────────────────────── */
+.notif-card {
+  border-left-width: 2.5px !important;
+  border-radius: 8.5px !important;
+  padding: 8.5px 21px 8.5px 11px !important;
+}
+/* Emergency cards (NotificationStack push({ emergency: true })) — red alarm
+   panel, no dismiss button. The pulse runs on ::after because the glass
+   rule above pins box-shadow with !important, which an animation can't beat. */
+.notif-card.notif-emergency {
+  background: rgba(52, 8, 6, 0.94) !important;
+  border: 1px solid rgba(255, 60, 40, 0.85) !important;
+  border-left: 4px solid #ff3020 !important;
+  padding-right: 11px !important;
+}
+.notif-card.notif-emergency::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 22px 6px rgba(255, 40, 20, 0.85);
+  opacity: 0.35;
+  animation: notifEmergencyRing 0.9s ease-in-out infinite;
+}
+/* The base sheet's own pulses on these cards animate box-shadow and the
+   left border, both pinned by the rules above, so they showed nothing —
+   but still restyled the card on every display refresh. */
+.notif-card.notif-glow, .notif-card.notif-emergency { animation: notifIn 0.2s var(--ease) !important; }
+/* Important cards (push({ glow: true })) — the base notifGlow animation
+   is a box-shadow, which the glass rule above pins, so they rendered as
+   plain cards while the hidden bar counted them as important. Pulse on
+   ::after instead, in the card's own colour, with an edge to match. */
+.notif-card.notif-glow {
+  border-color: color-mix(in srgb, var(--glow-color, #f0c040) 55%, transparent) !important;
+  border-left: 4px solid var(--glow-color, #f0c040) !important;
+}
+.notif-card.notif-glow::after {
+  content: ''; position: absolute; inset: -1px; border-radius: inherit;
+  pointer-events: none;
+  box-shadow: 0 0 14px 3px color-mix(in srgb, var(--glow-color, #f0c040) 75%, transparent);
+  opacity: 0.2;
+  animation: notifGlowRing 1.6s ease-in-out infinite;
+}
+/* Both rings hold their brightest shadow and pulse its opacity, which runs
+   on the compositor; a pulsing box-shadow repainted the card (and re-ran its
+   backdrop blur) on every display refresh while it stood. */
+@keyframes notifGlowRing {
+  0%, 100% { opacity: 0.2; }
+  50%      { opacity: 1; }
+}
+@keyframes notifEmergencyRing {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+
+/* ── Tutorial card ───────────────────────────────────────────────────── */
+.tut-card {
+  border-radius: 14px !important;
+  border-left: 3px solid var(--accent) !important;
+}
+
+/* ── Pause menu: drop the cut-corner sci-fi frame ─────────────────────── */
+#pause-menu { background: rgba(4, 7, 12, 0.6) !important; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+#pause-menu .pm-corner { display: none !important; }
+#pause-menu .pause-box {
+  clip-path: none !important;
+  filter: none !important;
+  border-radius: 16px !important;
+  border: 1px solid var(--ui-border-b) !important;
+}
+#pause-menu .pause-box::before, #pause-menu .pause-box::after { display: none !important; }
+.pause-btn { letter-spacing: 0.02em !important; text-transform: none !important; font-size: 13.5px !important; padding: 10px 14px !important; }
+
+/* Main menu buttons keep their original cut-corner Orbitron style (base stylesheet). */
+
+/* ── Scrollbars ──────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(150, 180, 215, 0.22); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(150, 180, 215, 0.38); background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Pause header keeps its original lettering: Orbitron title, mono eyebrow + status */
+#pause-menu .pause-title { font-family: 'Orbitron', 'Inter', sans-serif !important; }
+#pause-menu .pm-brand, #pause-menu .pm-status, #pause-menu .pm-status * { font-family: 'JetBrains Mono', monospace !important; }
+
+/* ── Pause menu buttons: flat rounded rows instead of cut-corner plates ── */
+#pause-menu .pause-btn {
+  clip-path: none !important;
+  border: 1px solid var(--ui-border-b) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  color: var(--text-hi) !important;
+  height: 42px !important;
+  padding: 0 12px 0 6px !important;
+}
+#pause-menu .pause-btn::before, #pause-menu .pause-btn::after { display: none !important; }
+#pause-menu .pause-btn .pbtn-icon {
+  border-radius: 7px !important;
+  background: rgba(59, 158, 255, 0.12) !important;
+  color: var(--accent-hi) !important;
+}
+#pause-menu .pause-btn:hover {
+  background: rgba(59, 158, 255, 0.14) !important;
+  border-color: rgba(59, 158, 255, 0.6) !important;
+}
+#pause-menu .pause-btn:hover .pbtn-icon { background: var(--accent) !important; color: #04101f !important; }

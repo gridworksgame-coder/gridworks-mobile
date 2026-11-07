@@ -1,0 +1,258 @@
+/* GRIDWORKS MOBILE — styles for the touch layer (js/mobile.js).
+   Everything is scoped under html.gw-mobile so desktop is untouched. */
+
+html.gw-mobile, html.gw-mobile body {
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+html.gw-mobile body { position: fixed; inset: 0; overflow: hidden; }
+html.gw-mobile #canvas,
+html.gw-mobile #worldmap-overlay { touch-action: none; }
+html.gw-mobile button, html.gw-mobile .cat-face, html.gw-mobile [role="button"] { touch-action: manipulation; }
+html.gw-mobile * { -webkit-user-select: none; user-select: none; }
+html.gw-mobile input, html.gw-mobile textarea { -webkit-user-select: text; user-select: text; }
+
+/* Scrollable panels: momentum scrolling and no scroll-chaining to the page. */
+html.gw-mobile [style*="overflow"], html.gw-mobile .cat-popup, html.gw-mobile .panel-body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Keep the OS cursor images out of the way. */
+html.gw-mobile, html.gw-mobile * { cursor: default !important; }
+
+/* ── Touch control layer ─────────────────────────────────────────── */
+#gwm-root { position: fixed; inset: 0; pointer-events: none; z-index: 9000; display: none; zoom: var(--gwm-ctl-zoom, 1); }
+#gwm-toast, #gwm-help { zoom: var(--gwm-ctl-zoom, 1); }
+#gwm-root.show { display: block; }
+
+.gwm-btn {
+  pointer-events: auto;
+  font: 600 22px/1 Inter, system-ui, sans-serif;
+  color: #dff6ff;
+  background: rgba(12, 22, 34, 0.86);
+  border: 1px solid rgba(96, 208, 224, 0.35);
+  border-radius: 12px;
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  padding: 0;
+}
+.gwm-btn:active { background: rgba(40, 90, 120, 0.95); }
+.gwm-btn.on { background: rgba(32, 140, 200, 0.95); border-color: #7fd8ff; color: #fff; }
+
+.gwm-quick {
+  /* Right edge, between the top bar and the game's own icon column. */
+  position: absolute; right: 12px; top: 66px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.gwm-quick .gwm-btn { width: 23px; height: 23px; font-size: 11px; border-radius: 6px; }
+.gwm-quick .gwm-cancel { color: #ffb0a0; border-color: rgba(255, 120, 100, 0.5); }
+
+/* Drawer with every other keyboard command */
+.gwm-drawer {
+  pointer-events: auto;
+  position: absolute; right: 44px; top: 66px; transform: translateX(12px);
+  opacity: 0; visibility: hidden;
+  transition: opacity .15s, transform .15s, visibility 0s linear .15s;
+  background: rgba(8, 16, 26, 0.95);
+  border: 1px solid rgba(96, 208, 224, 0.35);
+  border-radius: 14px;
+  padding: 30px 8px 8px 8px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.6);
+  max-height: calc(100% - 112px); overflow: auto;
+}
+.gwm-drawer.open { opacity: 1; visibility: visible; transform: none; transition: opacity .15s, transform .15s; }
+.gwm-grid { display: grid; grid-template-columns: repeat(6, 66px); gap: 5px; }
+.gwm-drawer::before { content: 'CONTROLS'; position: absolute; left: 10px; top: 10px; font: 700 9px Orbitron, Inter, sans-serif; letter-spacing: .14em; color: #7fd8ff; }
+.gwm-grid .gwm-btn { width: 66px; height: 50px; flex-direction: column; gap: 3px; border-radius: 9px; }
+.gwm-grid .gwm-btn b { font-size: 16px; font-weight: 600; }
+.gwm-grid .gwm-btn span { font: 500 9.5px/1.1 Inter, system-ui, sans-serif; color: #9fc6d6; text-align: center; padding: 0 3px; }
+.gwm-drawer-close { position: absolute; top: 4px; right: 4px; width: 24px; height: 24px; font-size: 16px; border-radius: 50%; }
+
+/* Drive pads */
+.gwm-drive { display: none; }
+.gwm-drive.show { display: block; }
+.gwm-drive-l, .gwm-drive-r { position: absolute; display: flex; gap: 14px; pointer-events: none; }
+.gwm-drive-l { left: 16px; top: 205px; }
+.gwm-drive-r { right: 76px; bottom: 96px; flex-direction: column; }
+.gwm-pad {
+  pointer-events: auto;
+  width: 92px; height: 92px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font: 700 30px/1 Inter, system-ui, sans-serif; color: #e8f8ff;
+  background: rgba(12, 22, 34, 0.55);
+  border: 2px solid rgba(150, 220, 255, 0.45);
+  touch-action: none;
+}
+.gwm-pad small { font-size: 11px; letter-spacing: .1em; margin-top: 4px; color: #a8d0e0; }
+.gwm-pad.on { background: rgba(40, 150, 210, 0.75); border-color: #bfe8ff; }
+.gwm-gas { border-color: rgba(120, 230, 140, 0.6); }
+.gwm-brake { border-color: rgba(255, 140, 120, 0.6); width: 80px; height: 80px; align-self: center; }
+
+/* Hint toast */
+#gwm-toast {
+  position: fixed; left: 50%; top: 92px; transform: translateX(-50%);
+  background: rgba(8, 16, 26, 0.92); color: #dff6ff;
+  border: 1px solid rgba(96, 208, 224, 0.4); border-radius: 10px;
+  padding: 9px 16px; font: 500 15px/1.2 Inter, system-ui, sans-serif;
+  z-index: 9600; pointer-events: none; opacity: 0; transition: opacity .2s;
+}
+#gwm-toast.show { opacity: 1; }
+
+/* Help card */
+#gwm-help {
+  position: fixed; inset: 0; z-index: 9700; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(2, 6, 12, 0.7);
+}
+#gwm-help.show { display: flex; }
+.gwm-help-card {
+  background: #0b1622; color: #dff6ff;
+  border: 1px solid rgba(96, 208, 224, 0.4); border-radius: 14px;
+  padding: 20px 26px; max-width: 640px; max-height: 92%; overflow: auto;
+  font: 400 15px/1.45 Inter, system-ui, sans-serif;
+}
+.gwm-help-card h3 { font: 700 18px Orbitron, Inter, sans-serif; letter-spacing: .08em; margin-bottom: 10px; color: #7fd8ff; }
+.gwm-help-card ul { list-style: none; display: grid; gap: 5px; }
+.gwm-help-card b { color: #fff; }
+.gwm-help-ok {
+  margin-top: 14px; width: 100%; height: 46px; border-radius: 10px;
+  background: #1d8fd0; color: #fff; border: none; font: 600 16px Inter, sans-serif;
+}
+
+/* Portrait: ask to rotate */
+#gwm-rotate {
+  position: fixed; inset: 0; z-index: 99999; display: none;
+  flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  background: #05090f; color: #dff6ff; text-align: center; padding: 24px;
+  font: 600 20px/1.3 Inter, system-ui, sans-serif;
+}
+#gwm-rotate small { font-weight: 400; font-size: 14px; color: #8fb3c4; }
+#gwm-rotate.show { display: flex; }
+.gwm-rot-icon { font-size: 64px; animation: gwm-tilt 2s ease-in-out infinite; }
+@keyframes gwm-tilt { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(-90deg); } }
+
+/* ── Bigger hit areas on the game's own small controls ───────────── */
+/* (A min-height on build-menu items used to squash the grid rows so each
+   price ran into the icon below; removed.) */
+
+/* ── Main menu on a short landscape screen ───────────────────────── */
+@media (max-height: 600px) {
+  html.gw-mobile .menu-content { margin-top: 0; }
+  html.gw-mobile .menu-logo { transform: scale(0.78); transform-origin: 50% 0; margin-bottom: -38px; margin-top: 6px; }
+  html.gw-mobile .menu-buttons { gap: 7px; width: 340px; }
+  html.gw-mobile .menu-btn { min-height: 44px; }
+  html.gw-mobile .menu-save-info { margin-bottom: 6px; }
+}
+
+/* ── Smaller tutorial card and in-game panels ────────────────────── */
+/* The HUD keeps its size; the cards and info / inspector panels that
+   open over the map are scaled down so they don't swallow the screen.
+   ⋯ → Panel size changes --gwm-panel-zoom. */
+html.gw-mobile { --gwm-panel-zoom: 0.8; }
+html.gw-mobile :is(#tutorial-card, #msg-log-panel, #advisor-panel,
+  #compendium-panel, #drones-panel, #progress-tracker,
+  #grid-panel, #weather-panel, #score-panel, #events-panel, #zone-panel, #solar-panel,
+  #refinery-panel, #fuelgen-panel, #coalgen-panel, #turbine-panel, #shaftgen-panel,
+  #shaft-panel, #dam-panel, #waste-panel, #population-panel, #gov-panel, #research-panel,
+  #wire-panel, #entity-panel, #notif-stack, #scn-panel, #np-brief) {
+  zoom: var(--gwm-panel-zoom);
+}
+html.gw-mobile #tutorial-card { zoom: calc(var(--gwm-panel-zoom) * 0.88); }
+
+/* ── Build toolbar, clock and time controls: 30% smaller ─────────── */
+html.gw-mobile { --gwm-bar-zoom: 0.7; --gwm-hotbar-zoom: 0.525; }
+html.gw-mobile #hotbar-row { zoom: var(--gwm-hotbar-zoom); }
+html.gw-mobile #clock,
+html.gw-mobile #playback-controls { zoom: var(--gwm-bar-zoom); }
+/* (Build popups now scale with the toolbar: asked for them smaller.) */
+/* Top bar: 25% smaller (the stats strip also shrinks to fit, mobile.js). */
+html.gw-mobile #topbar { zoom: 0.75; }
+
+/* ── Phone performance ───────────────────────────────────────────── */
+/* Frosted-glass blurs (43 in the page, more set from JS) are re-rendered
+   every frame over the animated menu and map — the main reason taps
+   felt half a second late on a phone. Panels already have near-opaque
+   backgrounds, so they read the same without the blur. */
+html.gw-mobile *, html.gw-mobile *::before, html.gw-mobile *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* No double-tap-zoom wait on any tap (the map canvas keeps touch-action: none). */
+html.gw-mobile, html.gw-mobile body, html.gw-mobile body * { touch-action: manipulation; }
+html.gw-mobile #canvas, html.gw-mobile #worldmap-overlay, html.gw-mobile .gwm-pad { touch-action: none; }
+
+/* FPS readout (?fps=1, or ⋯ → FPS) */
+#gwm-fps {
+  position: fixed; left: 50%; top: 2px; transform: translateX(-50%); z-index: 99998;
+  font: 600 12px/1 'JetBrains Mono', monospace; color: #7fffa0; background: rgba(0,0,0,.6);
+  padding: 3px 6px; border-radius: 4px; pointer-events: none; zoom: var(--gwm-ctl-zoom, 1);
+}
+
+/* Intro contract letter: smaller on a phone so the city stays in view. */
+html.gw-mobile #gw-intro .gi-letter { width: min(420px, 32vw); max-height: 64vh; padding: 18px 22px 16px;
+  font-size: clamp(11px, 1.45vh, 14px); }
+html.gw-mobile #gw-intro .gi-letter.centred { width: min(420px, 60vw); }
+
+/* ── Menus: smaller on a phone ───────────────────────────────────── */
+/* Main menu buttons, Game Modes / scenario picker, game setup and the
+   other menu screens. Only the boxes scale; their backdrops stay full. */
+html.gw-mobile { --gwm-menu-zoom: 0.72; }
+html.gw-mobile #main-menu .menu-buttons,
+html.gw-mobile #main-menu .menu-save-info,
+html.gw-mobile .scn-box,
+html.gw-mobile #citynaming-modal > *,
+html.gw-mobile #world-settings-modal > *,
+html.gw-mobile #load-game-modal > *,
+html.gw-mobile #save-game-modal > *,
+html.gw-mobile #save-name-modal > *,
+html.gw-mobile #options-modal > *,
+html.gw-mobile #confirm-modal > *,
+html.gw-mobile #pause-menu > * { zoom: var(--gwm-menu-zoom); }
+#gwm-fps { white-space: pre-line; text-align: center; max-width: 96vw; line-height: 1.35; font-size: 11px; }
+
+/* Contract checklist: its own, smaller scale (set by mobile.js fitChecklist). */
+/* Scaled with a transform, not zoom: the game drags it by writing left/top
+   in screen px, which zoom would rescale (the panel would lag the finger
+   and jump when picked up). */
+html.gw-mobile #contract-checklist { transform: scale(var(--gwm-checklist-zoom, 0.5)); transform-origin: 0 0; }
+
+/* Achievements: 45% smaller than before (mobile.js SCREEN_SIZES). */
+html.gw-mobile #achievements-panel { zoom: var(--gwm-ach-zoom, 0.484); }
+html.gw-mobile #ach-toast-stack { zoom: var(--gwm-achtoast-zoom, 0.55); }
+html.gw-mobile #np-dossier { zoom: var(--gwm-dossier-zoom, 0.5); }
+/* Requests panel: normal panel size (0.525 was far too small). */
+html.gw-mobile #req-panel { zoom: var(--gwm-panel-zoom, 0.8); }
+/* Truck windows and the contract board: same scale as the build popups. */
+/* !important: the game sets its own inline zoom (1.15) on the truck windows. */
+html.gw-mobile :is(#trucks-panel, #truck-patrol-panel, #saved-path-panel) { zoom: var(--gwm-hotbar-zoom, 0.525) !important; }
+/* Contract board: 15% bigger than the toolbar scale. */
+html.gw-mobile #contract-board > * { zoom: calc(var(--gwm-hotbar-zoom, 0.525) * 1.15) !important; }
+
+/* Right-hand panels are placed beside their buttons by mobile.js fitSidePanels(). */
+
+/* Income breakdown (tap INCOME): a bit smaller than the other panels. */
+html.gw-mobile #income-breakdown { zoom: 0.7; }
+/* Top-bar drop-downs open over the notification stack (z 160), not under it. */
+html.gw-mobile :is(#grid-panel, #weather-panel, #progress-tracker, #income-breakdown,
+  #population-panel, #score-panel, #gov-panel, #np-dossier) { z-index: 420 !important; }
+/* A top-bar drop-down is open (mobile.js topPanelLayer): notifications and
+   the tutorial card go under the HUD layer, so the drop-down is on top. */
+html.gw-mobile.gwm-toppanel #notif-stack,
+html.gw-mobile.gwm-toppanel #tutorial-card { z-index: 30 !important; }
+/* Requests panel sits inside the toolbar (zoomed 0.525): undo that, so it is
+   the normal panel size, not 0.42. */
+html.gw-mobile #req-panel { zoom: calc(var(--gwm-panel-zoom, 0.8) / var(--gwm-hotbar-zoom, 0.525)) !important; }
+
+/* After the game reloads the page (new game), a tap puts full screen back. */
+#gwm-fsprompt {
+  position: fixed; left: 50%; top: 14%; transform: translateX(-50%); z-index: 100000;
+  zoom: var(--gwm-ctl-zoom, 1);
+  font: 600 15px/1 Inter, system-ui, sans-serif; color: #fff;
+  background: rgba(20, 120, 190, 0.92); border: 1px solid #8fd8ff; border-radius: 22px;
+  padding: 12px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.6); touch-action: manipulation;
+}
