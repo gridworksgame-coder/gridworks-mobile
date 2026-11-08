@@ -283,3 +283,5 @@ html.gw-mobile #gwm-root { left: calc(var(--gwm-safe-l, 0px) / var(--gwm-ctl-zoo
 .gwm-frame-go { display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 10px; border: none; background: #1d8fd0; color: #fff; font: 700 17px Inter, sans-serif; text-decoration: none; }
 .gwm-frame-here { height: 36px; border-radius: 10px; border: 1px solid rgba(96,208,224,.35); background: transparent; color: #9fc6d6; font: 500 14px Inter, sans-serif; }
 #gwm-install .gwm-install-anyway { background: #24435c; }
+/* Browser full screen / frame (page not scaled): tutorial cards 20% smaller. */
+html.gw-mobile.gwm-unscaled #tutorial-card { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.88 * 0.8); }

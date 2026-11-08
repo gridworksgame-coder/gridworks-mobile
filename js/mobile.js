@@ -1087,6 +1087,9 @@
     quick.querySelector('.gwm-shift').style.display = (t || pickMode) ? 'none' : '';
     readSafeArea();
     if (playing) dodgePanels();
+    // Page not scaled (browser full screen, or inside a frame): a class
+    // for the few sizes that need their own tuning there.
+    document.documentElement.classList.toggle('gwm-unscaled', !!_applied && Math.abs(innerWidth - _applied.vw) > 2);
     fitTopBar();
     fitLetter();
     fitChecklist();
