@@ -296,3 +296,6 @@ html.gw-mobile.gwm-unscaled #notif-stack { zoom: calc(var(--gwm-panel-zoom, 0.8)
 html.gw-mobile #research-panel { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.875) !important; }   /* 0.7 */
 html.gw-mobile.gwm-unscaled #research-panel { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.65) !important; }   /* 0.52 */
 html.gw-mobile #research-panel { z-index: 420 !important; }
+/* Toasts and the fishing minigame: 20% smaller, 35% in browser full screen / frame. */
+html.gw-mobile .gw-toast, html.gw-mobile #fishing-overlay, html.gw-mobile #fishing-badge { zoom: 0.8; }
+html.gw-mobile.gwm-unscaled .gw-toast, html.gw-mobile.gwm-unscaled #fishing-overlay, html.gw-mobile.gwm-unscaled #fishing-badge { zoom: 0.65; }

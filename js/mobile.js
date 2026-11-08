@@ -1238,9 +1238,12 @@
   // divided by the zoom, then keep the panel on screen.
   const ANCHORED = ['weather-panel', 'progress-tracker', 'income-breakdown', 'population-panel', 'score-panel', 'gov-panel', 'research-panel'];
   function watchAnchored() {
-    for (const id of ANCHORED) {
-      const n = $(id);
-      if (!n || n._gwmAnch) continue;
+    for (const id of ANCHORED) anchorFix($(id));
+  }
+  // Also used for toasts (placed just under the top bar the same way).
+  function anchorFix(n) {
+    {
+      if (!n || n._gwmAnch) return;
       n._gwmAnch = { left: null, top: null };
       const fix = () => {
         const z = parseFloat(getComputedStyle(n).zoom) || 1;
@@ -1374,6 +1377,11 @@
     const CINE_IDS = ['gw-intro', 'gi-titles', 'gw-hq', 'gw-fusion', 'np-draw', 'np-victory'];
     const cineCheck = () => setCineMode(CINE_IDS.some(id => { const n = $(id); return n && !n.classList.contains('out'); }));
     new MutationObserver(cineCheck).observe(document.body, { childList: true });
+    // Toasts: the game places each one just under the top bar in screen px,
+    // which their zoom would scale up into the bar. Correct each new one.
+    new MutationObserver((muts) => {
+      for (const m of muts) for (const n of m.addedNodes) if (n.classList && n.classList.contains('gw-toast')) anchorFix(n);
+    }).observe(document.body, { childList: true });
     cineCheck();
     if (qs.get('fps') === '1' || LS.get('fps', '') === '1') setFps(true);
     sync();
