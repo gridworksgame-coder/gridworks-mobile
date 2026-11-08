@@ -284,4 +284,10 @@ html.gw-mobile #gwm-root { left: calc(var(--gwm-safe-l, 0px) / var(--gwm-ctl-zoo
 .gwm-frame-here { height: 36px; border-radius: 10px; border: 1px solid rgba(96,208,224,.35); background: transparent; color: #9fc6d6; font: 500 14px Inter, sans-serif; }
 #gwm-install .gwm-install-anyway { background: #24435c; }
 /* Browser full screen / frame (page not scaled): tutorial cards 20% smaller. */
-html.gw-mobile.gwm-unscaled #tutorial-card { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.88 * 0.8); }
+html.gw-mobile.gwm-unscaled #tutorial-card { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.88 * 0.8 * 0.9); }
+/* Browser full screen / frame: top bar 12% smaller, clock + time controls
+   15% smaller, notifications 20% smaller (tutorial cards: see above, -10%). */
+html.gw-mobile.gwm-unscaled #topbar { zoom: calc(0.75 * 0.88); }
+html.gw-mobile.gwm-unscaled #clock,
+html.gw-mobile.gwm-unscaled #playback-controls { zoom: calc(var(--gwm-bar-zoom, 0.7) * 0.85); }
+html.gw-mobile.gwm-unscaled #notif-stack { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.8); }
