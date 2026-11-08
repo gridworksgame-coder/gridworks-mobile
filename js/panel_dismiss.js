@@ -25,6 +25,7 @@ const PanelDismiss = (() => {
   const SAFE = [
     '#main-menu', '#pause-menu', '#dev-panel', '#tutorial-card', '#notif-stack',
     '[id$="-modal"]', '[id*="confirm"]', '#worldmap-overlay',
+    '#gwm-root', '#gwm-help', '#gwm-install', '#gwm-frame', '#gwm-fsprompt',   // mobile touch controls
   ].join(', ');
 
   const byId = (id) => document.getElementById(id);
