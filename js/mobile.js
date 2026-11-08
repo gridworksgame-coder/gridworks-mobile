@@ -324,6 +324,36 @@
     const F = gameGlobal('FishingSystem');
     try { return !!(F && F.isActive?.() && !F.isCharging?.()); } catch (_) { return false; }
   };
+  // Camera position helpers (Camera only offers screen → world).
+  function worldToScreen(wx, wy) {
+    const Cam = gameGlobal('Camera');
+    if (!Cam) return null;
+    const a = Cam.screenToWorld(0, 0), b = Cam.screenToWorld(100, 0);
+    const z = 100 / ((b.x - a.x) || 1);
+    return { x: (wx - a.x) * z, y: (wy - a.y) * z };
+  }
+  let rodAnchor = null;      // world point the rod is planted on while the line is out
+  let fingersDown = 0;
+  function rodTick() {
+    requestAnimationFrame(rodTick);
+    const locked = fishingLocked();
+    if (!locked) { rodAnchor = null; return; }
+    const im = IM(), Cam = gameGlobal('Camera'), cv = $('canvas');
+    if (!im || !Cam || !cv || im.lastMouseSX == null) return;
+    if (!rodAnchor) { rodAnchor = Cam.screenToWorld(im.lastMouseSX, im.lastMouseSY); return; }
+    const sp = worldToScreen(rodAnchor.x, rodAnchor.y);
+    if (!sp || (Math.abs(sp.x - im.lastMouseSX) < 0.5 && Math.abs(sp.y - im.lastMouseSY) < 0.5)) return;
+    const r = cv.getBoundingClientRect();
+    // While reeling with a finger down the button must read as held, or the
+    // game treats the move as a missed release and stops reeling.
+    let reeling = false;
+    try { reeling = !!gameGlobal('FishingSystem')?.isMinigameActive?.() && fingersDown > 0; } catch (_) {}
+    mouse(cv, 'mousemove', sp.x + r.left, sp.y + r.top, 0, reeling ? { held: true } : undefined);
+  }
+  document.addEventListener('touchstart', (e) => { fingersDown = e.touches.length; }, { capture: true, passive: true });
+  document.addEventListener('touchend', (e) => { fingersDown = e.touches.length; }, { capture: true, passive: true });
+  document.addEventListener('touchcancel', (e) => { fingersDown = e.touches.length; }, { capture: true, passive: true });
+  requestAnimationFrame(rodTick);
   const driving = () => { try { return !!gameGlobal('TruckSystem')?.getDriven?.(); } catch (_) { return false; } };
   const inGame = () => {
     const mm = $('main-menu');
@@ -334,12 +364,50 @@
   const TAP_SLOP   = 10;    // px a finger may wander and still be a tap
   const LONG_MS    = 450;   // hold this long (no tool) → right-click
   const TOOL_MS    = 110;   // hold this long (tool in hand) → press starts
+  const AIM_DEAD   = 40;    // px: casting drags shorter than this auto-aim at the water
+  const DTAP_MS    = 300;   // second tap within this → double tap
+  const DTAP_SLOP  = 40;    // px between the two taps of a double tap
   let pickMode = false;     // next tap copies the item under it (Q)
 
   function bindCanvas(cv) {
     let one = null;         // single-finger state
     let two = null;         // pinch state
     let suppressUntilClear = false;
+    let lastTap = null;     // previous quick tap (double tap → zoom)
+    // Only bare ground: a double tap on a truck drives it, and one on a
+    // building or road is two clicks on it, as before.
+    function emptyGround(x, y) {
+      try {
+        const r = cv.getBoundingClientRect();
+        const w = gameGlobal('Camera').screenToWorld(x - r.left, y - r.top);
+        const TL = gameGlobal('TILE') || 40;
+        const row = gameGlobal('GridManager').tiles[Math.floor(w.y / TL)];
+        if (!row || row[Math.floor(w.x / TL)]) return false;
+        const TT = gameGlobal('T'), ER = gameGlobal('EntityRegistry');
+        for (const t of ER.getByType(TT.TRUCK)) {
+          const tx = t._wx != null ? t._wx : (t.col + 0.5) * TL, ty = t._wy != null ? t._wy : (t.row + 0.5) * TL;
+          if (Math.hypot(tx - w.x, ty - w.y) < TL * 1.5) return false;
+        }
+        return true;
+      } catch (_) { return false; }
+    }
+    // Eased zoom-in by 1.6× about a screen point over ~0.2 s.
+    function zoomStep(x, y) {
+      const Cam = gameGlobal('Camera');
+      if (!Cam || !Cam.zoomByFactorAt) return;
+      buzz(10);
+      const r = cv.getBoundingClientRect();
+      const sx = x - r.left, sy = y - r.top, total = 1.6, dur = 200, t0 = performance.now();
+      let done = 1;
+      (function step() {
+        const k = Math.min(1, (performance.now() - t0) / dur);
+        const e = 1 - (1 - k) * (1 - k);
+        const want = Math.pow(total, e);
+        Cam.zoomByFactorAt(sx, sy, want / done);
+        done = want;
+        if (k < 1) requestAnimationFrame(step);
+      })();
+    }
 
     const pt = (t) => ({ x: t.clientX, y: t.clientY });
 
@@ -406,6 +474,7 @@
     function release() {
       if (!one) return;
       if (edgeRaf) edgeStop();
+      if (one.panning) { if (one.down) mouse(cv, 'mouseup', one.x, one.y, one.button); clearTimeout(one.timer); one = null; return; }
       if (one.down) {
         mouse(cv, 'mouseup', one.x, one.y, one.button);
         if (one.button === 0 && !one.moved) mouse(cv, 'click', one.x, one.y, 0);
@@ -436,7 +505,8 @@
           const im = IM(), r = cv.getBoundingClientRect();
           if (im && im.lastMouseSX != null) p = { x: im.lastMouseSX + r.left, y: im.lastMouseSY + r.top };
         }
-        one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, t: performance.now(), down: false, moved: false, button: 0, locked };
+        const f0 = pt(ts[0]);
+        one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, fx: f0.x, fy: f0.y, t: performance.now(), down: false, moved: false, button: 0, locked };
         if (!locked) mouse(cv, 'mousemove', p.x, p.y, 0);   // hover → ghost/tooltips
         if (pickMode) return;                  // resolved on touchend
         const immediate = !!tool() || fishingHold();
@@ -474,8 +544,21 @@
         return;
       }
       if (!one || ts.length !== 1) return;
-      if (one.locked) return;          // reeling: the rod stays put
-      const p = pt(ts[0]);
+      if (one.locked) {
+        // Line out: a drag moves the camera; the rod stays planted
+        // (rodTick re-places the cursor on it). Reeling keeps going.
+        const p = pt(ts[0]);
+        if (!one.panning && Math.hypot(p.x - one.fx, p.y - one.fy) > TAP_SLOP) { one.panning = true; one.moved = true; one.px = p.x; one.py = p.y; }
+        if (one.panning) {
+          try { gameGlobal('Camera')?.panByScreen(p.x - one.px, p.y - one.py); } catch (_) {}
+          one.px = p.x; one.py = p.y;
+        }
+        return;
+      }
+      let p = pt(ts[0]);
+      let charging = false;
+      try { charging = !!gameGlobal('FishingSystem')?.isCharging?.(); } catch (_) {}
+      if (charging && one.down && Math.hypot(p.x - one.sx, p.y - one.sy) < AIM_DEAD) p = { x: one.sx, y: one.sy };
       one.x = p.x; one.y = p.y;
       if (!one.moved && Math.hypot(p.x - one.sx, p.y - one.sy) > TAP_SLOP) {
         one.moved = true;
@@ -507,8 +590,19 @@
         return;
       }
       if (!one.down) {
-        // A quick tap: press + release at the spot.
         clearTimeout(one.timer); clearTimeout(one.longTimer);
+        // Second quick tap near the first, nothing in hand: zoom in there
+        // (the first tap already did its normal click).
+        const now = performance.now();
+        if (!one.locked && !tool() && !fishingHold() && now - one.t < 250 && emptyGround(one.x, one.y)
+            && lastTap && now - lastTap.t < DTAP_MS + 250 && Math.hypot(one.x - lastTap.x, one.y - lastTap.y) < DTAP_SLOP) {
+          lastTap = null;
+          zoomStep(one.x, one.y);
+          one = null;
+          return;
+        }
+        lastTap = { t: now, x: one.x, y: one.y };
+        // A quick tap: press + release at the spot.
         press(0);
       }
       release();
@@ -603,6 +697,7 @@
   let reelTouch = false;
   document.addEventListener('touchstart', (e) => {
     if (!reelActive() || e.target.id === 'canvas' || e.target.closest?.('#gwm-root')) return;
+    if (e.target.closest?.('button, a, input, select, textarea, label, [onclick], #notif-stack, #tutorial-card, .gw-toast, .panel, [id$="-panel"]')) return;
     e.preventDefault();
     if (!reelTouch) { reelTouch = true; mouse(window, 'mousedown', e.touches[0].clientX, e.touches[0].clientY, 0); }
   }, { capture: true, passive: false });
@@ -885,10 +980,10 @@
             <li><b>Two fingers</b> — pan and pinch to zoom · <b>tap with two fingers</b> to put a tool away</li>
             <li><b>Laying a line</b> — hold your finger near a screen edge and the map scrolls that way</li>
             <li><b>Long-press</b> — right-click: remove a building, chop a tree</li>
-            <li><b>Double-tap a truck</b> — drive it (pads appear) · double-tap again to park</li>
+            <li><b>Double-tap a truck</b> — drive it (pads appear) · double-tap again to park · <b>double-tap open ground</b> to zoom in</li>
             <li><b>✕</b> put the tool away · <b>⟳</b> rotate · <b>⌖</b> pick an item off the map · <b>⇧</b> shift (box-select)</li>
             <li><b>⋯</b> undo, copy/paste, blueprints, research, pause, UI size…</li>
-            <li><b>Fishing</b> — with the rod: press and hold on the shore to charge, drag to aim, let go to cast · when it bites, hold the screen to reel</li>
+            <li><b>Fishing</b> — with the rod: press and hold on the shore to charge, drag to aim (a short drag aims at the nearest water), let go to cast · with the line out, drag to look around · when it bites, hold the screen to reel</li>
             <li><b>Hold the screen</b> to skip a cinematic</li>
           </ul>
           <button type="button" class="gwm-help-ok">Got it</button>
