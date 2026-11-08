@@ -336,6 +336,49 @@
 
     const pt = (t) => ({ x: t.clientX, y: t.clientY });
 
+    // Laying a line (wire, belt, pipe, poles, road…) with a tool in hand:
+    // a finger held near a screen edge scrolls the map that way, faster the
+    // closer it is, and the run keeps extending under the finger as the map
+    // moves — one long drag instead of place / pan / pick up / place.
+    let edgeRaf = 0;
+    function edgeVec(x, y) {
+      const W = innerWidth, H = innerHeight;
+      const m = Math.max(50, Math.min(W, H) * 0.12);
+      const tb = $('topbar');
+      const top = tb ? tb.getBoundingClientRect().bottom : 0;
+      const f = (d) => Math.max(0, Math.min(1, d / m));
+      let dx = 0, dy = 0;
+      if (x < m) dx = -f(m - x); else if (x > W - m) dx = f(x - (W - m));
+      if (y < top + m) dy = -f(top + m - y); else if (y > H - m) dy = f(y - (H - m));
+      return { dx, dy };
+    }
+    function edgeTick() {
+      edgeRaf = 0;
+      if (!one || !one.down || one.button !== 0 || !tool()) return;
+      const v = edgeVec(one.x, one.y);
+      if (!v.dx && !v.dy) return;
+      const Cam = gameGlobal('Camera');
+      if (!Cam) return;
+      const sp = (k) => Math.sign(k) * (4 + 20 * Math.abs(k) * Math.abs(k));
+      Cam.panByScreen(-sp(v.dx), -sp(v.dy));
+      mouse(cv, 'mousemove', one.x, one.y, 0, { held: true });   // the world moved under the finger
+      edgeRaf = requestAnimationFrame(edgeTick);
+    }
+    function edgeStop() {
+      if (edgeRaf) { cancelAnimationFrame(edgeRaf); edgeRaf = 0; }
+      try { gameGlobal('Camera')?.panByScreen(0, 0); } catch (_) {}   // no coasting after
+    }
+    // Two fingers tapped together (no pinch, no pan) with a tool in hand:
+    // right-click, which puts the tool away (and cancels a path or a cast),
+    // as on PC. Never without a tool: there right-click removes buildings.
+    function twoFingerTap(tw) {
+      if (!tool()) return;
+      buzz(15);
+      mouse(cv, 'mousemove', tw.cx, tw.cy, 0);
+      mouse(cv, 'mousedown', tw.cx, tw.cy, 2);
+      mouse(cv, 'mouseup', tw.cx, tw.cy, 2);
+    }
+
     function press(button) {
       if (!one || one.down) return;
       one.down = true; one.button = button;
@@ -345,6 +388,7 @@
     }
     function release() {
       if (!one) return;
+      if (edgeRaf) edgeStop();
       if (one.down) {
         mouse(cv, 'mouseup', one.x, one.y, one.button);
         if (one.button === 0 && !one.moved) mouse(cv, 'click', one.x, one.y, 0);
@@ -355,6 +399,7 @@
     function abortOne() {
       // A second finger arrived: drop the press without committing it.
       if (!one) return;
+      if (edgeRaf) edgeStop();
       clearTimeout(one.timer); clearTimeout(one.longTimer);
       if (one.down) {
         cv.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
@@ -383,7 +428,8 @@
       } else if (ts.length === 2) {
         abortOne();
         const a = pt(ts[0]), b = pt(ts[1]);
-        two = { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
+        const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        two = { cx, cy, d, sx: cx, sy: cy, d0: d, t0: performance.now(), moved: false };
       } else {
         abortOne(); two = null; suppressUntilClear = true;
       }
@@ -402,6 +448,7 @@
           if (Cam.zoomByFactorAt) Cam.zoomByFactorAt(cx, cy, d / two.d);
         }
         two.cx = cx; two.cy = cy; two.d = d;
+        if (Math.abs(d - two.d0) > 18 || Math.hypot(cx - two.sx, cy - two.sy) > 18) two.moved = true;
         return;
       }
       if (!one || ts.length !== 1) return;
@@ -413,13 +460,20 @@
         if (pickMode) return;
         if (!one.down) { clearTimeout(one.timer); press(0); return; }
       }
-      if (one.down) mouse(cv, 'mousemove', p.x, p.y, one.button, { held: true });
+      if (one.down) {
+        mouse(cv, 'mousemove', p.x, p.y, one.button, { held: true });
+        if (one.button === 0 && !edgeRaf && tool()) { const v = edgeVec(p.x, p.y); if (v.dx || v.dy) edgeRaf = requestAnimationFrame(edgeTick); }
+      }
       else if (pickMode) mouse(cv, 'mousemove', p.x, p.y, 0);
     }, { passive: false });
 
     const end = (e) => {
       e.preventDefault();
-      if (e.touches.length === 0) { suppressUntilClear = false; two = null; }
+      if (e.touches.length === 0) {
+        const tw = two;
+        suppressUntilClear = false; two = null;
+        if (tw && !tw.moved && performance.now() - tw.t0 < 320) { twoFingerTap(tw); return; }
+      }
       if (two) return;
       if (!one) return;
       if (pickMode) {
@@ -805,7 +859,8 @@
           <ul>
             <li><b>Tap</b> — click: select, inspect, place</li>
             <li><b>Drag</b> — pan the map · with a tool: lay a line of it</li>
-            <li><b>Two fingers</b> — pan and pinch to zoom</li>
+            <li><b>Two fingers</b> — pan and pinch to zoom · <b>tap with two fingers</b> to put a tool away</li>
+            <li><b>Laying a line</b> — hold your finger near a screen edge and the map scrolls that way</li>
             <li><b>Long-press</b> — right-click: remove a building, chop a tree</li>
             <li><b>Double-tap a truck</b> — drive it (pads appear) · double-tap again to park</li>
             <li><b>✕</b> put the tool away · <b>⟳</b> rotate · <b>⌖</b> pick an item off the map · <b>⇧</b> shift (box-select)</li>
