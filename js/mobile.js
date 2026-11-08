@@ -343,7 +343,7 @@
     let edgeRaf = 0;
     function edgeVec(x, y) {
       const W = innerWidth, H = innerHeight;
-      const m = Math.max(50, Math.min(W, H) * 0.12);
+      const m = Math.max(28, Math.min(W, H) * 0.06);   // edge zone: ~6% of the screen
       const tb = $('topbar');
       const top = tb ? tb.getBoundingClientRect().bottom : 0;
       const f = (d) => Math.max(0, Math.min(1, d / m));
@@ -356,10 +356,20 @@
       edgeRaf = 0;
       if (!one || !one.down || one.button !== 0 || !tool()) return;
       const v = edgeVec(one.x, one.y);
-      if (!v.dx && !v.dy) return;
+      if (!v.dx && !v.dy) { edgeTick._since = 0; return; }
       const Cam = gameGlobal('Camera');
       if (!Cam) return;
-      const sp = (k) => Math.sign(k) * (4 + 20 * Math.abs(k) * Math.abs(k));
+      // Speed per second, not per frame (a 120 Hz phone ran it twice as
+      // fast): 80 px/s just inside the zone up to 420 px/s at the very edge.
+      const now = performance.now();
+      // Only once the finger has stayed in the zone a moment: passing
+      // through it while drawing a line doesn't move the map.
+      if (!edgeTick._since) edgeTick._since = now;
+      const held = now - edgeTick._since;
+      const dt = edgeTick._t ? Math.min(0.05, (now - edgeTick._t) / 1000) : 1 / 60;
+      edgeTick._t = now;
+      const ramp = Math.min(1, Math.max(0, (held - 250) / 400));   // 0.25 s wait, then eases in
+      const sp = (k) => Math.sign(k) * 380 * k * k * ramp * dt;   // 0 at the zone's inner edge, ~380 px/s at the screen edge
       Cam.panByScreen(-sp(v.dx), -sp(v.dy));
       mouse(cv, 'mousemove', one.x, one.y, 0, { held: true });   // the world moved under the finger
       edgeRaf = requestAnimationFrame(edgeTick);
@@ -462,7 +472,7 @@
       }
       if (one.down) {
         mouse(cv, 'mousemove', p.x, p.y, one.button, { held: true });
-        if (one.button === 0 && !edgeRaf && tool()) { const v = edgeVec(p.x, p.y); if (v.dx || v.dy) edgeRaf = requestAnimationFrame(edgeTick); }
+        if (one.button === 0 && !edgeRaf && tool()) { const v = edgeVec(p.x, p.y); if (v.dx || v.dy) { edgeTick._t = 0; edgeTick._since = 0; edgeRaf = requestAnimationFrame(edgeTick); } }
       }
       else if (pickMode) mouse(cv, 'mousemove', p.x, p.y, 0);
     }, { passive: false });
