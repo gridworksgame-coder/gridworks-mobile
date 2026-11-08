@@ -291,3 +291,7 @@ html.gw-mobile.gwm-unscaled #topbar { zoom: calc(0.75 * 0.88); }
 html.gw-mobile.gwm-unscaled #clock,
 html.gw-mobile.gwm-unscaled #playback-controls { zoom: calc(var(--gwm-bar-zoom, 0.7) * 0.85); }
 html.gw-mobile.gwm-unscaled #notif-stack { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.8); }
+/* Research panel in browser full screen / frame: 20% smaller. (It opens
+   over tutorial cards: mobile.js topPanelLayer, via ANCHORED.) */
+html.gw-mobile.gwm-unscaled #research-panel { zoom: calc(var(--gwm-panel-zoom, 0.8) * 0.8); }
+html.gw-mobile #research-panel { z-index: 420 !important; }

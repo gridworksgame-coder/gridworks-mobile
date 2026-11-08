@@ -1147,7 +1147,7 @@
   // opened short of its button (the GRID panel already corrects for this
   // itself). Undo that: whenever the game writes a position, rewrite it
   // divided by the zoom, then keep the panel on screen.
-  const ANCHORED = ['weather-panel', 'progress-tracker', 'income-breakdown', 'population-panel', 'score-panel', 'gov-panel'];
+  const ANCHORED = ['weather-panel', 'progress-tracker', 'income-breakdown', 'population-panel', 'score-panel', 'gov-panel', 'research-panel'];
   function watchAnchored() {
     for (const id of ANCHORED) {
       const n = $(id);
