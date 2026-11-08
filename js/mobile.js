@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm10';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm11';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -186,6 +186,10 @@
     if (content === _lastVp) return;
     _lastVp = content;
     meta.setAttribute('content', content);
+    // Chrome doesn't always fire 'resize' when only the viewport meta
+    // changes, which left the map canvas at its old, smaller size (black
+    // strip right and bottom). Nudge the game's resize handlers.
+    for (const ms of [80, 350, 900]) setTimeout(() => { try { window.dispatchEvent(new Event('resize')); } catch (_) {} }, ms);
     // Some phone browsers only re-read the viewport when the tag itself is
     // replaced: if the layout hasn't taken the new width shortly after,
     // swap in a fresh <meta>.
@@ -619,10 +623,25 @@
     _toastT = setTimeout(() => t.classList.remove('show'), 1800);
   }
 
+  // Chrome hands over its install prompt once the page qualifies (https,
+  // manifest, service worker): keep it for the button.
+  let _installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); _installPrompt = e; });
+  window.addEventListener('appinstalled', () => { _installPrompt = null; toast('Installed: open GRIDWORKS from your home screen'); });
   function fullscreen() {
     const d = document;
     if (d.fullscreenElement || d.webkitFullscreenElement) {
       (d.exitFullscreen || d.webkitExitFullscreen)?.call(d);
+      return;
+    }
+    if (_installPrompt) {
+      const ip = _installPrompt; _installPrompt = null;
+      ip.prompt();
+      return;
+    }
+    if (_applied) {
+      // Browser full screen would undo the scaling: point to installing.
+      toast('For full screen: browser menu ⋮ → Install app / Add to Home screen');
       return;
     }
     const r = d.documentElement;
@@ -666,7 +685,7 @@
     add('⏩', 'Fast forward', () => tapKey('Alt', 'AltLeft'));
     pickBtn  = add('⌖', 'Pick item', () => setPick(!pickMode));
     shiftBtn = add('⇧', 'Shift lock', () => setShift(!mods.shift));
-    add('⛶', 'Full screen', () => fullscreen());
+    add('⛶', 'Install / full screen', () => fullscreen());
     add('⏱', 'FPS counter', () => { const on = !fpsOn; LS.set('fps', on ? '1' : ''); setFps(on); });
     const sizeB = add('A', 'UI size', () => {
       const order = ['large', 'medium', 'small'];
@@ -1187,8 +1206,11 @@
     sync();
     // First touch anywhere: try full screen (Android). iOS has no API for
     // it outside Home-Screen web apps, which run full screen anyway.
+    // Not any more on a phone that scales the page: browser full screen
+    // locks the page at 1:1 (the readout then says IGNORED) and the UI comes
+    // out desktop-sized. Installing the app gives full screen AND scaling.
     const standalone = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone;
-    if (!standalone && LS.get('autoFS', '1') === '1') {
+    if (!standalone && LS.get('autoFS', '1') === '1' && !_applied) {
       const once = () => {
         document.removeEventListener('touchend', once, true);
         const r = document.documentElement;
