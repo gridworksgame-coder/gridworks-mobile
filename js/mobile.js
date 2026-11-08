@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm11';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm12';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -239,7 +239,12 @@
   const onOrient = () => { clearTimeout(_vpT); _vpT = setTimeout(applyViewport, 150); };
   window.addEventListener('orientationchange', () => { _applied = null; setMeta(DEVICE_VP, null); onOrient(); });
   window.addEventListener('resize', onOrient);
-  document.addEventListener('fullscreenchange', onOrient);
+  document.addEventListener('fullscreenchange', () => {
+    if ((document.fullscreenElement || document.webkitFullscreenElement) && _applied && !matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
+      try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_) {}
+    }
+    onOrient();
+  });
   try { matchMedia('(display-mode: fullscreen)').addEventListener('change', onOrient); } catch (_) {}
 
   // Effects canvases (intro explosions, cutscene glow, lightning) are
@@ -628,6 +633,47 @@
   let _installPrompt = null;
   window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); _installPrompt = e; });
   window.addEventListener('appinstalled', () => { _installPrompt = null; toast('Installed: open GRIDWORKS from your home screen'); });
+  // Browser full screen on a phone that scales the page: Chrome locks a
+  // full-screen page at 1:1, so the whole UI jumps to desktop size. Every
+  // way in (the game's Options display toggle, the ⋯ button, the
+  // return-to-full-screen button) goes through requestFullscreen, so it is
+  // caught here: offer to install the app instead, which opens full screen
+  // with the same layout as the windowed page.
+  let _fsInstallShown = false;
+  function showInstallCard() {
+    if ($('gwm-install')) return;
+    const card = el('div', '', `
+      <div class="gwm-frame-card">
+        <div class="gwm-frame-title">Full screen</div>
+        <div class="gwm-frame-text">In the browser, full screen makes the whole interface jump to desktop size. Install GRIDWORKS as an app instead: it opens full screen, laid out just like this.</div>
+        <button type="button" class="gwm-frame-go gwm-install-go">${_installPrompt ? 'Install app' : 'How to install'}</button>
+        <button type="button" class="gwm-frame-here gwm-install-close">Not now</button>
+      </div>`);
+    card.id = 'gwm-install';
+    for (const t of ['touchstart', 'mousedown', 'pointerdown']) card.addEventListener(t, (e) => e.stopPropagation());
+    card.querySelector('.gwm-install-go').addEventListener('click', (e) => {
+      e.preventDefault();
+      if (_installPrompt) { const ip = _installPrompt; _installPrompt = null; ip.prompt(); card.remove(); return; }
+      card.querySelector('.gwm-frame-text').textContent =
+        'Open your browser menu (⋮ at the top right) and choose "Install app" or "Add to Home screen". Then start GRIDWORKS from its new icon. (iPhone: Share → Add to Home Screen.)';
+    });
+    card.querySelector('.gwm-install-close').addEventListener('click', (e) => { e.preventDefault(); card.remove(); });
+    document.body.appendChild(card);
+  }
+  try {
+    const P = Element.prototype;
+    const origReq = P.requestFullscreen, origWk = P.webkitRequestFullscreen;
+    const guard = (orig) => function (...args) {
+      if (_applied && !isAppMode()) {
+        showInstallCard();
+        return Promise.resolve();
+      }
+      return orig ? orig.apply(this, args) : Promise.reject(new Error('no fullscreen'));
+    };
+    if (origReq) P.requestFullscreen = guard(origReq);
+    if (origWk) P.webkitRequestFullscreen = guard(origWk);
+  } catch (_) {}
+
   function fullscreen() {
     const d = document;
     if (d.fullscreenElement || d.webkitFullscreenElement) {
@@ -639,11 +685,7 @@
       ip.prompt();
       return;
     }
-    if (_applied) {
-      // Browser full screen would undo the scaling: point to installing.
-      toast('For full screen: browser menu ⋮ → Install app / Add to Home screen');
-      return;
-    }
+    if (_applied) { showInstallCard(); return; }   // browser full screen would undo the scaling
     const r = d.documentElement;
     const req = r.requestFullscreen || r.webkitRequestFullscreen;
     if (!req) { toast('Use "Add to Home Screen" for full screen'); return; }
