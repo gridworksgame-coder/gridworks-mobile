@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm7';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm8';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -224,6 +224,28 @@
   window.addEventListener('resize', onOrient);
   document.addEventListener('fullscreenchange', onOrient);
   try { matchMedia('(display-mode: fullscreen)').addEventListener('change', onOrient); } catch (_) {}
+
+  // Effects canvases (intro explosions, cutscene glow, lightning) are
+  // sized innerWidth × devicePixelRatio. Zoomed out to a desktop-sized
+  // page — above all a cutscene's 1000 px tall one — that came to several
+  // times the phone's real screen (about 6000 × 2750 in the intro), which
+  // is what made the explosions crawl. Report a density that gives roughly
+  // the screen's own pixels, capped at 1.25.
+  try {
+    const dprDesc = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
+                 || Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio');
+    const realDpr = () => (dprDesc && dprDesc.get ? dprDesc.get.call(window) : 1) || 1;
+    Object.defineProperty(window, 'devicePixelRatio', {
+      configurable: true,
+      get() {
+        const r = realDpr();
+        const honored = _applied && Math.abs(innerWidth - _applied.vw) <= 2;
+        const eff = r * (honored ? _applied.s : 1);   // device px per page px
+        return Math.min(r, Math.max(0.75, Math.min(eff, 1.25)));
+      },
+    });
+    window.GW_REAL_DPR = realDpr;
+  } catch (_) {}
 
   // ── Helpers ────────────────────────────────────────────────────────
   const $ = (id) => document.getElementById(id);
@@ -1106,17 +1128,19 @@
     const ov = el('div', '', `
       <div class="gwm-frame-card">
         <div class="gwm-frame-title">GRIDWORKS on your phone</div>
-        <div class="gwm-frame-text">For the best fit and real full screen, open the game on its own page.</div>
-        <button type="button" class="gwm-frame-go">▶ Play full screen</button>
-        <button type="button" class="gwm-frame-here">Play here instead</button>
+        <div class="gwm-frame-text">Opens the game on its own page: full-screen, sized for your phone.</div>
+        <button type="button" class="gwm-frame-go">▶ Play</button>
+        <button type="button" class="gwm-frame-here">Play inside this page instead</button>
       </div>`);
     ov.id = 'gwm-frame';
     const stop = (e) => e.stopPropagation();
     for (const t of ['touchstart', 'mousedown', 'pointerdown']) ov.addEventListener(t, stop);
     ov.querySelector('.gwm-frame-go').addEventListener('click', (e) => {
       e.preventDefault();
+      // Same tab when the host allows it, else a new one, else the frame itself.
+      try { window.top.location.href = location.href; return; } catch (_) {}
       const w = window.open(location.href, '_blank');
-      if (!w) location.href = location.href;   // pop-up blocked: navigate the frame
+      if (!w) location.href = location.href;
     });
     ov.querySelector('.gwm-frame-here').addEventListener('click', (e) => {
       e.preventDefault();
