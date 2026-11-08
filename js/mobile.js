@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm9';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm10';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -149,10 +149,23 @@
       return land ? { w: long, h: short, land } : { w: short, h: long, land };
     }
     const iw = innerWidth, ih = innerHeight;
+    // Browser tab: the window's own width (outerWidth, device-independent
+    // px, not changed by page zoom) and the page's aspect ratio (the layout
+    // viewport always has the visible area's shape). Measuring the page at
+    // start-up instead could catch the browser's 980 px placeholder width
+    // and then keep sizing from it — the zoomed-in look in a tab.
+    const ow = window.outerWidth;
+    if (ow > 0 && iw > 0 && ih > 0 && !isFramed()) {
+      const land = iw >= ih;
+      const a = screen.width, b = screen.height;
+      const side = land ? Math.max(a, b) : Math.min(a, b);
+      if (!side || (ow >= side * 0.6 && ow <= side * 1.05)) return { w: ow, h: ow * ih / iw, land };
+    }
     let w = iw, h = ih;
     if (_applied && Math.abs(iw - _applied.vw) <= 2) { w = iw * _applied.s; h = ih * _applied.s; }
     return { w, h, land: w >= h };
   }
+  function isFramed() { try { return window.self !== window.top; } catch (_) { return true; } }
 
   // Touch controls keep a finger-sized look whatever the page scale is:
   // #gwm-root is zoomed by about 1 / scale.
