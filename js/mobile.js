@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm8';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm9';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -1123,28 +1123,31 @@
     let framed = false;
     try { framed = window.self !== window.top; } catch (_) { framed = true; }
     if (!framed) return;
-    try { if (sessionStorage.getItem('gwm.playHere') === '1') return; } catch (_) {}
+    if (window.__gwmPlayHere) return;   // only for this page load: ask again next time
     if ($('gwm-frame')) return;
     const ov = el('div', '', `
       <div class="gwm-frame-card">
         <div class="gwm-frame-title">GRIDWORKS on your phone</div>
         <div class="gwm-frame-text">Opens the game on its own page: full-screen, sized for your phone.</div>
-        <button type="button" class="gwm-frame-go">▶ Play</button>
+        <a class="gwm-frame-go" target="_blank" rel="noopener">▶ Play</a>
         <button type="button" class="gwm-frame-here">Play inside this page instead</button>
       </div>`);
     ov.id = 'gwm-frame';
     const stop = (e) => e.stopPropagation();
     for (const t of ['touchstart', 'mousedown', 'pointerdown']) ov.addEventListener(t, stop);
-    ov.querySelector('.gwm-frame-go').addEventListener('click', (e) => {
-      e.preventDefault();
-      // Same tab when the host allows it, else a new one, else the frame itself.
-      try { window.top.location.href = location.href; return; } catch (_) {}
-      const w = window.open(location.href, '_blank');
-      if (!w) location.href = location.href;
+    // A real link opening a new tab: the one thing a framed page may always
+    // do on a tap. (Navigating itch's own tab was silently blocked.)
+    const go = ov.querySelector('.gwm-frame-go');
+    go.href = location.href;
+    go.addEventListener('click', () => {
+      setTimeout(() => {
+        const t = ov.querySelector('.gwm-frame-text');
+        if (t) t.textContent = 'The game opened in a new tab. Switch to it to play (your browser\'s tab button).';
+      }, 300);
     });
     ov.querySelector('.gwm-frame-here').addEventListener('click', (e) => {
       e.preventDefault();
-      try { sessionStorage.setItem('gwm.playHere', '1'); } catch (_) {}
+      window.__gwmPlayHere = true;
       ov.remove();
     });
     document.body.appendChild(ov);

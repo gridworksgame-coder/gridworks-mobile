@@ -280,5 +280,5 @@ html.gw-mobile #gwm-root { left: calc(var(--gwm-safe-l, 0px) / var(--gwm-ctl-zoo
   font: 400 15px/1.45 Inter, system-ui, sans-serif; display: flex; flex-direction: column; gap: 12px;
 }
 .gwm-frame-title { font: 700 17px Orbitron, Inter, sans-serif; letter-spacing: .08em; color: #7fd8ff; }
-.gwm-frame-go { height: 48px; border-radius: 10px; border: none; background: #1d8fd0; color: #fff; font: 700 17px Inter, sans-serif; }
+.gwm-frame-go { display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 10px; border: none; background: #1d8fd0; color: #fff; font: 700 17px Inter, sans-serif; text-decoration: none; }
 .gwm-frame-here { height: 36px; border-radius: 10px; border: 1px solid rgba(96,208,224,.35); background: transparent; color: #9fc6d6; font: 500 14px Inter, sans-serif; }
