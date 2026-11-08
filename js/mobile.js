@@ -1102,6 +1102,29 @@
   // height cap tuned to a tall window; scaled on a phone it sat over the
   // clock and stayed short. Sit it just above the clock instead, and let it
   // grow up to just under the top bar (and any notifications on that side).
+  // Research panel: its desktop cap (82vh) is scaled down with the panel,
+  // so on a phone it used about half the screen and long entries (Power
+  // Pole's text and its UNLOCK button) needed scrolling. Let it use the
+  // whole height under the top bar, and lift it when opening beside the
+  // station would run it off the bottom. Positions written here are noted
+  // in _gwmAnch so watchAnchored() doesn't treat them as the game's.
+  function fitResearchPanel() {
+    const pn = $('research-panel');
+    if (!pn || !pn.classList.contains('visible') || !pn.getClientRects().length) return;
+    const z = parseFloat(getComputedStyle(pn).zoom) || 1;
+    const tb = $('topbar');
+    const floor = (tb ? tb.getBoundingClientRect().bottom : 60) + 6;
+    const room = innerHeight - floor - 8;
+    const mh = (room / z).toFixed(1) + 'px';
+    if (pn.style.maxHeight !== mh) pn.style.setProperty('max-height', mh, 'important');
+    // Re-fit its top now that it may have grown (watchAnchored does the clamp).
+    const r = pn.getBoundingClientRect();
+    if (r.bottom > innerHeight - 8 && pn._gwmAnch) {
+      const v = Math.round(Math.max(floor, innerHeight - 8 - r.height) / z * 10) / 10;
+      pn._gwmAnch.top = v;
+      pn.style.top = v + 'px';
+    }
+  }
   function fitTutorialCard() {
     const host = $('tutorial-card');
     if (!host || !host.getClientRects().length) return;
@@ -1173,6 +1196,7 @@
     document.documentElement.classList.toggle('gwm-unscaled', !!_applied && Math.abs(innerWidth - _applied.vw) > 2);
     fitTopBar();
     fitTutorialCard();
+    fitResearchPanel();
     fitLetter();
     fitChecklist();
     fitIcons();
@@ -1221,9 +1245,13 @@
             want = Math.max(4 / z, Math.min(want, (innerWidth - w - 6) / z));
           }
           if (prop === 'top') {
-            // Never over the top bar itself.
+            // Never over the top bar, and never past the bottom edge: the
+            // game's own fit check uses the unscaled height, so it can leave
+            // a scaled panel hanging off the bottom.
             const tb = $('topbar');
             const floor = tb ? tb.getBoundingClientRect().bottom + 4 : 0;
+            const h = n.getBoundingClientRect().height || 0;
+            want = Math.min(want, (innerHeight - 8 - h) / z);
             want = Math.max(want, floor / z);
           }
           const out = Math.round(want * 10) / 10;
