@@ -812,7 +812,21 @@
   // return-to-full-screen button) goes through requestFullscreen, so it is
   // caught here: offer to install the app instead, which opens full screen
   // with the same layout as the windowed page.
-  const fsAnyway = () => { try { return sessionStorage.getItem('gwm.fsAnyway') === '1'; } catch (_) { return false; } };
+  const fsAnyway = () => {
+    try { return LS.get('fsAnyway', '') === '1' || sessionStorage.getItem('gwm.fsAnyway') === '1'; } catch (_) { return false; }
+  };
+  // 'full' while the player wants browser full screen; cleared only when
+  // they leave it themselves (a reload or app switch leaves it set).
+  const fsWanted = () => LS.get('fsWant', '') === '1';
+  document.addEventListener('fullscreenchange', () => { if (document.fullscreenElement) LS.set('fsWant', '1'); });
+  document.addEventListener('webkitfullscreenchange', () => { if (document.webkitFullscreenElement) LS.set('fsWant', '1'); });
+  try {
+    const D = Document.prototype;
+    for (const name of ['exitFullscreen', 'webkitExitFullscreen']) {
+      const orig = D[name];
+      if (orig) D[name] = function (...a) { LS.set('fsWant', ''); return orig.apply(this, a); };
+    }
+  } catch (_) {}
   let _origFullscreen = null;
   function showInstallCard() {
     if ($('gwm-install')) return;
@@ -832,10 +846,10 @@
       card.querySelector('.gwm-frame-text').textContent =
         'Open your browser menu (⋮ at the top right) and choose "Install app" or "Add to Home screen". Then start GRIDWORKS from its new icon. (iPhone: Share → Add to Home Screen.)';
     });
-    card.querySelector('.gwm-install-close').addEventListener('click', (e) => { e.preventDefault(); card.remove(); });
+    card.querySelector('.gwm-install-close').addEventListener('click', (e) => { e.preventDefault(); LS.set('fsWant', ''); card.remove(); });
     card.querySelector('.gwm-install-anyway').addEventListener('click', (e) => {
       e.preventDefault();
-      try { sessionStorage.setItem('gwm.fsAnyway', '1'); } catch (_) {}
+      LS.set('fsAnyway', '1');
       card.remove();
       const r = document.documentElement;
       if (_origFullscreen) Promise.resolve(_origFullscreen.call(r, { navigationUI: 'hide' })).then(() => {
@@ -1408,9 +1422,27 @@
   window.addEventListener('pagehide', () => {
     try { sessionStorage.setItem('gwm.wasFS', (document.fullscreenElement || document.webkitFullscreenElement) ? '1' : ''); } catch (_) {}
   });
+  function fsResume() {
+    if (isAppMode() || isFramed() || !fsWanted() || !fsAnyway()) return false;
+    const r = document.documentElement;
+    const req = _origFullscreen;
+    if (!req) return false;
+    const go = () => {
+      document.removeEventListener('touchend', go, true);
+      document.removeEventListener('click', go, true);
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
+      Promise.resolve(req.call(r, { navigationUI: 'hide' })).then(() => {
+        try { screen.orientation?.lock?.('landscape').catch(() => {}); } catch (_) {}
+      }).catch(() => {});
+    };
+    document.addEventListener('touchend', go, true);
+    document.addEventListener('click', go, true);
+    return true;
+  }
   function fsPrompt() {
     let was = '';
     try { was = sessionStorage.getItem('gwm.wasFS') || ''; sessionStorage.removeItem('gwm.wasFS'); } catch (_) {}
+    if (fsResume()) return;
     const r = document.documentElement;
     const req = r.requestFullscreen || r.webkitRequestFullscreen;
     if (was !== '1' || !req || document.fullscreenElement || document.webkitFullscreenElement) return;
