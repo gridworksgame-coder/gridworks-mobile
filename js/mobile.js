@@ -1043,6 +1043,32 @@
       pn.style.setProperty('transform', shift ? `translateY(${(-shift / zEff).toFixed(1)}px)` : '', 'important');
     }
   }
+  // Tutorial card: desktop places it 170 px up from the bottom with a
+  // height cap tuned to a tall window; scaled on a phone it sat over the
+  // clock and stayed short. Sit it just above the clock instead, and let it
+  // grow up to just under the top bar (and any notifications on that side).
+  function fitTutorialCard() {
+    const host = $('tutorial-card');
+    if (!host || !host.getClientRects().length) return;
+    const card = host.querySelector('.tut-card');
+    if (!card) return;
+    const z = parseFloat(getComputedStyle(host).zoom) || 1;
+    const clock = $('clock');
+    const cr = clock && clock.getClientRects().length ? clock.getBoundingClientRect() : null;
+    const bottomEdge = cr ? cr.top - 8 : innerHeight - 12;
+    const tb = $('topbar');
+    let topEdge = (tb ? tb.getBoundingClientRect().bottom : 60) + 8;
+    const ns = $('notif-stack');
+    if (ns && ns.getClientRects().length) {
+      const nr = ns.getBoundingClientRect();
+      if (nr.height > 4 && nr.left < innerWidth / 2) topEdge = Math.max(topEdge, nr.bottom + 6);
+    }
+    const room = Math.max(120, bottomEdge - topEdge);
+    const b = ((innerHeight - bottomEdge) / z).toFixed(1) + 'px';
+    if (host.style.bottom !== b) host.style.setProperty('bottom', b, 'important');
+    const mh = (room / z).toFixed(1) + 'px';
+    if (card.style.maxHeight !== mh) card.style.setProperty('max-height', mh, 'important');
+  }
   function fitLetter() {
     const L = document.querySelector('#gw-intro .gi-letter');
     if (!L) return;
@@ -1091,6 +1117,7 @@
     // for the few sizes that need their own tuning there.
     document.documentElement.classList.toggle('gwm-unscaled', !!_applied && Math.abs(innerWidth - _applied.vw) > 2);
     fitTopBar();
+    fitTutorialCard();
     fitLetter();
     fitChecklist();
     fitIcons();
