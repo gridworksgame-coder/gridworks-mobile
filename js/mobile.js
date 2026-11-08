@@ -646,11 +646,11 @@
     if ($('gwm-install')) return;
     const card = el('div', '', `
       <div class="gwm-frame-card">
-        <div class="gwm-frame-title">Full screen</div>
-        <div class="gwm-frame-text">In the browser, full screen makes the whole interface jump to desktop size. Install GRIDWORKS as an app instead: it opens full screen, laid out just like this.</div>
-        <button type="button" class="gwm-frame-go gwm-install-go">${_installPrompt ? 'Install app' : 'How to install'}</button>
-        <button type="button" class="gwm-frame-here gwm-install-anyway">Use browser full screen anyway (bigger interface)</button>
-        <button type="button" class="gwm-frame-here gwm-install-close">Not now</button>
+        <div class="gwm-frame-title">How do you want to play full screen?</div>
+        <div class="gwm-frame-text">The browser's own full screen makes the interface bigger (desktop size). Installing GRIDWORKS as an app gives full screen with the layout you see now.</div>
+        <button type="button" class="gwm-frame-go gwm-install-go">Install as an app (normal layout)</button>
+        <button type="button" class="gwm-frame-go gwm-install-anyway">Browser full screen (bigger interface)</button>
+        <button type="button" class="gwm-frame-here gwm-install-close">Stay windowed</button>
       </div>`);
     card.id = 'gwm-install';
     for (const t of ['touchstart', 'mousedown', 'pointerdown']) card.addEventListener(t, (e) => e.stopPropagation());
@@ -693,12 +693,7 @@
       (d.exitFullscreen || d.webkitExitFullscreen)?.call(d);
       return;
     }
-    if (_installPrompt) {
-      const ip = _installPrompt; _installPrompt = null;
-      ip.prompt();
-      return;
-    }
-    if (_applied) { showInstallCard(); return; }   // browser full screen would undo the scaling
+    if (_applied && !fsAnyway()) { showInstallCard(); return; }   // ask which kind of full screen first
     const r = d.documentElement;
     const req = r.requestFullscreen || r.webkitRequestFullscreen;
     if (!req) { toast('Use "Add to Home Screen" for full screen'); return; }
