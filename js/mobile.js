@@ -317,6 +317,13 @@
     const F = gameGlobal('FishingSystem');
     try { return !!(F && (F.isMinigameActive?.() || F.isActive?.())); } catch (_) { return false; }
   };
+  // Line cast (waiting, bite, reeling, result): the rod is drawn at the
+  // cursor, so a finger must not move the cursor now or the rod jumps to
+  // every reeling tap. (Charging is different: dragging aims the cast.)
+  const fishingLocked = () => {
+    const F = gameGlobal('FishingSystem');
+    try { return !!(F && F.isActive?.() && !F.isCharging?.()); } catch (_) { return false; }
+  };
   const driving = () => { try { return !!gameGlobal('TruckSystem')?.getDriven?.(); } catch (_) { return false; } };
   const inGame = () => {
     const mm = $('main-menu');
@@ -423,9 +430,14 @@
       const ts = e.touches;
       if (suppressUntilClear) return;
       if (ts.length === 1) {
-        const p = pt(ts[0]);
-        one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, t: performance.now(), down: false, moved: false, button: 0 };
-        mouse(cv, 'mousemove', p.x, p.y, 0);   // hover → ghost/tooltips
+        let p = pt(ts[0]);
+        const locked = fishingLocked();
+        if (locked) {
+          const im = IM(), r = cv.getBoundingClientRect();
+          if (im && im.lastMouseSX != null) p = { x: im.lastMouseSX + r.left, y: im.lastMouseSY + r.top };
+        }
+        one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, t: performance.now(), down: false, moved: false, button: 0, locked };
+        if (!locked) mouse(cv, 'mousemove', p.x, p.y, 0);   // hover → ghost/tooltips
         if (pickMode) return;                  // resolved on touchend
         const immediate = !!tool() || fishingHold();
         if (immediate) {
@@ -462,6 +474,7 @@
         return;
       }
       if (!one || ts.length !== 1) return;
+      if (one.locked) return;          // reeling: the rod stays put
       const p = pt(ts[0]);
       one.x = p.x; one.y = p.y;
       if (!one.moved && Math.hypot(p.x - one.sx, p.y - one.sy) > TAP_SLOP) {
