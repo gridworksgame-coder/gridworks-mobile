@@ -240,7 +240,8 @@
   window.addEventListener('orientationchange', () => { _applied = null; setMeta(DEVICE_VP, null); onOrient(); });
   window.addEventListener('resize', onOrient);
   document.addEventListener('fullscreenchange', () => {
-    if ((document.fullscreenElement || document.webkitFullscreenElement) && _applied && !matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
+    if ((document.fullscreenElement || document.webkitFullscreenElement) && _applied && !fsAnyway()
+        && !matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) {
       try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_) {}
     }
     onOrient();
@@ -639,7 +640,8 @@
   // return-to-full-screen button) goes through requestFullscreen, so it is
   // caught here: offer to install the app instead, which opens full screen
   // with the same layout as the windowed page.
-  let _fsInstallShown = false;
+  const fsAnyway = () => { try { return sessionStorage.getItem('gwm.fsAnyway') === '1'; } catch (_) { return false; } };
+  let _origFullscreen = null;
   function showInstallCard() {
     if ($('gwm-install')) return;
     const card = el('div', '', `
@@ -647,6 +649,7 @@
         <div class="gwm-frame-title">Full screen</div>
         <div class="gwm-frame-text">In the browser, full screen makes the whole interface jump to desktop size. Install GRIDWORKS as an app instead: it opens full screen, laid out just like this.</div>
         <button type="button" class="gwm-frame-go gwm-install-go">${_installPrompt ? 'Install app' : 'How to install'}</button>
+        <button type="button" class="gwm-frame-here gwm-install-anyway">Use browser full screen anyway (bigger interface)</button>
         <button type="button" class="gwm-frame-here gwm-install-close">Not now</button>
       </div>`);
     card.id = 'gwm-install';
@@ -658,13 +661,23 @@
         'Open your browser menu (⋮ at the top right) and choose "Install app" or "Add to Home screen". Then start GRIDWORKS from its new icon. (iPhone: Share → Add to Home Screen.)';
     });
     card.querySelector('.gwm-install-close').addEventListener('click', (e) => { e.preventDefault(); card.remove(); });
+    card.querySelector('.gwm-install-anyway').addEventListener('click', (e) => {
+      e.preventDefault();
+      try { sessionStorage.setItem('gwm.fsAnyway', '1'); } catch (_) {}
+      card.remove();
+      const r = document.documentElement;
+      if (_origFullscreen) Promise.resolve(_origFullscreen.call(r, { navigationUI: 'hide' })).then(() => {
+        try { screen.orientation?.lock?.('landscape').catch(() => {}); } catch (_) {}
+      }).catch(() => {});
+    });
     document.body.appendChild(card);
   }
   try {
     const P = Element.prototype;
     const origReq = P.requestFullscreen, origWk = P.webkitRequestFullscreen;
+    _origFullscreen = origReq || origWk;
     const guard = (orig) => function (...args) {
-      if (_applied && !isAppMode()) {
+      if (_applied && !isAppMode() && !fsAnyway()) {
         showInstallCard();
         return Promise.resolve();
       }
