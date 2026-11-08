@@ -696,6 +696,86 @@ const GameLoop = (() => {
   // staircase to the cursor; the next frame carries on along the new axis.
   const LINE_PICK_PX = 14, LINE_TURN_PX = 90, LINE_TURN_MIN = 3, LINE_DRIFT = 0.5;
   let _poleAxis = null;   // { axis: null | 'h' | 'v', c, r, wx, wy, along, drift } — reset on each fresh press
+
+  // Wire runs stop at the last consumer. Dragging a wire past the house it
+  // was run to used to keep laying wire out the far side, which then had to
+  // be deleted by hand. Once a run touches a consumer and no other consumer
+  // still needing power is within wire reach (MAX_WIRE_HOPS tiles), the
+  // rest of the drag is held back instead of laid. If the drag then comes
+  // within reach of another unpowered consumer, or touches anything the wire
+  // could feed into (a pole, another wire, a building), the held stretch is
+  // laid after all and the run carries on, so wiring down a street of
+  // houses still works in one drag. Whatever is still held on release is
+  // dropped. Reset on each fresh press (with _poleAxis).
+  let _wireRun = null;    // { seen: Set<consumer>, mine: Set<wire>, held: null | [[c, r]], first }
+  const _D4W = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+  function _isConsumer(e) {
+    if (!e) return false;
+    const d = EntityDefs[e.type];
+    return !!d && d.powerInput > 0 && !(d.powerOutput > 0 || d.peakOutput > 0 || d.baseOutput > 0);
+  }
+  // Something a held wire could feed into: wire-carrying lines, poles,
+  // towers and any building that takes part in the grid (not scenery,
+  // roads, deposits, water or plain pipes/belts).
+  const _NOT_FEED = new Set([T.ROAD, T.BRIDGE, T.WATER, T.TREE, T.BUSH, T.AQUIFER, T.PIPE, T.UNDERGNDPIPE, T.CONVEYOR,
+    T.UNDERGNDCONVEYOR, T.GEODEPOSIT, T.COALDEPOSIT, T.OILDEPOSIT, T.URANIUMDEPOSIT, T.SULFURDEPOSIT, T.LITHIUMDEPOSIT,
+    T.HELIUMDEPOSIT, T.RAREEARTHDEPOSIT, T.COALWASTE, T.OILWASTE, T.NUCLEARWASTE].filter(t => t !== undefined));
+  function _feedsInto(e) {
+    if (!e) return false;
+    if (e._underWire) return true;
+    if (_NOT_FEED.has(e.type)) return false;
+    if (typeof PARK_TYPES !== 'undefined' && PARK_TYPES.includes(e.type)
+        && !(typeof POWERED_PARK_TYPES !== 'undefined' && POWERED_PARK_TYPES.includes(e.type))) return false;
+    return true;
+  }
+  // An unpowered consumer this run hasn't reached yet, within wire reach.
+  function _consumerInReach(c, r, seen) {
+    const R = (typeof PowerNetwork !== 'undefined' && PowerNetwork.MAX_WIRE_HOPS) || 4;
+    for (let dr = -R; dr <= R; dr++) {
+      const span = R - Math.abs(dr);
+      for (let dc = -span; dc <= span; dc++) {
+        if (!GridManager.inBounds(c + dc, r + dr)) continue;
+        const e = GridManager.getEntity(c + dc, r + dr);
+        if (_isConsumer(e) && !e.powered && !seen.has(e)) return true;
+      }
+    }
+    return false;
+  }
+  function _wireStep(placeFn, c, r) {
+    const W = _wireRun;
+    if (W.held) {
+      let go = _consumerInReach(c, r, W.seen);
+      if (!go) {
+        for (const [dc, dr] of [[0, 0], ..._D4W]) {
+          if (!GridManager.inBounds(c + dc, r + dr)) continue;
+          const e = GridManager.getEntity(c + dc, r + dr);
+          if (_feedsInto(e) && !W.seen.has(e) && !W.mine.has(e)) { go = true; break; }
+        }
+      }
+      if (!go) { W.held.push([c, r]); return; }
+      const tiles = W.held;
+      W.held = null;
+      for (const [hc, hr] of tiles) _wireLay(placeFn, hc, hr, false);
+    }
+    _wireLay(placeFn, c, r, true);
+  }
+  function _wireLay(placeFn, c, r, mayStop) {
+    const W = _wireRun;
+    placeFn(c, r);
+    const e = GridManager.getEntity(c, r);
+    if (!e || !(e.type === T.WIRE || e._underWire)) return;   // not laid here (the house itself, no funds…)
+    W.mine.add(e);
+    let reached = false;
+    for (const [dc, dr] of _D4W) {
+      if (!GridManager.inBounds(c + dc, r + dr)) continue;
+      const n = GridManager.getEntity(c + dc, r + dr);
+      if (_isConsumer(n) && !W.seen.has(n)) { W.seen.add(n); reached = true; }
+    }
+    // The run's own first tile doesn't count: a run started beside a house
+    // is heading away from it.
+    if (W.first) { W.first = false; return; }
+    if (reached && mayStop && !_consumerInReach(c, r, W.seen)) W.held = [];
+  }
   function _lockPoleAxis(col, row, wx, wy) {
     const L = _poleAxis, z = Camera.zoom || 1;
     if (!L.axis) {
@@ -848,9 +928,12 @@ const GameLoop = (() => {
         InputManager.state.hoverCol = col;
         InputManager.state.hoverRow = row;
       }
+      if (_selTool === T.WIRE && (InputManager._lastPlacedCol == null || !_wireRun)) {
+        _wireRun = { seen: new Set(), mine: new Set(), held: null, first: true };
+      }
       if (GridManager.inBounds(col, row) &&
           (col !== InputManager._lastPlacedCol || row !== InputManager._lastPlacedRow)) {
-        const placeFn = (InputManager.state.selectedTool === T.POLE || InputManager.state.selectedTool === T.POWERTOWER)
+        const _placeFn = (InputManager.state.selectedTool === T.POLE || InputManager.state.selectedTool === T.POWERTOWER)
           ? InputManager.tryPoleAt   // interval drag logic (pole=4 tiles, tower=8 tiles)
           : (InputManager.state.selectedTool === T.ROAD)
             ? InputManager.tryRoadAt  // interval drag logic sized to the road sprite's own footprint
@@ -863,6 +946,7 @@ const GameLoop = (() => {
             : (InputManager.state.selectedTool === T.WATEREXTRACTOR)
             ? InputManager.tryWaterExtractorAt // edge to edge across the lake from the first one
             : InputManager.tryPlaceAt;
+        const placeFn = _selTool === T.WIRE ? (c, r) => _wireStep(_placeFn, c, r) : _placeFn;
 
         // Walk every tile between the last placed tile and this frame's
         // cursor tile (not just the endpoint) — a fast camera pan can move
