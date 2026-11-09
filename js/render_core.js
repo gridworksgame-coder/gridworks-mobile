@@ -667,6 +667,9 @@ let _wireHighlightNetId = -1;
                                   T.LAMP, T.CAMERA, T.POLE]);   // were stick-figure line drawings
 
   function renderGhost(col, row, type, canPlace, rotation = 0, shaftOrientation = 'h') {
+    // The fishing rod draws itself (FishingSystem.renderWorld): no tile
+    // ghost, no red "can't place" tint or night outline under it.
+    if (type === T.FISHINGPOLE) return;
     if (!placementTurns(type)) rotation = 0;   // built one way round only (see tryPlace)
     if (!GridManager.inBounds(col, row)) return;
     const { x, y } = GridManager.tileToWorld(col, row);

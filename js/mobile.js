@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm13';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm14';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -367,7 +367,20 @@
   const AIM_DEAD   = 40;    // px: casting drags shorter than this auto-aim at the water
   const DTAP_MS    = 300;   // second tap within this → double tap
   const DTAP_SLOP  = 40;    // px between the two taps of a double tap
-  let pickMode = false;     // next tap copies the item under it (Q)
+  let pickMode = false;     // duplicate mode: every tap on an item copies it (Q); stays on until ⌖ again
+  // What the duplicate (Q) key would copy at the cursor, if anything: the
+  // item under it, as long as its tool is unlocked. Read after the hover
+  // mousemove so the game's hover tile is the finger's.
+  function pickHere() {
+    try {
+      const st = IM()?.state, GM = gameGlobal('GridManager'), TT = gameGlobal('T'), P = gameGlobal('Progression');
+      const e = st && GM ? GM.getEntity(st.hoverCol, st.hoverRow) : null;
+      if (!e || e.type === TT.WATER) return null;
+      const t = e.type === TT.ROAD && e._bridge ? TT.BRIDGE : e.type === TT.TRUCK && e._hauler ? TT.HAULER : e.type;
+      if (e.type !== TT.CONVEYOR && P && P.isUnlocked && !P.isUnlocked(t)) return null;
+      return t;
+    } catch (_) { return null; }
+  }
 
   function bindCanvas(cv) {
     let one = null;         // single-finger state
@@ -553,7 +566,10 @@
         const f0 = pt(ts[0]);
         one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, fx: f0.x, fy: f0.y, t: performance.now(), down: false, moved: false, button: 0, locked };
         if (!locked) mouse(cv, 'mousemove', p.x, p.y, 0);   // hover → ghost/tooltips
-        if (pickMode) return;                  // resolved on touchend
+        // Duplicate mode: a touch on an item picks it up (on release); a
+        // touch on open ground goes on as normal (places what's in hand).
+        one.pick = pickMode && !locked ? pickHere() : null;
+        if (one.pick) return;
         const immediate = !!tool() || fishingHold();
         if (immediate) {
           one.timer = setTimeout(() => press(0), fishingHold() ? 0 : TOOL_MS);
@@ -608,14 +624,14 @@
       if (!one.moved && Math.hypot(p.x - one.sx, p.y - one.sy) > TAP_SLOP) {
         one.moved = true;
         clearTimeout(one.longTimer);
-        if (pickMode) return;
+        if (one.pick) return;
         if (!one.down) { clearTimeout(one.timer); press(0); return; }
       }
       if (one.down) {
         mouse(cv, 'mousemove', p.x, p.y, one.button, { held: true });
         if (one.button === 0 && !edgeRaf && tool()) { const v = edgeVec(p.x, p.y); if (v.dx || v.dy) { edgeTick._t = 0; edgeTick._since = 0; edgeRaf = requestAnimationFrame(edgeTick); } }
       }
-      else if (pickMode) mouse(cv, 'mousemove', p.x, p.y, 0);
+      else if (one.pick) mouse(cv, 'mousemove', p.x, p.y, 0);
     }, { passive: false });
 
     const end = (e) => {
@@ -627,10 +643,15 @@
       }
       if (two) return;
       if (!one) return;
-      if (pickMode) {
-        mouse(cv, 'mousemove', one.x, one.y, 0);
-        tapKey('q', 'KeyQ');
-        setPick(false);
+      if (one.pick) {
+        // A tap (not a drag) on an item: pick it up, and stay in duplicate
+        // mode for the next one. Already holding that very item: leave it
+        // (Q on the tool in hand would put it away).
+        if (!one.moved) {
+          mouse(cv, 'mousemove', one.x, one.y, 0);
+          const t = pickHere();
+          if (t && t !== tool()) { tapKey('q', 'KeyQ'); buzz(12); }
+        }
         one = null;
         return;
       }
@@ -826,7 +847,7 @@
     pickMode = on;
     pickBtn?.classList.toggle('on', on);
     quick?.querySelector('.gwm-pick')?.classList.toggle('on', on);
-    if (on) toast('Tap an item on the map to pick it up');
+    if (on) toast('Duplicate mode: tap any item to pick it up · tap ⌖ again to stop');
   }
   function setShift(on) {
     if (mods.shift === on) return;
@@ -939,12 +960,16 @@
 
     // Quick column: contextual buttons on the left edge.
     quick = el('div', 'gwm-quick');
-    cancelBtn = btn('✕', 'Cancel / put tool away (Esc)', () => tapKey('Escape', 'Escape'), 'gwm-cancel');
+    cancelBtn = btn('✕', 'Cancel / put tool away (Esc)', () => {
+      if (pickMode && !tool()) setPick(false);     // nothing in hand: ✕ ends duplicate mode
+      else tapKey('Escape', 'Escape');
+    }, 'gwm-cancel');
     rotBtn    = btn('⟳', 'Rotate (R)', () => tapKey('r', 'KeyR'), 'gwm-rot');
     const more = btn('⋯', 'More controls', () => toggleDrawer());
     const pk   = btn('⌖', 'Pick: tap an item to copy it (Q)', () => setPick(!pickMode), 'gwm-pick');
     const sh   = btn('⇧', 'Shift (box-select, variants)', () => setShift(!mods.shift), 'gwm-shift');
-    quick.append(cancelBtn, rotBtn, pk, sh, more);
+    const map  = btn('🗺', 'World map (M)', () => tapKey('m', 'KeyM'), 'gwm-map');
+    quick.append(cancelBtn, rotBtn, pk, sh, map, more);
 
     // Drawer: every other keyboard command.
     drawer = el('div', 'gwm-drawer');
@@ -1104,6 +1129,23 @@
     const now = performance.now();
     _tapMs = Math.round(now - _tDown); _liftMs = Math.round(now - _tUp); _tDown = 0;
   }, true);
+  // Where the time goes, from the game's own PerfMonitor (5 s averages):
+  // the simulation tick (10 a second when it keeps up), drawing the world,
+  // and the busiest systems inside the tick. For performance reports.
+  function perfLine() {
+    const PM = gameGlobal('PerfMonitor');
+    if (!PM) return '';
+    const a = (l) => PM.avg(l), mx = (l) => PM.max(l);
+    const r1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
+    const ticks = PM.count('Total game tick time') / 5;
+    let ents = 0;
+    try { ents = gameGlobal('EntityRegistry')?.all?.().size || 0; } catch (_) {}
+    return `\nsim ${r1(a('Total game tick time'))} ms/tick (max ${Math.round(mx('Total game tick time'))}) · ${r1(ticks)} ticks/s` +
+      ` · power ${r1(a('PowerNetwork.tick'))} · pipes ${r1(a('PN: updatePipeConnectivity'))}` +
+      ` · draw ${r1(a('RenderSystem.render'))} ms (entities ${r1(a('Entity rendering'))}, bldg ${r1(a('Buildings live-drawn'))})` +
+      ` · gfx ${gameGlobal('GfxQuality')?.getMode?.() || '?'}/${gameGlobal('GfxQuality')?.label?.() ?? '?'}` +
+      ` · res ${gameGlobal('RenderScale')?.label?.() || '?'} · ${Math.round(ents / 1000)}k items`;
+  }
   function setFps(on) {
     fpsOn = on;
     if (!on) { _fpsEl?.remove(); _fpsEl = null; return; }
@@ -1116,6 +1158,7 @@
         const ok = _applied ? (Math.abs(innerWidth - _applied.vw) <= 2 ? 'ok' : 'IGNORED') : 'device';
         _fpsEl.textContent = `${Math.round(n * 1000 / (now - t0))} FPS · worst ${Math.round(worst)} ms` +
           (_tapMs != null ? ` · tap ${_tapMs} ms (lift→click ${_liftMs} ms)` : '') +
+          perfLine() +
           `\n${BUILD} · page ${innerWidth}×${innerHeight} · asked ${_applied ? _applied.vw + ' @ ' + _applied.s : 'device-width'} → ${ok}` +
           ` · vv ${Math.round(visualViewport?.width || 0)}×${Math.round(visualViewport?.height || 0)} @ ${(visualViewport?.scale || 0).toFixed(3)}` +
           ` · outer ${outerWidth}×${outerHeight} · dpr ${devicePixelRatio.toFixed(2)}${cineMode ? ' · CUTSCENE' : ''}` +
@@ -1387,7 +1430,8 @@
     // (Both stay reachable from the ⋯ drawer.)
     cancelBtn.style.display = (t || pickMode) ? '' : 'none';
     rotBtn.style.display = t ? '' : 'none';
-    quick.querySelector('.gwm-pick').style.display = t ? 'none' : '';
+    // ⌖ stays up while duplicating, tool in hand or not, to switch it off.
+    quick.querySelector('.gwm-pick').style.display = (t && !pickMode) ? 'none' : '';
     quick.querySelector('.gwm-shift').style.display = (t || pickMode) ? 'none' : '';
     readSafeArea();
     if (playing) dodgePanels();
@@ -1416,9 +1460,27 @@
       helpShownThisRun = true;
       setTimeout(showHelp, 1500);
     }
-    // World map overlay: give it touch.
+    // World map overlay: give it touch, and an ✕ to close it (on PC it's
+    // closed with M / Esc, which a phone doesn't have to hand).
     const wm = $('worldmap-overlay');
-    if (wm) bindDragSurface(wm);
+    if (wm) { bindDragSurface(wm); worldMapClose(wm); }
+  }
+
+  function worldMapClose(wm) {
+    if (wm._gwmX) return;
+    const x = el('button', '', '✕');
+    x.type = 'button'; x.id = 'gwm-mapx'; x.title = 'Close the map';
+    x.style.cssText = 'position:absolute;top:calc(10px + env(safe-area-inset-top,0px));right:calc(12px + var(--gwm-safe-r,0px));z-index:5;' +
+      'width:34px;height:34px;padding:0;border-radius:8px;cursor:pointer;font:700 17px/1 Inter,system-ui,sans-serif;' +
+      'color:#ffb0a0;background:rgba(8,14,24,0.88);border:1px solid rgba(255,120,100,0.55);zoom:var(--gwm-ctl-zoom,1);';
+    // Kept off the map's own drag / click handling underneath.
+    for (const t of ['touchstart', 'mousedown', 'pointerdown', 'wheel']) x.addEventListener(t, (e) => e.stopPropagation(), { passive: true });
+    x.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      try { gameGlobal('WorldMapSystem')?.close(); } catch (_) {}
+    });
+    wm.appendChild(x);
+    wm._gwmX = x;
   }
 
   // Top-bar drop-downs (weather, progress, income, population, score,
