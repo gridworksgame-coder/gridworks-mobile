@@ -1502,6 +1502,117 @@
     document.body.appendChild(ov);
   }
 
+  // ── 6b. Typing bar ────────────────────────────────────────────────
+  // The on-screen keyboard covers most of a landscape phone, and the box
+  // being typed in (save name, city name, blueprint…) sits behind it, small
+  // because the page is scaled down. While a text box has focus, a large
+  // bar pinned to the top of the visible area mirrors what is typed, with a
+  // caret, and a Done button that acts like Enter.
+  const TYPE_SEL = 'textarea, input:not([type]), input[type=text], input[type=search], input[type=number], input[type=email], input[type=url], input[type=tel]';
+  let tbar = null, tIn = null, tBase = 0, tKbSeen = false;
+  function typingLabel(inp) {
+    const a = inp.getAttribute('aria-label');
+    if (a) return a;
+    if (inp.id) { const l = document.querySelector(`label[for="${CSS.escape(inp.id)}"]`); if (l && l.textContent.trim()) return l.textContent.trim(); }
+    const sec = inp.closest('.pause-section');
+    const sl = sec && sec.querySelector('.pause-section-label');
+    if (sl && sl.textContent.trim()) return sl.textContent.trim();
+    const box = inp.closest('.options-box, [class*="modal"], [id*="modal"]');
+    const t = box && box.querySelector('.pause-title, h1, h2, h3');
+    if (t && t.textContent.trim()) return t.textContent.replace(/^[^\w]+/, '').trim();
+    return inp.placeholder || 'Type';
+  }
+  function buildTypingBar() {
+    tbar = el('div', '', `
+      <div class="gwm-tb-main"><div class="gwm-tb-label"></div><div class="gwm-tb-text"></div></div>
+      <button type="button" class="gwm-tb-done">Done</button>`);
+    tbar.id = 'gwm-typebar';
+    tbar.dataset.offscreenOk = '';   // edge-to-edge on purpose: PanelOnScreenGuard would inset it
+    // Keep the focus (and the keyboard) on the real box.
+    for (const t of ['touchstart', 'mousedown', 'pointerdown']) tbar.addEventListener(t, (e) => { e.stopPropagation(); e.preventDefault(); }, { passive: false });
+    const done = tbar.querySelector('.gwm-tb-done');
+    const finish = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const inp = tIn;
+      if (!inp) return;
+      const o = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+      inp.dispatchEvent(new KeyboardEvent('keydown', o));
+      inp.dispatchEvent(new KeyboardEvent('keyup', o));
+      // Enter may have moved focus on (city → company name); else close up.
+      if (document.activeElement === inp) inp.blur();
+    };
+    done.addEventListener('touchend', finish, { passive: false });
+    done.addEventListener('click', finish);
+    document.body.appendChild(tbar);
+  }
+  function renderTypingBar() {
+    if (!tbar || !tIn) return;
+    const txt = tbar.querySelector('.gwm-tb-text');
+    const v = tIn.value;
+    let at = v.length;
+    try { if (tIn.selectionStart != null) at = tIn.selectionStart; } catch (_) {}
+    txt.textContent = '';
+    if (!v) {
+      const ph = el('span', 'gwm-tb-ph'); ph.textContent = tIn.placeholder || '';
+      txt.append(el('span', 'gwm-tb-caret'), ph);
+    } else {
+      txt.append(document.createTextNode(v.slice(0, at)), el('span', 'gwm-tb-caret'), document.createTextNode(v.slice(at)));
+    }
+    // Long names: keep the caret in view (scroll the bar only, never the page).
+    const c = txt.querySelector('.gwm-tb-caret');
+    const cx = c.offsetLeft - txt.offsetLeft;
+    if (cx > txt.scrollLeft + txt.clientWidth - 8) txt.scrollLeft = cx - txt.clientWidth + 8;
+    else if (cx < txt.scrollLeft) txt.scrollLeft = Math.max(0, cx - 8);
+  }
+  function placeTypingBar() {
+    if (!tbar || !tIn) return;
+    const vv = window.visualViewport;
+    const w = vv ? vv.width : innerWidth, h = vv ? vv.height : innerHeight;
+    // Keyboard closed again (Android back) while the box keeps focus: done.
+    if (h < tBase * 0.8) tKbSeen = true;
+    else if (tKbSeen && h > tBase * 0.9) { tIn.blur(); return; }
+    const fs = Math.max(10, Math.min(w / 30, h / 3.2));
+    tbar.style.left = (vv ? vv.offsetLeft : 0) + 'px';
+    tbar.style.top = (vv ? vv.offsetTop : 0) + 'px';
+    tbar.style.width = w + 'px';
+    tbar.style.fontSize = fs + 'px';
+    tbar.style.paddingLeft = Math.max(fs * 0.6, safeL) + 'px';
+    tbar.style.paddingRight = Math.max(fs * 0.6, safeR) + 'px';
+  }
+  function showTypingBar(inp) {
+    if (!tbar) buildTypingBar();
+    if (!tIn) { tBase = window.visualViewport ? visualViewport.height : innerHeight; tKbSeen = false; }
+    tIn = inp;
+    tbar.querySelector('.gwm-tb-label').textContent = typingLabel(inp);
+    tbar.classList.add('show');
+    placeTypingBar(); renderTypingBar();
+  }
+  function hideTypingBar() {
+    tIn = null;
+    tbar?.classList.remove('show');
+  }
+  document.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (t && t.matches && t.matches(TYPE_SEL) && !t.readOnly && !t.disabled) showTypingBar(t);
+  });
+  document.addEventListener('focusout', () => {
+    setTimeout(() => {
+      const a = document.activeElement;
+      if (!(a && a.matches && a.matches(TYPE_SEL))) hideTypingBar();
+    }, 0);
+  });
+  for (const t of ['input', 'keyup', 'selectionchange']) document.addEventListener(t, renderTypingBar);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', placeTypingBar);
+    visualViewport.addEventListener('scroll', placeTypingBar);
+  }
+  // The game sometimes hides a modal (or clears a box) without a blur.
+  setInterval(() => {
+    if (!tIn) return;
+    if (!tIn.isConnected || document.activeElement !== tIn || !tIn.offsetParent) { if (document.activeElement === tIn) tIn.blur(); hideTypingBar(); return; }
+    placeTypingBar(); renderTypingBar();
+  }, 300);
+
   // ── 7. Boot ────────────────────────────────────────────────────────
   function boot() {
     buildUI();

@@ -299,3 +299,33 @@ html.gw-mobile #research-panel { z-index: 420 !important; }
 /* Toasts and the fishing minigame: 20% smaller, 35% in browser full screen / frame. */
 html.gw-mobile .gw-toast, html.gw-mobile #fishing-overlay, html.gw-mobile #fishing-badge { zoom: 0.8; }
 html.gw-mobile.gwm-unscaled .gw-toast, html.gw-mobile.gwm-unscaled #fishing-overlay, html.gw-mobile.gwm-unscaled #fishing-badge { zoom: 0.65; }
+
+/* Typing bar: a big mirror of the focused text box, above the keyboard. */
+#gwm-typebar {
+  position: fixed; left: 0; top: 0; z-index: 100002; box-sizing: border-box;
+  display: none; align-items: center; gap: 0.6em;
+  padding: 0.35em 0.6em; font-family: Inter, system-ui, sans-serif;
+  background: rgba(6, 13, 22, 0.97); border-bottom: 2px solid #40c0ff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.6); touch-action: none;
+}
+#gwm-typebar.show { display: flex; }
+#gwm-typebar .gwm-tb-main { flex: 1; min-width: 0; }
+#gwm-typebar .gwm-tb-label {
+  font-size: 0.5em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #7fb8d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#gwm-typebar .gwm-tb-text {
+  font-size: 1em; line-height: 1.3; color: #fff; white-space: pre; overflow: hidden;
+  border-bottom: 1px solid rgba(96, 208, 224, 0.35); min-height: 1.3em;
+}
+#gwm-typebar .gwm-tb-ph { color: rgba(223, 246, 255, 0.35); }
+#gwm-typebar .gwm-tb-caret {
+  display: inline-block; width: 0.08em; height: 1.05em; margin: 0 0.02em; vertical-align: -0.15em;
+  background: #40c0ff; animation: gwm-tb-blink 1s steps(1) infinite;
+}
+@keyframes gwm-tb-blink { 50% { opacity: 0; } }
+#gwm-typebar .gwm-tb-done {
+  flex: none; font: 700 0.7em/1 Inter, system-ui, sans-serif; color: #fff;
+  background: rgba(20, 120, 190, 0.95); border: 1px solid #8fd8ff; border-radius: 0.5em;
+  padding: 0.55em 0.9em; touch-action: manipulation;
+}
