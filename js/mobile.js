@@ -1325,11 +1325,33 @@
     const mh = (room / z).toFixed(1) + 'px';
     if (card.style.maxHeight !== mh) card.style.setProperty('max-height', mh, 'important');
   }
+  // Intro contract letter: big enough to read. It used to be zoomed to the
+  // page height, which on a phone left its text about 5 px tall. Now it is
+  // scaled (the `scale` property, which leaves its slide-in transform and
+  // its place on the page alone) so the text comes out about 14 px on the
+  // actual screen, capped so it keeps to the right of City Hall, as on PC,
+  // and fits the screen's height (longer text scrolls inside it, following
+  // the typing).
+  const LETTER_PX = 14;
   function fitLetter() {
     const L = document.querySelector('#gw-intro .gi-letter');
     if (!L) return;
-    const z = Math.max(0.4, Math.min(1, innerHeight / 1000)).toFixed(3);
-    if (L.style.zoom !== z) L.style.zoom = z;
+    if (L.style.zoom) L.style.zoom = '';
+    const scaled = !!_applied && Math.abs(innerWidth - _applied.vw) <= 2;
+    const s = scaled ? _applied.s : 1;                       // screen px per page px
+    const side = !L.classList.contains('centred');
+    const base = parseFloat(getComputedStyle(L).fontSize) || 12;
+    const w0 = L.offsetWidth || 420;
+    let k = LETTER_PX / (base * s);
+    k = Math.min(k, (side ? 0.56 : 0.92) * innerWidth / w0);
+    k = Math.max(0.3, k);
+    const ks = k.toFixed(3);
+    if (L.style.scale !== ks) {
+      L.style.scale = ks;
+      L.style.transformOrigin = side ? '100% 50%' : '50% 50%';
+    }
+    const mh = Math.floor(innerHeight * 0.9 / k) + 'px';
+    if (L.style.maxHeight !== mh) L.style.maxHeight = mh;
   }
 
   // Camera cutout: with viewport-fit=cover the page reaches under it, so

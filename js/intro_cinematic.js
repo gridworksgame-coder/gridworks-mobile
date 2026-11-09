@@ -268,8 +268,10 @@ const IntroCinematic = (() => {
     if (!root) return;
     const pad = _padOn();
     $('.gi-skip-label').textContent = pad ? 'HOLD Ⓑ TO SKIP' : (window.GW_MOBILE ? 'HOLD SCREEN TO SKIP' : 'HOLD ESC TO SKIP');
-    $('.gi-key').textContent = pad ? 'Ⓐ' : 'ENTER';
-    $('.gi-title-go').textContent = pad ? 'PRESS Ⓐ TO BEGIN' : 'CLICK TO BEGIN';
+    const key = $('.gi-key');
+    key.textContent = pad ? 'Ⓐ' : 'ENTER';
+    key.style.display = (!pad && window.GW_MOBILE) ? 'none' : '';
+    $('.gi-title-go').textContent = pad ? 'PRESS Ⓐ TO BEGIN' : (window.GW_MOBILE ? 'TAP TO BEGIN' : 'CLICK TO BEGIN');
   }
 
   function _resize() {
@@ -323,10 +325,15 @@ const IntroCinematic = (() => {
     if (e.key === 'Escape') skipDownAt = -1;
     e.stopImmediatePropagation();
   }
+  // A click / tap anywhere finishes the typing and, on the title card,
+  // begins. It never accepts the letter: only its ACCEPT button does (or
+  // Enter / A, the key shown on that button), so a stray tap can't take
+  // the player past it unread.
   function _onPointer(e) {
     if (!active) return;
     if (e.target && e.target.closest && e.target.closest('.gi-accept')) return;
-    _advance();
+    if (typers.length) { [...typers].forEach(_finishTyper); typers = []; return; }
+    if (phase === 'title') _handOver();
   }
 
   // Click / Enter / A: finish whatever is typing; on a finished letter, accept.
@@ -392,7 +399,7 @@ const IntroCinematic = (() => {
     return { x: _sx(hall.x), y: _sy(hall.y), w: hall.w * z, h: hall.h * z, cx: _sx(hall.cx), cy: _sy(hall.cy) };
   }
   // Frame City Hall in the left third while the letter sits on the right.
-  function _letterSide() { return window.innerWidth >= 900; }
+  function _letterSide() { return window.innerWidth >= 900 || !!window.GW_MOBILE; }   // phones too: mobile.js sizes it
 
   // ── Captions ────────────────────────────────────────────────────────
   function _caption(text, at, hold) {
@@ -1369,8 +1376,17 @@ const IntroCinematic = (() => {
   }
 
   // ── Skip ────────────────────────────────────────────────────────────
+  // Once the letter is up the rest can't be skipped: it waits on ACCEPT,
+  // and the city's title card that follows is always seen.
+  const _noSkip = () => phase === 'letter' || phase === 'power' || phase === 'title' || phase === 'out';
   function _updateSkip(now) {
     const fill = root.querySelector('.gi-skip-fill');
+    const sk = root.querySelector('.gi-skip');
+    if (_noSkip()) {
+      skipDownAt = -1;
+      if (sk.style.visibility !== 'hidden') { sk.style.visibility = 'hidden'; fill.style.transform = 'scaleX(0)'; sk.classList.remove('holding'); }
+      return;
+    }
     const u = skipDownAt < 0 ? 0 : clamp01((now - skipDownAt) / 1000 / SKIP_HOLD_S);
     fill.style.transform = `scaleX(${u})`;
     root.querySelector('.gi-skip').classList.toggle('holding', u > 0);
