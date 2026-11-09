@@ -470,6 +470,51 @@
       mouse(cv, 'mousemove', one.sx, one.sy, 0);
       mouse(cv, 'mousedown', one.sx, one.sy, button);
       if (one.x !== one.sx || one.y !== one.sy) mouse(cv, 'mousemove', one.x, one.y, button, { held: true });
+      if (button === 2) chopWatch();
+    }
+    // Chopping a tree/bush (long-press = hold right button): the game draws
+    // the progress bar along the bottom of the tile, right under the finger.
+    // Mirror it in a pill above the finger while the hold lasts.
+    let chopPill = null, chopRaf = 0;
+    function chopWatch() {
+      if (chopRaf) return;
+      const step = () => {
+        chopRaf = 0;
+        if (!one || !one.down || one.button !== 2) { chopPill?.classList.remove('show'); return; }
+        chopRaf = requestAnimationFrame(step);
+        let ent = null, prog = 0;
+        try {
+          const Cam = gameGlobal('Camera'), GM = gameGlobal('GridManager'), T = gameGlobal('T');
+          const TL = gameGlobal('TILE') || 40, r = cv.getBoundingClientRect();
+          const w = Cam.screenToWorld(one.x - r.left, one.y - r.top);
+          ent = GM.getEntity(Math.floor(w.x / TL), Math.floor(w.y / TL));
+          if (ent && (ent.type === T.TREE || ent.type === T.BUSH)) prog = ent._chopProgress || 0;
+          else ent = null;
+        } catch (_) { ent = null; }
+        if (!ent || !(prog > 0)) { chopPill?.classList.remove('show'); return; }
+        if (!chopPill) {
+          chopPill = el('div', '', '<span class="gwm-chop-lbl"></span><div class="gwm-chop-bar"><i></i></div>');
+          chopPill.id = 'gwm-chop';
+          chopPill.dataset.offscreenOk = '';
+          document.body.appendChild(chopPill);
+        }
+        const isBush = ent.type === gameGlobal('T').BUSH;
+        const pct = Math.min(100, Math.round(prog * 100));
+        chopPill.querySelector('.gwm-chop-lbl').textContent = `${isBush ? 'Bush' : 'Tree'} ${pct}%`;
+        const bar = chopPill.querySelector('i');
+        bar.style.width = pct + '%';
+        bar.style.background = `rgb(${Math.round(220 - 220 * prog)},${Math.round(180 + 75 * prog)},0)`;
+        chopPill.classList.add('show');
+        // Well clear of the fingertip: above it, or below near the top edge.
+        const z = ctlZoom, pw = chopPill.offsetWidth * z, ph = chopPill.offsetHeight * z;
+        const gap = 70 * z;
+        let x = Math.max(8, Math.min(innerWidth - pw - 8, one.x - pw / 2));
+        let y = one.y - gap - ph;
+        if (y < 8) y = one.y + gap;
+        chopPill.style.left = (x / z) + 'px';
+        chopPill.style.top = (y / z) + 'px';
+      };
+      chopRaf = requestAnimationFrame(step);
     }
     function release() {
       if (!one) return;
