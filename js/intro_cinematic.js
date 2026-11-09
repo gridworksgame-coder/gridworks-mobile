@@ -1546,9 +1546,20 @@ const IntroCinematic = (() => {
     T.el.appendChild(c);
     if (c.dataset.fit) {                           // as big as fits, up to 1.2×
       const l = c.firstElementChild;
+      // The clone keeps the menu logo's class, so styles meant for the menu
+      // (a short phone screen's top-anchored shrink and pulled-in margins)
+      // reached it too and pushed it off centre: clear those, scale about its
+      // middle, then measure where it landed and nudge it to dead centre.
+      l.style.margin = '0';
+      l.style.transformOrigin = '50% 50%';
       l.style.transform = 'none';
       const k = Math.min(1.2, (window.innerWidth * 0.86) / Math.max(1, l.scrollWidth));
-      l.style.transform = `scale(${k.toFixed(3)})`;
+      const sc = `scale(${k.toFixed(3)})`;
+      l.style.transform = sc;
+      const r = l.getBoundingClientRect(), pr = T.el.getBoundingClientRect();
+      const dx = (pr.left + pr.width / 2) - (r.left + r.width / 2);
+      const dy = (pr.top + pr.height / 2) - (r.top + r.height / 2);
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) l.style.transform = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) ${sc}`;
     }
     requestAnimationFrame(() => requestAnimationFrame(() => { c.style.opacity = '1'; }));
     T.timer = setTimeout(() => {
