@@ -1120,7 +1120,9 @@ const MenuSystem = (() => {
     if (_fsEl()) { try { screen.orientation?.lock?.('landscape')?.catch(() => {}); } catch (_e) {} }
   }
   function _resumeFullScreen() {
-    if (_desk || !_wantFull() || _fsEl()) return;
+    // The installed app already runs full screen: asking the browser for
+    // it as well there throws away the app's phone-sized layout.
+    if (_desk || !_wantFull() || _fsEl() || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) return;
     const evs = ['pointerup', 'touchend', 'click', 'keydown'];
     const go = (e) => {
       if (e.type === 'keydown' && (e.key === 'Escape' || e.key === 'F11')) return;   // not a usable gesture

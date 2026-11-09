@@ -2003,10 +2003,13 @@ const NationalProject = (() => {
   //   heart         a heart in red and pink
   const FW_KINDS = ['peony', 'peony', 'chrysanthemum', 'chrysanthemum', 'double', 'ring', 'willow', 'kamuro',
                     'palm', 'crossette', 'strobe', 'crackle', 'multibreak', 'heart'];
-  const FW_CAP = 3200;
+  // Phones: a third of the stars at once and half as many per shell, the
+  // show's drawing cost (additive sprites, thousands at a time) cut to fit.
+  const FW_CAP = window.GW_MOBILE ? 900 : 3200;
+  const FW_DENS = window.GW_MOBILE ? 0.5 : 1;
   function _fwBurst(r, vol) {
     const S = TILE * (5 + Math.random() * 2.5) * (r.big || 1) * (r.small ? 0.45 : 1);   // how fast the shell opens, world px/s
-    const room = () => FW.stars.length < FW_CAP;
+    const room = () => FW.stars.length < FW_CAP && (FW_DENS >= 1 || Math.random() < FW_DENS);
     const star = (ang, sp, c, max, extra) => { if (room()) FW.stars.push({ x: r.x, y: r.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: 0, max, c, tw: Math.random() * 6.283, big: r.big, ...extra }); };
     const life = () => 1.3 + Math.random() * 0.7;
     const k = r.kind;
