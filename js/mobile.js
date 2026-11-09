@@ -1470,22 +1470,11 @@
   window.addEventListener('pagehide', () => {
     try { sessionStorage.setItem('gwm.wasFS', (document.fullscreenElement || document.webkitFullscreenElement) ? '1' : ''); } catch (_) {}
   });
+  // Full screen wanted from last time: menu_system.js puts it back on the
+  // first tap (and keeps the Options buttons in step), so there's no
+  // "tap to return" button to show as well.
   function fsResume() {
-    if (isAppMode() || isFramed() || !fsWanted() || !fsAnyway()) return false;
-    const r = document.documentElement;
-    const req = _origFullscreen;
-    if (!req) return false;
-    const go = () => {
-      document.removeEventListener('touchend', go, true);
-      document.removeEventListener('click', go, true);
-      if (document.fullscreenElement || document.webkitFullscreenElement) return;
-      Promise.resolve(req.call(r, { navigationUI: 'hide' })).then(() => {
-        try { screen.orientation?.lock?.('landscape').catch(() => {}); } catch (_) {}
-      }).catch(() => {});
-    };
-    document.addEventListener('touchend', go, true);
-    document.addEventListener('click', go, true);
-    return true;
+    return !isAppMode() && !isFramed() && fsWanted() && fsAnyway();
   }
   function fsPrompt() {
     let was = '';

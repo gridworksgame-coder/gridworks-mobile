@@ -338,7 +338,7 @@ const IntroCinematic = (() => {
 
   // Called from gamepad_input.js's poll loop while the cinematic runs.
   function padFrame(aDown, bHeld) {
-    if (titles) { if (bHeld) _titleEnd(); else if (aDown) _titleNext(); return; }
+    if (titles) return;   // the opening title cards can't be skipped
     if (!active) return;
     _refreshPadLabels();
     if (aDown) _advance();
@@ -356,10 +356,10 @@ const IntroCinematic = (() => {
   // (browser full screen ignores the page scale, as does an embed): the
   // screen is far shorter in page pixels than the ~1000 the shots were
   // framed for, so every shot came out much tighter. Pull the whole intro
-  // out to 0.55x there, read off the real layout height rather than a flag.
+  // out to 0.44x there, read off the real layout height rather than a flag.
   // Shots are written at the normal zoom; _zk() is applied only when
   // setting the camera.
-  const _zk = () => (window.GW_MOBILE && window.innerHeight < 800) ? 0.55 : 1;
+  const _zk = () => (window.GW_MOBILE && window.innerHeight < 800) ? 0.44 : 1;
   // While the power station and the city overview are up, also make sure
   // all four of Halcyon's reactors fit on screen around the shot's centre,
   // however short the screen (they go up in those two shots).
@@ -1466,8 +1466,8 @@ const IntroCinematic = (() => {
   // on black, before the archive cue. Both logos are cloned from the main
   // menu (its studio badge and its title block), so there's one copy of
   // the art and the wordmark replays its letter-slam as it appears.
-  // A left click (or A) moves on to the next card; Esc (or B) goes straight
-  // into the cinematic.
+  // They always play out in full: no click, key or pad button moves them on
+  // or skips them (the cinematic after them can still be skipped).
   const CARD_S    = [4.4, 8.9];   // how long each card is up, fades included
   const CARD_FADE = 0.9;
   let titles = null;              // { el, cards, idx, timer, done }
@@ -1476,7 +1476,7 @@ const IntroCinematic = (() => {
     const el = document.createElement('div');
     el.id = 'gi-titles';
     el.style.cssText = 'position:fixed;inset:0;z-index:6000;background:#000;display:flex;' +
-      'align-items:center;justify-content:center;cursor:pointer;user-select:none;transition:opacity 0.5s ease;';
+      'align-items:center;justify-content:center;cursor:default;user-select:none;transition:opacity 0.5s ease;';
     document.body.appendChild(el);
 
     const cards = [];
@@ -1533,7 +1533,6 @@ const IntroCinematic = (() => {
     }
 
     titles = { el, cards, idx: -1, timer: 0, done };
-    el.addEventListener('mousedown', e => { if (e.button === 0) _titleNext(); });
     window.addEventListener('keydown', _titleKey, true);
     _titleNext();
   }
@@ -1568,8 +1567,9 @@ const IntroCinematic = (() => {
 
   function _titleKey(e) {
     if (!titles) return;
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); _titleEnd(); }
-    else if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); _titleNext(); }
+    // Swallowed, so the skip / advance keys do nothing here (nor reach the
+    // game or the cinematic waiting underneath).
+    if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); }
   }
 
   // Start the cinematic underneath, then let the black card fade off it.
