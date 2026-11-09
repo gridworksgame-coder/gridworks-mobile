@@ -1552,7 +1552,7 @@
   // being typed in (save name, city name, blueprint…) sits behind it, small
   // because the page is scaled down. While a text box has focus, a large
   // bar pinned to the top of the visible area mirrors what is typed, with a
-  // caret, and a Done button that acts like Enter.
+  // caret, and a Done button that closes the keyboard.
   const TYPE_SEL = 'textarea, input:not([type]), input[type=text], input[type=search], input[type=number], input[type=email], input[type=url], input[type=tel]';
   let tbar = null, tIn = null, tBase = 0, tKbSeen = false;
   function typingLabel(inp) {
@@ -1578,13 +1578,9 @@
     const done = tbar.querySelector('.gwm-tb-done');
     const finish = (e) => {
       e.preventDefault(); e.stopPropagation();
-      const inp = tIn;
-      if (!inp) return;
-      const o = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-      inp.dispatchEvent(new KeyboardEvent('keydown', o));
-      inp.dispatchEvent(new KeyboardEvent('keyup', o));
-      // Enter may have moved focus on (city → company name); else close up.
-      if (document.activeElement === inp) inp.blur();
+      // Just finish typing: close the keyboard and leave the name in the
+      // box. Saving / starting stays on the game's own buttons.
+      tIn?.blur();
     };
     done.addEventListener('touchend', finish, { passive: false });
     done.addEventListener('click', finish);
