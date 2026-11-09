@@ -1104,10 +1104,35 @@ const MenuSystem = (() => {
   // to the Fullscreen API.
   const _desk = (typeof window !== 'undefined' && window.GridworksDesktop) || null;
   let _isFull = false;
+  // Browser: the choice is remembered here (shared with js/mobile.js) because
+  // a reload always drops the page out of full screen, and a browser only
+  // lets it back in from a tap/click/key: see _resumeFullScreen.
+  const _FS_PREF_KEY = 'gwm.fsWant';
+  const _fsEl = () => document.fullscreenElement || document.webkitFullscreenElement;
+  function _wantFull() { try { return localStorage.getItem(_FS_PREF_KEY) === '1'; } catch (_e) { return false; } }
+  function _saveWantFull(v) { try { localStorage.setItem(_FS_PREF_KEY, v ? '1' : ''); } catch (_e) {} }
+  async function _enterBrowserFull() {
+    if (_fsEl()) return;
+    const r = document.documentElement;
+    const req = r.requestFullscreen || r.webkitRequestFullscreen;
+    if (!req) return;
+    try { await req.call(r, { navigationUI: 'hide' }); } catch (_e) {}
+    if (_fsEl()) { try { screen.orientation?.lock?.('landscape')?.catch(() => {}); } catch (_e) {} }
+  }
+  function _resumeFullScreen() {
+    if (_desk || !_wantFull() || _fsEl()) return;
+    const evs = ['pointerup', 'touchend', 'click', 'keydown'];
+    const go = (e) => {
+      if (e.type === 'keydown' && (e.key === 'Escape' || e.key === 'F11')) return;   // not a usable gesture
+      evs.forEach(t => document.removeEventListener(t, go, true));
+      if (_wantFull()) _enterBrowserFull().then(_syncDisplaySeg);
+    };
+    evs.forEach(t => document.addEventListener(t, go, true));
+  }
   function _syncDisplaySeg() {
     const seg = document.getElementById('opt-display-seg');
     if (!seg) return;
-    const full = _desk ? _isFull : !!document.fullscreenElement;
+    const full = _desk ? _isFull : (!!_fsEl() || _wantFull());
     seg.querySelectorAll('button[data-display]').forEach(b =>
       b.classList.toggle('active', (b.dataset.display === 'full') === full));
   }
@@ -1123,8 +1148,12 @@ const MenuSystem = (() => {
       await _desk.setFullScreen(full); _isFull = full;
       setTimeout(_refreshDisplayState, 400);   // the OS transition is async
     }
-    else if (full && !document.fullscreenElement) { try { await document.documentElement.requestFullscreen(); } catch (_e) {} }
-    else if (!full && document.fullscreenElement) { try { await document.exitFullscreen(); } catch (_e) {} }
+    else {
+      _saveWantFull(full);
+      if (full) await _enterBrowserFull();
+      else if (_fsEl()) { try { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_e) {} }
+      _saveWantFull(full && _wantFull());   // the mobile "stay windowed" card may have cleared it
+    }
     _syncDisplaySeg();
   }
 
@@ -1672,6 +1701,8 @@ const MenuSystem = (() => {
       window.addEventListener('resize', () => { clearTimeout(_rsT); _rsT = setTimeout(_refreshDisplayState, 150); });
     } else {
       document.addEventListener('fullscreenchange', _syncDisplaySeg);
+      document.addEventListener('webkitfullscreenchange', _syncDisplaySeg);
+      _resumeFullScreen();
     }
     _syncDisplaySeg();
 

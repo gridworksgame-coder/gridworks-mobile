@@ -842,6 +842,7 @@
     for (const t of ['touchstart', 'mousedown', 'pointerdown']) card.addEventListener(t, (e) => e.stopPropagation());
     card.querySelector('.gwm-install-go').addEventListener('click', (e) => {
       e.preventDefault();
+      LS.set('fsWant', '');   // don't ask again on every reload of this tab
       if (_installPrompt) { const ip = _installPrompt; _installPrompt = null; ip.prompt(); card.remove(); return; }
       card.querySelector('.gwm-frame-text').textContent =
         'Open your browser menu (⋮ at the top right) and choose "Install app" or "Add to Home screen". Then start GRIDWORKS from its new icon. (iPhone: Share → Add to Home Screen.)';
