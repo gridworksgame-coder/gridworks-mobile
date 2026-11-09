@@ -1642,7 +1642,6 @@ const MusicSystem = (() => {
     { src: 'audio/music/Need Another.mp3',       vol: 0.178 },
     { src: 'audio/music/On the Spot.mp3',        vol: 0.222 },
     { src: 'audio/music/Today.mp3',              vol: 0.380 },
-    { src: 'audio/music/Where2Go.mp3',           vol: 0.249 },                  // its 20 s fade is in the file itself: the fadeOut ramp was not audible in play
     { src: 'audio/music/Years Ago.mp3',          vol: 0.285 },
     { src: 'audio/music/We Sit.mp3',             vol: 0.166 },
     { src: 'audio/music/Green and Orange.mp3',   vol: 0.154 },
@@ -1650,6 +1649,8 @@ const MusicSystem = (() => {
     { src: 'audio/music/Movin and Cruisin.mp3',  vol: 0.158 },
     { src: 'audio/music/Getting There.mp3',      vol: 0.204 },
     { src: 'audio/music/They Shine.mp3',         vol: 0.176 },
+    { src: 'audio/music/Cool Down the Road.mp3', vol: 0.225 },
+    { src: 'audio/music/Sleepless.mp3',          vol: 0.210 },
     // Not in the rotation, on purpose: Electron.mp3 scores the apocalypse
     // (apocalypse_system.js) and Rope to the Sky.mp3 is Operation Hyperion's
     // victory song (national_project.js) — each is saved for its moment.
