@@ -76,7 +76,7 @@ const IntroCinematic = (() => {
   // all the way through, past the intro and into the game; the rotation
   // follows it (MusicSystem.play). Skipped before then, it starts as the
   // intro ends, so it is still the first song heard.
-  const FIRST_SONG    = 'audio/music/Today.mp3';
+  const FIRST_SONG    = 'audio/music/Sleepless.mp3';
   const FIRST_SONG_AT = LATER_AT + 0.5;   // after the card's thump
   let songOn = false;
   function _firstSong() {
