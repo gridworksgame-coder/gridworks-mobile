@@ -333,12 +333,12 @@ html.gw-mobile.gwm-unscaled .gw-toast, html.gw-mobile.gwm-unscaled #fishing-over
 /* Chop progress, shown above the finger during a long-press on a tree/bush. */
 #gwm-chop {
   position: fixed; left: 0; top: 0; z-index: 9650; zoom: var(--gwm-ctl-zoom, 1);
-  display: none; flex-direction: column; align-items: stretch; gap: 6px; width: 160px;
-  padding: 9px 12px 10px; border-radius: 12px; pointer-events: none;
+  display: none; flex-direction: column; align-items: stretch; gap: 4px; width: 96px;
+  padding: 5px 7px 6px; border-radius: 7px; pointer-events: none;
   background: rgba(8, 16, 26, 0.92); border: 1px solid rgba(96, 208, 224, 0.4);
-  font: 700 19px/1 Inter, system-ui, sans-serif; color: #dff6ff; text-align: center;
+  font: 700 11.5px/1 Inter, system-ui, sans-serif; color: #dff6ff; text-align: center;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
 }
 #gwm-chop.show { display: flex; }
-#gwm-chop .gwm-chop-bar { height: 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.6); overflow: hidden; }
+#gwm-chop .gwm-chop-bar { height: 7px; border-radius: 4px; background: rgba(0, 0, 0, 0.6); overflow: hidden; }
 #gwm-chop .gwm-chop-bar i { display: block; height: 100%; width: 0; }
