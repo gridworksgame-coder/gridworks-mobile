@@ -1068,7 +1068,30 @@ const DroneSystem = (() => {
 
   // Units already committed to a vessel by drones in the air, so five idle
   // drones do not all launch to fill the same last 40 units of room.
+  // Job search on the logic tick asks inboundTo / reservedFrom for every
+  // vessel and source it weighs, for every idle drone, and each answer walks
+  // every drone of every port: on a big city that was most of the drones'
+  // cost. While DroneSystem.tick hands out jobs (_cargoMemoOn), both are
+  // read from totals made in one pass, dropped whenever a job is given out
+  // and at the start of each port's turn: the same numbers, made once.
+  let _cargoMemoOn = false, _cargoMemo = null;
+  function _cargoTotals() {
+    if (_cargoMemo) return _cargoMemo;
+    const inbound = new Map(), reserved = new Map();
+    for (const p of EntityRegistry.getByType(T.DRONEPORT)) {
+      for (const o of (p._drones || [])) {
+        const j = o.job;
+        if (!j || j.kind !== JOB_CARGO) continue;
+        const amt = j.leg === 'deliver' ? j.amount : cargoPayload(j.cargo);
+        inbound.set(j.dest, (inbound.get(j.dest) || 0) + amt);
+        const from = j.leg === 'deliver' ? j.src : j.target;
+        reserved.set(from, (reserved.get(from) || 0) + amt);
+      }
+    }
+    return (_cargoMemo = { inbound, reserved });
+  }
   function inboundTo(dest) {
+    if (_cargoMemoOn) return _cargoTotals().inbound.get(dest) || 0;
     let n = 0;
     for (const p of EntityRegistry.getByType(T.DRONEPORT)) {
       for (const o of (p._drones || [])) {
@@ -1085,6 +1108,7 @@ const DroneSystem = (() => {
   // drones may work one producer at once, back to back -- so this is what
   // keeps them from all being promised the same stock.
   function reservedFrom(src) {
+    if (_cargoMemoOn) return _cargoTotals().reserved.get(src) || 0;
     let n = 0;
     for (const p of EntityRegistry.getByType(T.DRONEPORT)) {
       for (const o of (p._drones || [])) {
@@ -1101,27 +1125,16 @@ const DroneSystem = (() => {
   // and is looking for its next run from where it is rather than flying
   // home empty first. It skips the launch gap (it is not launching) and
   // the nearer-port check (it is closer to the work than any pad).
-  function findCargoJob(port, d, net, chained) {
-    // Cheap early-out: nothing flagged anywhere means no cargo work at all.
-    const dests = [];
-    for (const ph in VESSELS)
-      for (const v of EntityRegistry.getByType(VESSELS[ph].type()))
-        if (v._droneSupply && cargoKinds()[v._droneSupply] && inNet(net, v)) dests.push(v);
-    if (!dests.length) return null;
-
-    // One cargo launch per port every CARGO_LAUNCH_GAP seconds, so drones
-    // sharing a run stream out one after another instead of as one clump.
-    if (!chained && (port._cargoCooldown || 0) > 0) return null;
-    const cap = def().cargoMaxConcurrent || 8;
-    if (fleet(port).filter(o => o !== d && isOut(o) && o.job && o.job.kind === JOB_CARGO).length >= cap) return null;
-
-    const station = (def().cargoLoadSecs || 2) * 2 + ARRIVE_HOVER * 2;
-    let best = null, bestCost = Infinity;
-    // Vessels asking for the same cargo fill evenly: one more than
-    // CARGO_EVEN_MARGIN fuller than the emptiest waits its turn. Scarce cargo
-    // used to go to whichever was nearest, so with one Fuel Plant's rods a
-    // second bin stood empty until the near one was a sixth full. Second pass,
-    // no such turn: a vessel no drone can reach never holds up the rest.
+  // The drone-independent half of the cargo search: for the first pass
+  // (vessels asking for the same cargo fill evenly) and then the second (no
+  // such turn), every (vessel, source) pair a drone could be sent on, in the
+  // order the search weighs them.
+  //   Vessels asking for the same cargo fill evenly: one more than
+  //   CARGO_EVEN_MARGIN fuller than the emptiest waits its turn. Scarce cargo
+  //   used to go to whichever was nearest, so with one Fuel Plant's rods a
+  //   second bin stood empty until the near one was a sixth full. Second
+  //   pass, no such turn: a vessel no drone can reach never holds up the rest.
+  function _cargoPairs(dests, net) {
     const fillOf = (dest, V, room, inbound) => {
       const held = V.amount(dest);
       return Math.max(0, Math.min(1, (held + inbound) / Math.max(1, held + inbound + room)));
@@ -1133,7 +1146,9 @@ const DroneSystem = (() => {
       if (room < cargoPayload(kind) * 0.5) continue;
       emptiest[kind] = Math.min(emptiest[kind] ?? 1, fillOf(dest, V, room, inbound));
     }
+    const out = [];
     for (const evenly of [true, false]) {
+      const list = [];
       for (const dest of dests) {
         const kind = dest._droneSupply, V = VESSELS[cargoKinds()[kind].phase];
         const payload = cargoPayload(kind);
@@ -1158,15 +1173,62 @@ const DroneSystem = (() => {
           const meta = pelletMeta(kind, src);
           if (meta && V.room(dest, kind, meta) <= 0) continue;
           if (!inNet(net, src)) continue;
-          const sc = centreOf(src);
-          // Whole-trip distance, so a close source with a far delivery does
-          // not beat a slightly further one sitting next to the vessel.
-          const cost = (Math.hypot(sc.x - d.x, sc.y - d.y) + Math.hypot(dc.x - sc.x, dc.y - sc.y)) * pull;
-          if (cost >= bestCost) continue;
-          if (!chained && nearerPortFree(net, port, src, true)) continue;
-          if (!canMakeRoundTrip(port, d, [src, dest], station, net)) continue;
-          best = { src, dest, kind }; bestCost = cost;
+          list.push({ src, dest, kind, pull, dc, sc: centreOf(src) });
         }
+      }
+      out.push(list);
+    }
+    return out;
+  }
+
+  function findCargoJob(port, d, net, chained) {
+    // One cargo launch per port every CARGO_LAUNCH_GAP seconds, so drones
+    // sharing a run stream out one after another instead of as one clump.
+    // (Checked before the vessel scan below: both only ever return null, and
+    // these two are nearly free, so every idle drone on a port that has just
+    // launched, or is at its cap, no longer pays for the scan. Same result.)
+    if (!chained && (port._cargoCooldown || 0) > 0) return null;
+    const cap = def().cargoMaxConcurrent || 8;
+    if (fleet(port).filter(o => o !== d && isOut(o) && o.job && o.job.kind === JOB_CARGO).length >= cap) return null;
+
+    // Cheap early-out: nothing flagged anywhere means no cargo work at all.
+    // (The vessel list is the port's, not the drone's: shared through the
+    // port's turn like the pairs below.)
+    const memo = _cargoMemoOn ? _cargoTotals() : null;
+    let dests = memo && memo.dests ? memo.dests.get(port) : null;
+    if (!dests) {
+      dests = [];
+      for (const ph in VESSELS)
+        for (const v of EntityRegistry.getByType(VESSELS[ph].type()))
+          if (v._droneSupply && cargoKinds()[v._droneSupply] && inNet(net, v)) dests.push(v);
+      if (memo) (memo.dests = memo.dests || new Map()).set(port, dests);
+    }
+    if (!dests.length) return null;
+
+    const station = (def().cargoLoadSecs || 2) * 2 + ARRIVE_HOVER * 2;
+    let best = null, bestCost = Infinity;
+    // Every (vessel, source) pair that passes the checks which don't depend
+    // on the drone, in the order they're weighed (see _cargoPairs). During a
+    // port's turn on the logic tick they're worked out once and shared by
+    // all its idle drones; only the drone's own distance, the nearer-port
+    // rule and its battery are then tried per drone, in the same order, so
+    // the pick is the same as weighing everything for each drone afresh.
+    let pairs;
+    if (memo) {
+      memo.pairs = memo.pairs || new Map();
+      pairs = memo.pairs.get(port);
+      if (!pairs) { pairs = _cargoPairs(dests, net); memo.pairs.set(port, pairs); }
+    } else pairs = _cargoPairs(dests, net);
+    for (const list of pairs) {
+      for (const c of list) {
+        const sc = c.sc, dc = c.dc;
+        // Whole-trip distance, so a close source with a far delivery does
+        // not beat a slightly further one sitting next to the vessel.
+        const cost = (Math.hypot(sc.x - d.x, sc.y - d.y) + Math.hypot(dc.x - sc.x, dc.y - sc.y)) * c.pull;
+        if (cost >= bestCost) continue;
+        if (!chained && nearerPortFree(net, port, c.src, true)) continue;
+        if (!canMakeRoundTrip(port, d, [c.src, c.dest], station, net)) continue;
+        best = { src: c.src, dest: c.dest, kind: c.kind }; bestCost = cost;
       }
       if (best) break;
     }
@@ -1917,16 +1979,20 @@ const DroneSystem = (() => {
       port._cargoCooldown = Math.max(0, (port._cargoCooldown || 0) - dt);
       for (const d of drones) if (d._savedJob) resolveSaved(port, d);
       if (!port.powered) return;
-      for (const d of drones) {
-        if (d.state !== 'idle' || d.battery < 0.35) continue;
-        const job = findJob(port, d);
-        if (!job) continue;
-        if (job.claim) job.claim._droneClaim = d;
-        if (job.kind === JOB_CARGO) port._cargoCooldown = CARGO_LAUNCH_GAP;
-        d.job   = job;
-        d.state = 'launch';
-        d.hover = 0;
-      }
+      _cargoMemo = null; _cargoMemoOn = true;
+      try {
+        for (const d of drones) {
+          if (d.state !== 'idle' || d.battery < 0.35) continue;
+          const job = findJob(port, d);
+          if (!job) continue;
+          if (job.claim) job.claim._droneClaim = d;
+          if (job.kind === JOB_CARGO) port._cargoCooldown = CARGO_LAUNCH_GAP;
+          d.job   = job;
+          d.state = 'launch';
+          d.hover = 0;
+          _cargoMemo = null;   // a job went out: the totals have changed
+        }
+      } finally { _cargoMemoOn = false; _cargoMemo = null; }
     },
 
     // ── Frame tick (every rendered frame) ─────────────────────────
