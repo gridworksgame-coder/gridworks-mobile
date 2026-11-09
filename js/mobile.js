@@ -1505,6 +1505,16 @@
     b.addEventListener('click', go);
     for (const t of ['touchstart', 'mousedown', 'pointerdown']) b.addEventListener(t, (e) => e.stopPropagation());
     document.body.appendChild(b);
+    // Gone as soon as the page is back in full screen by any route (the
+    // first-tap resume, the Options toggle), not only from its own tap.
+    const gone = () => {
+      if (!(document.fullscreenElement || document.webkitFullscreenElement)) return;
+      b.remove();
+      document.removeEventListener('fullscreenchange', gone);
+      document.removeEventListener('webkitfullscreenchange', gone);
+    };
+    document.addEventListener('fullscreenchange', gone);
+    document.addEventListener('webkitfullscreenchange', gone);
     setTimeout(() => b.remove(), 20000);
   }
 

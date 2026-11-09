@@ -352,7 +352,12 @@ const IntroCinematic = (() => {
     const z = Camera.zoom;
     return { x: Camera.x + window.innerWidth / z / 2, y: Camera.y + window.innerHeight / z / 2 };
   }
-  function _setCam(c, z) { Camera.setZoom(z); Camera.jumpTo(c.x, c.y); }
+  // Mobile browser full screen: the page can't be scaled there (mobile.js
+  // marks it gwm-unscaled), so every shot came out much tighter than on the
+  // phone's normal layout. Pull the whole intro out 30% there. Shots are
+  // written at the normal zoom; _zk() is applied only when setting the camera.
+  const _zk = () => (window.GW_MOBILE && document.documentElement.classList.contains('gwm-unscaled')) ? 0.7 : 1;
+  function _setCam(c, z) { Camera.setZoom(z * _zk()); Camera.jumpTo(c.x, c.y); }
   function _updateCamera() {
     if (!camAnim || clock < camAnim.at) return;
     const u = ease(clamp01((clock - camAnim.at) / camAnim.dur));
@@ -720,7 +725,7 @@ const IntroCinematic = (() => {
     // Hold on the reactors through the chain, then follow the last front
     // back across the city.
     schedule(BOOM_AT + 6.6, () => {
-      camAnim = { at: clock, dur: 7.5, fromC: _camCentre(), toC: OldCity.shotCentre('wideEnd'), fromZ: Camera.zoom, toZ: 0.31 };
+      camAnim = { at: clock, dur: 7.5, fromC: _camCentre(), toC: OldCity.shotCentre('wideEnd'), fromZ: Camera.zoom / _zk(), toZ: 0.31 };
     });
     schedule(BOOM_AT + 0.1, () => { _fadeOut(cityAmb, 0.6); cityAmb = null; });
     schedule(BOOM_AT + 0.5, () => { screams = _loop('audio/sfx/screaming.mp3', 0.6); if (screams) screams.loop = false; });
@@ -826,7 +831,7 @@ const IntroCinematic = (() => {
     // Letter away, camera settles square on City Hall.
     schedule(A + 1.6, () => {
       $('.gi-letter').classList.add('out');
-      camAnim = { at: clock, dur: 1.4, fromC: _camCentre(), toC: { x: hall.cx, y: hall.cy }, fromZ: Camera.zoom, toZ: 1 };
+      camAnim = { at: clock, dur: 1.4, fromC: _camCentre(), toC: { x: hall.cx, y: hall.cy }, fromZ: Camera.zoom / _zk(), toZ: 1 };
     });
 
     // Charge… then the strike.
