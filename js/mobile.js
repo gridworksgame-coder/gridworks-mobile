@@ -120,7 +120,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm12';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm13';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -1372,6 +1372,8 @@
     // Page not scaled (browser full screen, or inside a frame): a class
     // for the few sizes that need their own tuning there.
     document.documentElement.classList.toggle('gwm-unscaled', !!_applied && Math.abs(innerWidth - _applied.vw) > 2);
+    // The return-to-full-screen button, however full screen came back.
+    if (document.fullscreenElement || document.webkitFullscreenElement) { const fb = $('gwm-fsprompt'); if (fb) fb.remove(); }
     fitTopBar();
     fitTutorialCard();
     fitResearchPanel();
