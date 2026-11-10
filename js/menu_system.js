@@ -1119,13 +1119,24 @@ const MenuSystem = (() => {
     try { await req.call(r, { navigationUI: 'hide' }); } catch (_e) {}
     if (_fsEl()) { try { screen.orientation?.lock?.('landscape')?.catch(() => {}); } catch (_e) {} }
   }
+  // Full screen chosen but not in it: a reload, an app switch, the
+  // notification shade or a system gesture can all drop the page out. Put
+  // it back on the next tap/click/key (browsers allow it from nothing else),
+  // and keep trying until it holds. Only the Windowed button clears it.
+  let _fsArmed = false;
   function _resumeFullScreen() {
-    if (_desk || !_wantFull() || _fsEl()) return;
+    if (_desk || _fsArmed || !_wantFull() || _fsEl()) return;
+    _fsArmed = true;
     const evs = ['pointerup', 'touchend', 'click', 'keydown'];
     const go = (e) => {
       if (e.type === 'keydown' && (e.key === 'Escape' || e.key === 'F11')) return;   // not a usable gesture
       evs.forEach(t => document.removeEventListener(t, go, true));
-      if (_wantFull()) _enterBrowserFull().then(_syncDisplaySeg);
+      _fsArmed = false;
+      if (!_wantFull() || _fsEl()) return;
+      _enterBrowserFull().then(() => {
+        _syncDisplaySeg();
+        if (!_fsEl()) setTimeout(_resumeFullScreen, 300);   // refused this time: next tap
+      });
     };
     evs.forEach(t => document.addEventListener(t, go, true));
   }
@@ -1702,6 +1713,11 @@ const MenuSystem = (() => {
     } else {
       document.addEventListener('fullscreenchange', _syncDisplaySeg);
       document.addEventListener('webkitfullscreenchange', _syncDisplaySeg);
+      const _fsLost = () => { if (!_fsEl()) setTimeout(_resumeFullScreen, 300); };
+      document.addEventListener('fullscreenchange', _fsLost);
+      document.addEventListener('webkitfullscreenchange', _fsLost);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') _fsLost(); });
+      window.addEventListener('pageshow', _fsLost);
       _resumeFullScreen();
     }
     _syncDisplaySeg();
