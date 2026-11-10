@@ -665,11 +665,7 @@
           if (one.down) mouse(cv, 'mouseup', one.x, one.y, one.button);
           one = null;
           setPick(false);
-          // Escape first cancels anything the first tap started (a road or
-          // pipe being drawn), so keep going until the hand is empty.
-          let n = 0;
-          const putAway = () => { if (tool() && n++ < 3) { tapKey('Escape', 'Escape'); setTimeout(putAway, 60); } };
-          putAway();
+          putAwayTool();
           buzz(15);
           return;
         }
@@ -875,6 +871,13 @@
 
   let root, quick, drawer, drivePad, pickBtn, shiftBtn, cancelBtn, rotBtn, rotate;
 
+  // Escape first cancels anything in progress (a road or pipe being
+  // drawn), so keep going until the hand is empty.
+  function putAwayTool() {
+    let n = 0;
+    const go = () => { if (tool() && n++ < 3) { tapKey('Escape', 'Escape'); setTimeout(go, 60); } };
+    go();
+  }
   function setPick(on) {
     pickMode = on;
     pickBtn?.classList.toggle('on', on);
@@ -996,7 +999,8 @@
     // Quick column: contextual buttons on the left edge.
     quick = el('div', 'gwm-quick');
     cancelBtn = btn('✕', 'Cancel / put tool away (Esc)', () => {
-      if (pickMode && !tool()) setPick(false);     // nothing in hand: ✕ ends duplicate mode
+      // Duplicate mode: one ✕ ends it and puts away what's in hand.
+      if (pickMode) { setPick(false); putAwayTool(); }
       else tapKey('Escape', 'Escape');
     }, 'gwm-cancel');
     rotBtn    = btn('⟳', 'Rotate (R)', () => tapKey('r', 'KeyR'), 'gwm-rot');
