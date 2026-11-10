@@ -304,6 +304,228 @@ function _drawHouseStatusDots(e, px, py) {
     }
   }
 
+// ── Home front doors ─────────────────────────────────────────────────
+// Every home, from a budget shack to the late-game estates, has people
+// coming and going through its front door the way the shops have
+// customers: a resident steps out and walks off down the path, or comes
+// home up it, and the door swings open as they reach it (doorSwing and
+// doorLeaf, render_banks.js) to show a glimpse of the hall behind: lamp-lit
+// after dark, dim with the power off. Busiest in the morning rush and the
+// evening home-coming, near silent through the small hours.
+//
+//   const hd = homeDoor(K, e, t, { x0, x1, y0, y1, hinge, leaf, … });
+//   if (!hd.open) { …draw the shut door as before… }
+//   …the rest of the building…
+//   hd.walkers();   // last, so residents pass in front of steps and porches
+//
+// K is { X, Y, S }: the sprite's unit→pixel mappers and pixels per unit.
+// Options (sprite units):
+//   x0, x1, y0, y1  the doorway (y1 = the threshold)
+//   hinge           'L' or 'R' for one leaf, 'LR' for a pair
+//   leaf, edge      door colour; colour of the swung edge (optional)
+//   path            [[x, y], …] the walk out from the threshold; residents
+//                   appear and vanish at the last point (default: 8 down)
+//   tier            hall style: budget | mid | premium | luxury | apt | glass
+//   lanes           how many residents use this door (default 2)
+//   scale           person size (default: from the door's height)
+//   on              powered (the hall is lit after dark)
+//   key             tells apart several doors on one sprite
+const _HOME_TOPS  = ['#2a3a5a', '#5a3a2a', '#3a5a4a', '#6a6a72', '#8a2a3a', '#2a4a7a', '#4a3a6a', '#c8a040', '#d8d4c8', '#3a6a8a', '#a84a3a', '#5a7a3a'];
+const _HOME_LEGS  = ['#2a2c34', '#3a3a44', '#4a3a2a', '#1e2a40', '#5a5650'];
+const _HOME_SKINS = ['#f0d0b0', '#c89870', '#8a5a3a', '#e0b890', '#6a4630'];
+const _HOME_HALLS = {
+  budget:  { wall: ['#c8b89a', '#b8b4a0', '#c4ae92'],            floor: '#7a5a3a', rug: ['#8a4a3a', '#5a6a4a'] },
+  mid:     { wall: ['#e2d2b0', '#d0dccc', '#e8d0c0', '#d8d0e0'], floor: '#8a5a36', rug: ['#a83a3a', '#3a5a8a', '#5a7a4a'], stairs: true },
+  premium: { wall: ['#efe4cc', '#d8c8a8', '#c8d4cc', '#e4d0c0'], floor: '#6a4228', rug: ['#7a1e24', '#1e3a5a', '#3a4a2a'], stairs: true, wainscot: true },
+  luxury:  { wall: ['#f4f0e8', '#ece4d4', '#e0e4e4'],            floor: '#e8e4dc', rug: ['#2a2c30', '#7a5a3a'], check: true, chandelier: true },
+  apt:     { wall: ['#e0dcd0', '#d4d8dc', '#e4d8c4'],            floor: '#9a8a74', rug: ['#5a4a3a', '#3a4a5a'], mail: true },
+  glass:   { wall: ['#eef2f2', '#e4ece8'],                       floor: '#d8dcd8', rug: ['#4a5a5a'], check: true, plant: true },
+};
+
+function _homeHash(e, k) {
+  let h = ((e.col | 0) * 73856093) ^ ((e.row | 0) * 19349663) ^ Math.imul((k | 0) + 7, 0x9E3779B1);
+  h = Math.imul(h ^ (h >>> 16), 0x85EBCA6B);
+  h = Math.imul(h ^ (h >>> 13), 0xC2B2AE35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// How busy a front door is at this hour (0 … 1), and how likely each trip
+// is someone going out rather than coming home.
+function _homeActivity(hr) {
+  if (hr < 5.5 || hr >= 23.5) return 0.03;
+  if (hr < 7)  return 0.25 + (hr - 5.5) / 1.5 * 0.4;
+  if (hr < 9)  return 0.7;
+  if (hr < 16) return 0.35;
+  if (hr < 20) return 0.7;
+  if (hr < 22) return 0.4;
+  return 0.15;
+}
+function _homeOutChance(hr) {
+  if (hr >= 5 && hr < 10) return 0.8;
+  if (hr >= 16)           return 0.25;
+  if (hr < 5)             return 0.2;
+  return 0.5;
+}
+
+// For sprites drawn straight in canvas pixels.
+const _PIXK = { X: v => v, Y: v => v, S: 1 };
+
+function homeDoor(K, e, t, o) {
+  const { X, Y, S } = K;
+  const x0 = o.x0, x1 = o.x1, y0 = o.y0, y1 = o.y1, dw = x1 - x0, dh = y1 - y0;
+  const key = o.key || 0, lanes = o.lanes || 2, on = o.on !== false;
+  const sc = o.scale || Math.min(dh / 8.5, dw / 2.4);           // fits through the doorway
+  const cx = (x0 + x1) / 2;
+  const path = o.path || [[cx, y1], [cx, y1 + 8 * sc]];
+  let len = 0;
+  const segs = [];
+  for (let i = 1; i < path.length; i++) {
+    const d = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
+    segs.push(d); len += d;
+  }
+  const speed = 1.5 * sc, walkT = Math.max(0.5, len / speed);
+  const hr = DayNight.hour(), act = _homeActivity(hr), outP = _homeOutChance(hr);
+  const H = k => _homeHash(e, key * 4093 + k);
+
+  // Each lane is one resident on a loop of trips; some loops they stay in.
+  let swing = 0;
+  const trips = [];
+  for (let l = 0; l < lanes; l++) {
+    const C = walkT + 9 + H(l * 7 + 1) * 10;                 // seconds per loop
+    const tt = t + H(l * 7 + 2) * C, n = Math.floor(tt / C), f = tt - n * C;
+    for (let m = n - 1; m <= n + 1; m++) {
+      const mk = ((m % 65521) + 65521) % 65521;
+      if (H(100 + l * 65521 + mk * 3) >= act) continue;
+      const out = H(101 + l * 65521 + mk * 3) < outP;
+      swing = Math.max(swing, doorSwing(tt - (m * C + (out ? 0 : walkT))));   // at the threshold
+      if (m === n && f < walkT) trips.push({ l, out, d: out ? f * speed : len - f * speed });
+    }
+  }
+
+  // A revolving door (o.revolving) turns on its own: only the residents.
+  const open = !o.revolving && swing > 0.01;
+  if (open) {
+    // ── The hall behind the door ──
+    const hall = _HOME_HALLS[o.tier] || _HOME_HALLS.mid;
+    const wall = hall.wall[Math.floor(H(11) * hall.wall.length)];
+    const rug  = hall.rug[Math.floor(H(12) * hall.rug.length)];
+    const night = DayNight.darkness() > 0.25;
+    const lit = on && (night || H(13) > 0.4);
+    const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), X(x + w) - X(x), Y(y + h) - Y(y)); };
+    ctx.save();
+    ctx.beginPath(); ctx.rect(X(x0), Y(y0), X(x1) - X(x0), Y(y1) - Y(y0)); ctx.clip();
+    const fl = y1 - dh * 0.2;                                    // where the floor meets the back wall
+    if (!on) R(x0, y0, dw, dh, '#18140f');
+    else {
+      R(x0, y0, dw, dh, wall);
+      if (hall.wainscot) { R(x0, y0 + dh * 0.55, dw, fl - y0 - dh * 0.55, 'rgba(90,60,30,0.28)'); R(x0, y0 + dh * 0.55, dw, dh * 0.03, 'rgba(255,255,255,0.35)'); }
+      const far = H(14) < 0.5;                                   // which side the stairs / table sit
+      if (hall.stairs) {                                         // a flight of stairs rising away
+        const sx = far ? x0 : x1 - dw * 0.42, steps = 4;
+        for (let i = 0; i < steps; i++) {
+          const w = dw * 0.42, h = (fl - y0 - dh * 0.15) / steps;
+          const yy = fl - (i + 1) * h;
+          R(far ? sx : sx + w * i / steps * 0.6, yy, w * (1 - i / steps * 0.6), h * 0.85, i % 2 ? '#7a4e2e' : '#8a5a36');
+        }
+        R(far ? x0 + dw * 0.42 : x1 - dw * 0.44, y0 + dh * 0.12, dw * 0.02 + 0.2, fl - y0 - dh * 0.12, '#5a3a22');   // newel / banister
+      }
+      // a framed picture
+      const pw = dw * 0.34, ph = dh * 0.16, pxl = far ? x1 - pw - dw * 0.12 : x0 + dw * 0.12;
+      R(pxl, y0 + dh * 0.2, pw, ph, '#5a3a22');
+      R(pxl + pw * 0.14, y0 + dh * 0.2 + ph * 0.18, pw * 0.72, ph * 0.64, ['#6a9ac0', '#c08a5a', '#7aa06a', '#b06a8a'][Math.floor(H(15) * 4)]);
+      // hall table with a lamp (or the mailboxes in a block, a plant in glass halls)
+      const tx = far ? x1 - dw * 0.36 : x0 + dw * 0.08;
+      if (hall.mail) {
+        for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) R(tx + i * dw * 0.09, y0 + dh * 0.42 + j * dh * 0.07, dw * 0.08, dh * 0.06, '#a8a49a');
+      } else {
+        R(tx, fl - dh * 0.12, dw * 0.28, dh * 0.03, '#5a3a22');
+        R(tx + dw * 0.03, fl - dh * 0.09, dw * 0.03, dh * 0.09, '#5a3a22'); R(tx + dw * 0.22, fl - dh * 0.09, dw * 0.03, dh * 0.09, '#5a3a22');
+        R(tx + dw * 0.1, fl - dh * 0.2, dw * 0.08, dh * 0.08, lit ? '#ffe2a0' : '#d8ccb0');   // lamp shade
+      }
+      if (hall.plant) { R(x0 + dw * 0.72, fl - dh * 0.08, dw * 0.14, dh * 0.08, '#8a8a84'); ctx.fillStyle = '#3a7a3a'; ctx.beginPath(); ctx.arc(X(x0 + dw * 0.79), Y(fl - dh * 0.14), dw * 0.13 * S, 0, Math.PI * 2); ctx.fill(); }
+      // floor, with a runner down the hall
+      R(x0, fl, dw, y1 - fl, hall.floor);
+      if (hall.check) for (let i = 0; i < 6; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2) R(x0 + i * dw / 6, fl + j * (y1 - fl) / 2, dw / 6, (y1 - fl) / 2, 'rgba(40,40,40,0.25)');
+      ctx.fillStyle = rug; ctx.beginPath();
+      ctx.moveTo(X(cx - dw * 0.12), Y(fl)); ctx.lineTo(X(cx + dw * 0.12), Y(fl));
+      ctx.lineTo(X(cx + dw * 0.26), Y(y1)); ctx.lineTo(X(cx - dw * 0.26), Y(y1)); ctx.fill();
+      if (hall.chandelier && lit) { ctx.fillStyle = '#fff4c8'; ctx.beginPath(); ctx.arc(X(cx), Y(y0 + dh * 0.1), dw * 0.09 * S, 0, Math.PI * 2); ctx.fill(); }
+      // the light in there: lamp-warm after dark, dimmer than outdoors by day
+      R(x0, y0, dw, dh, lit && night ? 'rgba(255,190,110,0.18)' : 'rgba(20,14,8,0.16)');
+      R(x0, y0, dw, dh * 0.1, 'rgba(0,0,0,0.18)');               // the shadow under the lintel
+      if (lit && night && Camera.zoom > 0.5) {
+        const g = ctx.createRadialGradient(X(tx + dw * 0.14), Y(fl - dh * 0.16), 0, X(tx + dw * 0.14), Y(fl - dh * 0.16), dw * 0.8 * S);
+        g.addColorStop(0, 'rgba(255,214,140,0.45)'); g.addColorStop(1, 'rgba(255,214,140,0)');
+        ctx.fillStyle = g; ctx.fillRect(X(x0), Y(y0), X(x1) - X(x0), Y(y1) - Y(y0));
+      }
+    }
+    ctx.restore();
+
+    // ── The leaf (or pair) swung in over it ──
+    const kit = { X, Y, S, R, poly(pts, c) { ctx.fillStyle = c; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.closePath(); ctx.fill(); } };
+    const none = () => {};
+    const knob = (at, fx) => { ctx.fillStyle = '#e0c060'; ctx.beginPath(); ctx.arc(X(at(fx)), Y(y0 + dh * 0.55), Math.max(0.3, dw * 0.05) * S, 0, Math.PI * 2); ctx.fill(); };
+    if (o.hinge === 'LR') {
+      const at1 = doorLeaf(kit, x0, x0, cx, y0, y1, swing, o.leaf, none, o.edge);
+      const at2 = doorLeaf(kit, x1, cx, x1, y0, y1, swing, o.leaf, none, o.edge);
+      knob(at1, cx - dw * 0.08); knob(at2, cx + dw * 0.08);
+    } else {
+      const hx = o.hinge === 'R' ? x1 : x0, fx = hx === x0 ? x1 : x0;
+      const at = doorLeaf(kit, hx, x0, x1, y0, y1, swing, o.leaf, none, o.edge);
+      knob(at, fx + (hx === x0 ? -1 : 1) * dw * 0.15);
+    }
+    // lamplight falling out over the step
+    if (on && night && Camera.zoom > 0.5) {
+      const g = ctx.createRadialGradient(X(cx), Y(y1), 0, X(cx), Y(y1), dh * 0.8 * S);
+      g.addColorStop(0, `rgba(255,206,130,${(0.4 * swing).toFixed(3)})`); g.addColorStop(1, 'rgba(255,206,130,0)');
+      ctx.fillStyle = g; ctx.fillRect(X(cx - dh * 0.8), Y(y1 - dh * 0.8), dh * 1.6 * S, dh * 1.6 * S);
+    }
+  }
+
+  // ── The residents themselves ──
+  const walkers = () => {
+    if (!trips.length || Camera.zoom <= 0.3) return;
+    const P = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), X(x + w) - X(x), Y(y + h) - Y(y)); };
+    const pt = d => {
+      let i = 0;
+      while (i < segs.length - 1 && d > segs[i]) { d -= segs[i]; i++; }
+      const a = path[i], b = path[i + 1], u = segs[i] > 0 ? Math.max(0, Math.min(1, d / segs[i])) : 0;
+      return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+    };
+    for (const tr of trips) {
+      const alpha = Math.min(1, tr.d / (0.9 * sc), (len - tr.d) / (1.4 * sc));   // through the door; at the far end
+      if (alpha <= 0.02) continue;
+      const kid = tr.l === 2 && H(30) < 0.6, ps = sc * (kid ? 0.72 : 1);
+      const [x, y] = pt(tr.d);
+      const top = _HOME_TOPS[Math.floor(H(31 + tr.l) * _HOME_TOPS.length)];
+      const legs = _HOME_LEGS[Math.floor(H(41 + tr.l) * _HOME_LEGS.length)];
+      const skin = _HOME_SKINS[Math.floor(H(51 + tr.l) * _HOME_SKINS.length)];
+      const hair = ['#2a1e14', '#5a3a22', '#c8a060', '#1a1a1a', '#8a8a86'][Math.floor(H(61 + tr.l) * 5)];
+      const step = Math.sin(t * 8 + tr.l * 2.1), bob = Math.abs(step) * 0.3 * ps;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(X(x + 0.3 * ps), Y(y + 0.2 * ps), 1.5 * ps * S, 0.55 * ps * S, 0, 0, Math.PI * 2); ctx.fill();
+      P(x - 0.9 * ps, y - 1.6 * ps + Math.max(0, step) * 0.3 * ps, 0.75 * ps, 1.6 * ps, legs);       // legs, striding
+      P(x + 0.15 * ps, y - 1.6 * ps + Math.max(0, -step) * 0.3 * ps, 0.75 * ps, 1.6 * ps, legs);
+      ctx.fillStyle = top; ctx.beginPath(); ctx.roundRect(X(x - 1.15 * ps), Y(y - 4.2 * ps - bob), 2.3 * ps * S, 2.8 * ps * S, 0.8 * ps * S); ctx.fill();
+      ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(X(x), Y(y - 5.05 * ps - bob), 0.95 * ps * S, 0, Math.PI * 2); ctx.fill();
+      if (Camera.zoom > 0.6) { ctx.fillStyle = hair; ctx.beginPath(); ctx.arc(X(x), Y(y - 5.25 * ps - bob), 0.95 * ps * S, Math.PI, 0); ctx.fill(); }
+      // what they carry: a work bag heading out in the morning, shopping coming home later
+      if (!kid && tr.out && hr < 11 && H(71 + tr.l) < 0.45) P(x + 1.1 * ps, y - 2.4 * ps - bob, 1.3 * ps, 1.1 * ps, '#3a2a1e');
+      else if (!kid && !tr.out && hr >= 15 && H(81 + tr.l) < 0.4) P(x + 1.1 * ps, y - 2.8 * ps - bob, 1.5 * ps, 1.7 * ps, '#e8dcc0');
+      // the family dog, out on a walk with the first of them
+      if (tr.l === 0 && H(90) < 0.25 && !kid) {
+        const dx = x - 2.2 * ps, dy = y + 0.3 * ps, dc = ['#2a2420', '#c8a060', '#f0ece4', '#7a5a3a'][Math.floor(H(91) * 4)];
+        ctx.fillStyle = dc; ctx.beginPath(); ctx.ellipse(X(dx), Y(dy - 0.8 * ps - bob * 0.5), 1.1 * ps * S, 0.55 * ps * S, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(X(dx - 1 * ps), Y(dy - 1.3 * ps - bob * 0.5), 0.45 * ps * S, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(40,30,20,0.7)'; ctx.lineWidth = 0.15 * ps * S;
+        ctx.beginPath(); ctx.moveTo(X(dx - 0.6 * ps), Y(dy - 1.2 * ps)); ctx.lineTo(X(x - 0.6 * ps), Y(y - 2.6 * ps - bob)); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+  };
+  return { open, swing, walkers };
+}
+
 // ── Single-family houses ─────────────────────────────────────────────
 // Every 1×1 family home is drawn as a small front elevation on its own lot,
 // like the townhouse terrace. The wealth tier picks the family of building
@@ -492,8 +714,20 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       return lit;
     };
     const shutters = (x, y, w, h, c) => { R(x - 1.9, y - 0.4, 1.2, h + 0.8, c); R(x + w + 0.7, y - 0.4, 1.2, h + 0.8, c); };
+    // The front door, with the household coming and going through it
+    // (homeDoor, above); `frontDoor` is the call every style makes for it.
+    let homeD = null;
+    const frontDoor = (x0, y0, x1, y1, c, extra) => {
+      homeD = homeDoor({ X, Y, S: s }, e, t, Object.assign({
+        x0, x1, y0, y1, hinge: rnd(19) > 0.5 ? 'L' : 'R', leaf: c, edge: trim, on, tier,
+        path: [[(x0 + x1) / 2, y1], [(x0 + x1) / 2, 38.6]],
+        lanes: tier === 'budget' || tier === 'luxury' ? 2 : 3,
+      }, extra || {}));
+      return homeD.open;
+    };
     const doorway = (x, y, w, h, c) => {
       R(x - 0.6, y - 0.6, w + 1.2, h + 0.6, trim);
+      if (frontDoor(x, y, x + w, y + h, c)) return;
       R(x, y, w, h, c);
       if (detail) {
         ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.3*s;
@@ -704,8 +938,10 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       win(8.5, 21, 5.5, 3, 1, '#d8d8d0', false);
       win(28, 21, 5.5, 3, 2, '#d8d8d0', false);
       const dx = 19;
-      R(dx, 21, 3.6, 9.5, door);
-      dot(dx + 3, 26, 0.3, '#e0c060');
+      if (!frontDoor(dx, 21, dx + 3.6, 30.5, door, { hinge: 'L' })) {
+        R(dx, 21, 3.6, 9.5, door);
+        dot(dx + 3, 26, 0.3, '#e0c060');
+      }
       // striped awning
       for (let k = 0; k < 4; k++) poly([[dx - 1.5 + k*1.7, 19.6], [dx - 0.2 + k*1.7, 19.6], [dx + 0.2 + k*1.7, 21.3], [dx - 1.9 + k*1.7, 21.3]], k % 2 ? '#f0ece0' : accent);
       R(dx - 0.5, GND - 0.5, 4.6, 1, '#8a8a84'); R(dx, GND + 0.5, 3.6, 1, '#7a7a74');
@@ -830,9 +1066,11 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       win(22, 18.5, 8, 4.5, 2, beam);
       win(9.5, 16, 5, 5, 3, beam);
       // arched door in the stone base
-      R(10.5, 25, 5, GND - 25, door);
       ctx.fillStyle = door; ctx.beginPath(); ctx.arc(X(13), Y(25), 2.5*s, Math.PI, 0); ctx.fill();
-      dot(14.8, 28, 0.35, '#e0c060');
+      if (!frontDoor(10.5, 25, 15.5, GND, door, { hinge: 'L', edge: '#3a2a1e' })) {
+        R(10.5, 25, 5, GND - 25, door);
+        dot(14.8, 28, 0.35, '#e0c060');
+      }
       chimney(5.5, 1.5, 9, '#7a5a48');
       porchLamp(17, 26);
       doorCx = 13; openSide = 'R';
@@ -897,7 +1135,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       if (detail) for (let x = 5.8; x < 12; x += 1.1) ln(F(x), 21.5, F(x), GND, 'rgba(0,0,0,0.25)', 0.3);
       win(FR(13, 15), 21.8, 15, GND - 21.8, 2, '#1a1a1c', false);
       if (detail) [0.33, 0.66].forEach(f => ln(F(13 + 15*f), 21.8, F(13 + 15*f), GND, '#1a1a1c', 0.35));
-      R(FR(31, 4), 22, 4, GND - 22, door);
+      if (!frontDoor(FR(31, 4), 22, FR(31, 4) + 4, GND, door, { hinge: flip ? 'L' : 'R', edge: '#1a1a1c' })) R(FR(31, 4), 22, 4, GND - 22, door);
       // glass balustrade on the roof terrace of the ground volume
       R(FR(4, 8), 17.2, 8, 2.2, 'rgba(180,220,240,0.35)'); ln(F(4), 17.2, F(12), 17.2, '#d8dcde', 0.3);
       doorCx = F(33); openSide = flip ? 'L' : 'R';
@@ -920,6 +1158,9 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       brick(4, 15.1, 8, GND - 15.1, pick(['#9a9084', '#b8ae98', '#7a746a'], 37));   // stone wall
       win(12, 15.6, 23, GND - 15.6, 1, '#1a1a1c', false);
       if (detail) [17.75, 23.5, 29.25].forEach(x => ln(x, 15.6, x, GND, '#1a1a1c', 0.35));
+      // a glazed front door in the glass wall
+      if (frontDoor(18.1, 20, 21.9, GND, 'rgba(150,190,210,0.55)', { hinge: 'L', edge: '#1a1a1c', tier: 'glass' })) R(17.75, 20, 0.5, GND - 20, '#1a1a1c');
+      else if (detail) R(18.1, 20, 3.8, 0.4, '#1a1a1c');
       R(35, 15.1, 1.2, GND - 15.1, '#1a1a1c');
       R(2, GND, 36, 1, '#d8d4c8');                                  // plinth
       doorCx = 20; openSide = null;
@@ -937,7 +1178,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       brick(6, 17, 9, GND - 17, '#7a746a');
       win(16, 18, 12, GND - 18, 3, '#1a1a1c', false);
       if (detail) ln(22, 18, 22, GND, '#1a1a1c', 0.35);
-      R(29.5, 19, 3.5, GND - 19, '#9a6a44');
+      if (!frontDoor(29.5, 19, 33, GND, '#9a6a44', { hinge: 'R', edge: '#1a1a1c' })) R(29.5, 19, 3.5, GND - 19, '#9a6a44');
       doorCx = 31.2; openSide = 'L';
       drive = { x: 27, w: 9, sporty: true };
     } else if (style === 'villa') {
@@ -963,7 +1204,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       arch(8.5, 23, 5, 6.5, 4); arch(26.5, 23, 5, 6.5, 5);
       // arched double door
       ctx.fillStyle = '#6a4a30'; ctx.beginPath(); ctx.moveTo(X(17), Y(GND)); ctx.lineTo(X(17), Y(25)); ctx.arc(X(20), Y(25), 3*s, Math.PI, 0); ctx.lineTo(X(23), Y(GND)); ctx.fill();
-      ln(20, 22.5, 20, GND, '#3a2418', 0.35);
+      if (!frontDoor(17, 25, 23, GND, '#6a4a30', { hinge: 'LR', edge: '#3a2418' })) ln(20, 22.5, 20, GND, '#3a2418', 0.35);
       porchLamp(15.5, 25); porchLamp(24.5, 25);
       R(15, GND, 10, 1.2, '#c8bca4');
       doorCx = 20; openSide = null;
@@ -988,8 +1229,10 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       win(FR(24, 5), 22, 5, 5.5, 3, frameC, true);
       // steel canopy + door on the wing
       R(FR(30.5, 5.5), 21.2, 5.5, 0.9, frameC);
-      R(FR(31.5, 3.6), 22.6, 3.6, GND - 22.6, door === '#2a2c30' ? '#9a6a44' : door);
-      dot(F(flip ? 32.2 : 34.4), 27, 0.35, '#d8c070');
+      if (!frontDoor(FR(31.5, 3.6), 22.6, FR(31.5, 3.6) + 3.6, GND, door === '#2a2c30' ? '#9a6a44' : door, { hinge: flip ? 'R' : 'L', edge: frameC })) {
+        R(FR(31.5, 3.6), 22.6, 3.6, GND - 22.6, door === '#2a2c30' ? '#9a6a44' : door);
+        dot(F(flip ? 32.2 : 34.4), 27, 0.35, '#d8c070');
+      }
       porchLamp(F(30.4), 23.2);
       // main gable
       hatch(FP([[5, 11.5], [14, 3.2], [23, 11.5], [23, GND], [5, GND]]), board, 1.6, true, dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.12)');
@@ -1080,6 +1323,8 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       }
     }
 
+    if (homeD) homeD.walkers();
+
     // Without power the house sits dark
     if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(X(1), Y(1), 38*s, 38*s); }
     ctx.restore();
@@ -1124,6 +1369,7 @@ function renderTownhouse(e, px, py, t) {
     const bX = px + 4*s, bW = W - 8*s, units = 4, uw = bW / units;
     const ridgeY = py + H*0.10, eaveY = py + H*0.30, stringY = py + H*0.555;
     const faceBot = py + H*0.80, wallY = py + H*0.86, GND = py + H*0.90;
+    const homeDoors = [];
     const PALETTES = [
       { c: '#7a3a2c', brick: true,  door: '#1f3a5c', trim: '#e8e0d0' },
       { c: '#c2b28e', brick: false, door: '#8a2a22', trim: '#f4efe4' },
@@ -1252,11 +1498,16 @@ function renderTownhouse(e, px, py, t) {
       const porchLit = on && !day;
       ctx.fillStyle = porchLit ? 'rgba(255,210,130,0.8)' : (day ? '#5a748e' : '#141a22');
       ctx.beginPath(); ctx.arc(dX + dW/2, dTop, dW/2, Math.PI, 0); ctx.fill();          // fanlight
-      ctx.fillStyle = P.door; ctx.fillRect(dX, dTop, dW, faceBot - dTop);
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5;
-      ctx.strokeRect(dX + 1.6*s, dTop + 2*s, dW - 3.2*s, 7*s);
-      ctx.strokeRect(dX + 1.6*s, dTop + 11*s, dW - 3.2*s, 8*s);
-      ctx.fillStyle = '#e0c060'; dot(dX + dW - 2*s, dTop + 11*s, 0.7*s);
+      const hd = homeDoor(_PIXK, e, t, { x0: dX, x1: dX + dW, y0: dTop, y1: faceBot, hinge: hash(i, 80) > 0.5 ? 'L' : 'R',
+        leaf: P.door, edge: P.trim, on, tier: 'premium', key: i, path: [[dX + dW/2, faceBot], [dX + dW/2, GND + 6*s]] });
+      homeDoors.push(hd);
+      if (!hd.open) {
+        ctx.fillStyle = P.door; ctx.fillRect(dX, dTop, dW, faceBot - dTop);
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(dX + 1.6*s, dTop + 2*s, dW - 3.2*s, 7*s);
+        ctx.strokeRect(dX + 1.6*s, dTop + 11*s, dW - 3.2*s, 8*s);
+        ctx.fillStyle = '#e0c060'; dot(dX + dW - 2*s, dTop + 11*s, 0.7*s);
+      }
       ctx.fillStyle = '#9a9488'; ctx.fillRect(dX - 2*s, faceBot, dW + 4*s, 2*s);         // step
       if (porchLit) {
         const lx = dX + dW + 3*s, ly = dTop + 1*s;
@@ -1327,6 +1578,8 @@ function renderTownhouse(e, px, py, t) {
         }
       }
     }
+
+    homeDoors.forEach(d => d.walkers());
 
     // ── Street lamp on the pavement ──────────────────────────────────
     const slX = bX + uw*2, slB = py + H - 4*s, slT = GND - 22*s;
@@ -1707,12 +1960,17 @@ function renderApartment(e, px, py, t) {
     }
     ctx.strokeStyle = on ? 'rgba(230,200,160,0.5)' : 'rgba(36,28,18,0.6)'; ctx.lineWidth = 0.5;
     ctx.strokeRect(lbX, lbY, lbW, GND-lbY);
-    // Double doors with a fanlight over them
+    // Double doors with a fanlight over them; residents come and go
+    const hd = homeDoor(_PIXK, e, t, { x0: bX+bW*0.38, x1: bX+bW*0.62, y0: GND-H*0.105, y1: GND, hinge: 'LR',
+      leaf: on ? '#5a3f28' : '#1d1509', edge: '#3a2a18', on, tier: 'apt', lanes: 5,
+      path: [[bX+bW*0.5, GND], [bX+bW*0.5, py+H-2]] });
+    if (!hd.open) {
     ctx.fillStyle = on ? '#5a3f28' : '#1d1509';
     ctx.fillRect(bX+bW*0.38, GND-H*0.105, bW*0.24, H*0.105);
     ctx.strokeStyle = on ? 'rgba(240,210,160,0.5)' : '#241a10'; ctx.lineWidth = 0.4;
     ctx.beginPath(); ctx.moveTo(bX+bW*0.50, GND-H*0.105); ctx.lineTo(bX+bW*0.50, GND); ctx.stroke();
-    if (on && detail) {                            // brass push-bars
+    }
+    if (on && detail && !hd.open) {                // brass push-bars
       ctx.fillStyle = 'rgba(240,206,140,0.75)';
       ctx.fillRect(bX+bW*0.455, GND-H*0.062, 1.4, 4);
       ctx.fillRect(bX+bW*0.532, GND-H*0.062, 1.4, 4);
@@ -1780,6 +2038,7 @@ function renderApartment(e, px, py, t) {
     ctx.fillRect(bX+bW*0.90, GND+H*0.006, bW*0.06, H*0.028);
     ctx.fillStyle = on ? '#4d5f4d' : '#1c241c';
     ctx.fillRect(bX+bW*0.90, GND+H*0.006, bW*0.06, H*0.007);
+    hd.walkers();
   }
 function renderCondo(e, px, py, t) {
     // The Harrington — 3×5 upscale condominium, drawn footprint-style as a
@@ -1938,7 +2197,9 @@ function renderCondo(e, px, py, t) {
       ctx.fillText('THE HARRINGTON', X(60), Y(lobbyY + 1.2));
       ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
     }
-    // Revolving door
+    // Revolving door, residents passing through it
+    const hd = homeDoor({ X, Y, S: sm }, e, t, { scale: 1.4, x0: 54.5, x1: 65.5, y0: 167.5, y1: 184, revolving: true, on, lanes: 5,
+      path: [[60, 184], [60, 190], [60 + (hash(3, 9) > 0.5 ? 1 : -1) * 22, 198]] });
     R(53, 166, 14, 18, on ? '#2a241c' : '#1c1a16');
     R(54.5, 167.5, 11, 16.5, on ? (night ? 'rgba(255,220,150,0.8)' : 'rgba(160,190,210,0.7)') : '#2c3034');
     if (detail) {
@@ -2001,6 +2262,7 @@ function renderCondo(e, px, py, t) {
       R(phX - 2, phY - 3, phW + 4, 2.5, gl);
     }
 
+    hd.walkers();
     ctx.strokeStyle = on ? 'rgba(216,178,90,0.55)' : 'rgba(60,56,48,0.8)';
     ctx.lineWidth = 1;
     ctx.strokeRect(X(4) + 0.5, Y(tY - 2) + 0.5, 112*sx - 1, (186 - tY)*sy - 1);
@@ -2072,6 +2334,7 @@ function renderCompanyTown(e, px, py, t) {
     const ROOFS  = on ? [['#7a4034', '#5a2e26', '#94523f'], ['#4e5864', '#363e48', '#646f7c']] : [['#3a2420', '#2a1a16', '#44302a'], ['#2a2e34', '#1e2226', '#34383e']];
     const SIDING = on ? ['#e6dcc4', '#c8d4d8', '#d4dcc0', '#ddd0bc'] : ['#4a463e', '#40444a', '#444a3e', '#484238'];
     const CLOTHES = ['#e8483a', '#f4f0e6', '#3a70d8', '#f0c030', '#8ab8e0'];
+    const cottageDoors = [];
     const cottage = (x, y, i) => {
       const [roofF, roofB, ridge] = ROOFS[hash(i, 3) < 0.7 ? 0 : 1];
       const wall = SIDING[Math.floor(hash(i, 5)*SIDING.length)];
@@ -2120,7 +2383,11 @@ function renderCompanyTown(e, px, py, t) {
       const lit = busy && hash(i, 11) > 0.28;
       R(x + 3, y + 19, 7, 4, lit ? `rgba(255,215,140,${(0.7 + 0.12*Math.sin(t*1.3 + i)).toFixed(3)})` : (on ? '#3a4652' : '#16181a'));
       if (detail) { R(x + 6.2, y + 19, 0.6, 4, wall); R(x + 2.5, y + 23, 8, 0.8, on ? '#f4f0e6' : '#5a564c'); }
-      R(x + 15, y + 18.5, 4, 6.5, on ? ['#3a5a8a', '#7a3a2a', '#3a6a4a', '#5a4a3a'][Math.floor(hash(i, 13)*4)] : '#1e1c1a');
+      const cdoor = on ? ['#3a5a8a', '#7a3a2a', '#3a6a4a', '#5a4a3a'][Math.floor(hash(i, 13)*4)] : '#1e1c1a';
+      const hd = homeDoor({ X, Y, S: sm }, e, t, { x0: x + 15, x1: x + 19, y0: y + 18.5, y1: y + 25, hinge: hash(i, 14) > 0.5 ? 'L' : 'R',
+        leaf: cdoor, edge: on ? '#f4f0e6' : '#3a3a36', on, tier: 'budget', key: i, path: [[x + 17, y + 25], [x + 17, y + 38]] });
+      cottageDoors.push(hd);
+      if (!hd.open) R(x + 15, y + 18.5, 4, 6.5, cdoor);
       R(x + 14.5, y + 25, 5, 1.2, on ? '#b8b0a0' : '#4a463e');
       if (lit && night) R(x + 15, y + 26.2, 4, 2, 'rgba(255,220,150,0.18)');  // porch light spill
       // Washing line in some yards, flapping in the breeze
@@ -2138,6 +2405,7 @@ function renderCompanyTown(e, px, py, t) {
     for (const [bx, by, gap] of [[5, 6, 3], [5, 50, 3], [5, 114, 3], [5, 156, 3], [133, 114, 2], [133, 156, 2]]) {
       for (let h = 0; h < 4; h++) cottage(bx + h*(24 + gap), by, n++);
     }
+    cottageDoors.forEach(d => d.walkers());
 
     // Shade trees in the gaps between some of the houses
     if (detail) for (const [bx, by, gap] of [[5, 6, 3], [5, 50, 3], [5, 114, 3], [5, 156, 3], [133, 114, 2], [133, 156, 2]]) {
@@ -2502,6 +2770,12 @@ function renderSkyscraper(e, px, py, t) {
     ctx.strokeStyle = on ? 'rgba(60,60,60,0.55)' : 'rgba(0,0,0,0.5)'; ctx.lineWidth = S;
     for (let k = 1; k < 10; k++) { const x = px + W*0.10 + W*0.80*k/10; ctx.beginPath(); ctx.moveTo(x, podY + 5*S); ctx.lineTo(x, plY - 2*S); ctx.stroke(); }
     if (on) for (let k = 0; k < 4; k++) _cmPerson(px + W*(0.2 + k*0.18) + Math.sin(t*0.5 + k)*3*S, plY - 5*S, S*0.9, 'rgba(30,30,40,0.7)');
+    // glass entrance doors under the canopy, residents coming and going
+    const hd = homeDoor(_PIXK, e, t, { scale: 1.2*S, x0: cx - 7*S, x1: cx + 7*S, y0: plY - 17*S, y1: plY, hinge: 'LR',
+      leaf: on ? 'rgba(150,190,215,0.7)' : 'rgba(30,36,44,0.9)', edge: '#2a2a2e', on, tier: 'glass', lanes: 6,
+      path: [[cx, plY], [cx, py + H - 2]] });
+    ctx.strokeStyle = on ? '#b89a50' : '#3a3220'; ctx.lineWidth = 1.2*S;
+    ctx.strokeRect(cx - 7*S, plY - 17*S, 14*S, 17*S);
     // canopy
     ctx.fillStyle = on ? '#b89a50' : '#3a3220';
     ctx.beginPath(); ctx.roundRect(px + W*0.32, podY + 1*S, W*0.36, 5*S, 2*S); ctx.fill();
@@ -2515,6 +2789,7 @@ function renderSkyscraper(e, px, py, t) {
     ctx.strokeStyle = on ? `rgba(200,230,255,${night ? 0.5 : 0.7})` : '#141a20'; ctx.lineWidth = 1.2*S;
     ctx.strokeRect(m0, mTop, m1 - m0, podY - mTop);
     ctx.strokeRect(u0, uTop, u1 - u0, mTop - uTop - 6*S);
+    hd.walkers();
 
     ctx.restore();
     _drawHouseStatusDots(e, px+W-TILE, py);
@@ -2667,6 +2942,19 @@ function renderCoop(e, px, py, t) {
     wingBlock(0.035, 0.055, 0.245, 0.80, 2, 100, 'left');    // left wing
     wingBlock(0.720, 0.055, 0.245, 0.80, 2, 300, 'right');   // right wing
     wingBlock(0.280, 0.055, 0.440, 0.245, 5, 500, null);     // back wing
+    // The common front door, in the back wing at the head of the courtyard
+    // path: residents come and go between it and the street.
+    const cdY1 = Y(0.300) - 2.5*S, cdY0 = cdY1 - (H*0.245 - 5*S) / FLOORS * 0.82;
+    const cdX0 = X(0.5) - 3.6*S, cdX1 = X(0.5) + 3.6*S;
+    ctx.fillStyle = trim; ctx.fillRect(cdX0 - 1*S, cdY0 - 1*S, cdX1 - cdX0 + 2*S, cdY1 - cdY0 + 1*S);
+    const coopDoor = homeDoor(_PIXK, e, t, { scale: 0.9*S, x0: cdX0, x1: cdX1, y0: cdY0, y1: cdY1, hinge: 'LR',
+      leaf: on ? '#3e5a34' : '#18220f', edge: trim, on, tier: 'apt', lanes: 5,
+      path: [[X(0.5), cdY1], [X(0.5), Y(0.86)], [X(0.5), Y(0.93)]] });
+    if (!coopDoor.open) {
+      ctx.fillStyle = on ? '#3e5a34' : '#18220f'; ctx.fillRect(cdX0, cdY0, cdX1 - cdX0, cdY1 - cdY0);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(X(0.5) - 0.3*S, cdY0, 0.6*S, cdY1 - cdY0);
+    }
+    ctx.fillStyle = shade('#6e6458', dim); ctx.fillRect(cdX0 - 1.5*S, cdY1, cdX1 - cdX0 + 3*S, 1.4*S);   // step
 
     // ── Roof of the back wing: solar array, water tank, roof deck ────
     const rfX = 0.295, rfY = 0.075, rfW = 0.410, rfH = 0.075;
@@ -2754,6 +3042,7 @@ function renderCoop(e, px, py, t) {
         _cmPerson(x, y, S, pc[k % pc.length]);
       }
     }
+    coopDoor.walkers();
 
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
@@ -2880,6 +3169,7 @@ function renderDuplex(e, px, py, t) {
     ln(40, 21.2, 40, 25.8, units[0].trim, 0.5);
 
     // ── Windows and doors, mirrored about the party wall ─────────────
+    const duplexDoors = [];
     for (const side of [0, 1]) {
       const U = units[side], st = state(side);
       const m = (x) => side ? 80 - x : x;           // mirror x for the right-hand home
@@ -2901,9 +3191,15 @@ function renderDuplex(e, px, py, t) {
       // front door near the party wall
       const ddx = mw(29, 6);
       R(ddx - 0.8, 48.2, 7.6, 13.8, U.trim);
-      R(ddx, 49, 6, 13, U.door);
-      R(ddx + 1.4, 50.5, 3.2, 3, st === 'lit' ? 'rgba(255,212,140,0.85)' : 'rgba(20,24,30,0.7)');
-      dot(side ? ddx + 1 : ddx + 5, 56, 0.45, '#e0c060');
+      const dcx = ddx + 3, gx = side ? 40.4 : 39.6;
+      const hd = homeDoor({ X, Y, S: u }, e, t, { x0: ddx, x1: ddx + 6, y0: 49, y1: 62, hinge: side ? 'R' : 'L',
+        leaf: U.door, edge: U.trim, on, tier: 'mid', key: side, path: [[dcx, 62], [dcx, 65.5], [gx, 70], [gx, 79]] });
+      duplexDoors.push(hd);
+      if (!hd.open) {
+        R(ddx, 49, 6, 13, U.door);
+        R(ddx + 1.4, 50.5, 3.2, 3, st === 'lit' ? 'rgba(255,212,140,0.85)' : 'rgba(20,24,30,0.7)');
+        dot(side ? ddx + 1 : ddx + 5, 56, 0.45, '#e0c060');
+      }
       // porch light: on for whoever's out after dark
       const porch = on && dark > 0.35 && st !== 'asleep';
       const lx = m(36.2);
@@ -2952,6 +3248,7 @@ function renderDuplex(e, px, py, t) {
       ctx.beginPath(); ctx.moveTo(X(x), Y(78)); ctx.lineTo(X(x), Y(74.5)); ctx.lineTo(X(x + 0.6), Y(73.6)); ctx.lineTo(X(x + 1.2), Y(74.5)); ctx.lineTo(X(x + 1.2), Y(78)); ctx.fill();
     }
     R(2, 75, 34.5, 0.7, units[0].trim); R(43.5, 75, 34.5, 0.7, units[1].trim);
+    duplexDoors.forEach(d => d.walkers());
 
     // Without power the pair sits dark
     if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.45)'; ctx.fillRect(X(1), Y(1), 78*u, 78*u); }
@@ -3008,6 +3305,7 @@ function renderRetirementVillage(e, px, py, t) {
     const ROOFS = ['#9c604b', '#5f7182', '#7e6b4f', '#6c7c5c'];
     const HAIR  = ['#f2f2ee', '#c8c8c8', '#e6e0d0'];
     const TOPS  = ['#b85a6a', '#5a7ab0', '#e0b050', '#6a9a7a', '#a07ac0'];
+    const villageDoors = [];
     for (let i = 0; i < 3; i++) {
       const cx0 = 6 + i*42;
       const wall = WALLS[Math.floor(hash(i)*WALLS.length)], roof = ROOFS[Math.floor(hash(i + 10)*ROOFS.length)];
@@ -3027,8 +3325,14 @@ function renderRetirementVillage(e, px, py, t) {
         R(wx - 0.5, 27.4, 9, 1.9, '#7a5a3a');                                              // flower box
         for (let f = 0; f < 4; f++) dot(wx + 1.1 + f*2.2, 27.1, 0.95, ['#e05a7a', '#f0c040', '#d070e0', '#f07a40'][(f + i + w) % 4]);
       }
-      R(cx0 + 15, 21.5, 6, 10.5, '#6c4a3a');                                               // door
-      dot(cx0 + 19.8, 27.2, 0.5, '#e0c060');
+      const hd = homeDoor({ X, Y, S: s }, e, t, { scale: 0.9, x0: cx0 + 15, x1: cx0 + 21, y0: 21.5, y1: 32, hinge: 'L',
+        leaf: '#6c4a3a', edge: wall, on, tier: 'mid', key: i, lanes: 2,
+        path: [[cx0 + 18, 32], [cx0 + 18, 38.5], [cx0 + 18 + (hash(i + 90) < 0.5 ? -12 : 12), 38.5]] });
+      villageDoors.push(hd);
+      if (!hd.open) {
+        R(cx0 + 15, 21.5, 6, 10.5, '#6c4a3a');                                             // door
+        dot(cx0 + 19.8, 27.2, 0.5, '#e0c060');
+      }
       R(cx0 + 2, 32, 32, 3, '#a8957a');                                                    // porch deck
       // Porch light at dusk, while they're still up
       if (on && dark > 0.35 && !lateNight) {
@@ -3116,6 +3420,8 @@ function renderRetirementVillage(e, px, py, t) {
     } else {
       R(118, 34.5, 9, 5.5, '#f4f2ea'); R(119, 35.5, 7, 3.5, '#3e8a62');                   // parked for the night
     }
+
+    villageDoors.forEach(d => d.walkers());
 
     // Without power the village sits dark
     if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.45)'; ctx.fillRect(X(2), Y(2), 156*s, 76*s); }
@@ -3456,9 +3762,14 @@ function renderMansion(e, px, py, t) {
     R(129, 92, 22, 20, stoneN);
     R(132, 94, 16, 18, L('#4a3020', '#2a1c14', '#1a100c'));
     R(133, 94.8, 14, 2.6, winGlass(evening || (on && night), 40));      // transom light
-    R(133.5, 98.5, 5.5, 12.5, L('#5a3a26', '#322018', '#1e140e'));
-    R(141, 98.5, 5.5, 12.5, L('#5a3a26', '#322018', '#1e140e'));
-    dot(138, 103, 0.7, gilt); dot(142, 103, 0.7, gilt);
+    const hallDoor = homeDoor({ scale: 1.45, X, Y, S }, e, t, { x0: 133, x1: 147, y0: 98.5, y1: 112, hinge: 'LR',
+      leaf: L('#5a3a26', '#322018', '#1e140e'), edge: gilt, on, tier: 'luxury', lanes: 3,
+      path: [[140, 112], [140, 118], [140, 127]] });
+    if (!hallDoor.open) {
+      R(133.5, 98.5, 5.5, 12.5, L('#5a3a26', '#322018', '#1e140e'));
+      R(141, 98.5, 5.5, 12.5, L('#5a3a26', '#322018', '#1e140e'));
+      dot(138, 103, 0.7, gilt); dot(142, 103, 0.7, gilt);
+    }
     // Steps down to the drive
     R(126, 112, 28, 3, L('#efe8d8', '#6a6458', '#3a3830'));
     R(123, 115, 34, 3, L('#e2dac6', '#5e5a50', '#34322c'));
@@ -3527,6 +3838,7 @@ function renderMansion(e, px, py, t) {
     } else if (on) {
       drawCar(140, 130, 0);                                              // parked at the steps
     }
+    hallDoor.walkers();
 
     // Name plaque on the gate threshold (readable at zoom)
     if (Camera.zoom > 0.5) {
@@ -3747,7 +4059,10 @@ function renderVictorianManor(e, px, py, t) {
     R(129, 99.5, 3, 22, 'rgba(255,255,255,0.08)'); R(152, 99.5, 3, 22, 'rgba(0,0,0,0.12)');
     // Front door with stained-glass fanlight
     R(97, 100, 16, 22, trim);
-    R(99, 104, 12, 18, L('#3a2418', '#241810', '#140c08'));
+    const manorDoor = homeDoor({ scale: 1.5, X, Y, S }, e, t, { x0: 99, x1: 111, y0: 104, y1: 122, hinge: 'L',
+      leaf: L('#3a2418', '#241810', '#140c08'), edge: trim, on, tier: 'premium', lanes: 3,
+      path: [[105, 122], [105, 134], [106, 150], [110, 172]] });
+    if (!manorDoor.open) R(99, 104, 12, 18, L('#3a2418', '#241810', '#140c08'));
     poly([[99, 104], [105, 98], [111, 104]], trim);
     {
       const sg = ['#c83040', '#3060c0', '#e0b030', '#30a060'];
@@ -3755,7 +4070,7 @@ function renderVictorianManor(e, px, py, t) {
         on ? (night ? sg[k] : sg[k] + 'cc') : '#1a1a1e');
       if (on && night) glow(105, 102, 10, '255,200,140', 0.35);
     }
-    dot(109, 113, 0.6, gold);
+    if (!manorDoor.open) dot(109, 113, 0.6, gold);
 
     // ── Wraparound veranda ──
     R(52, 114, 112, 3, trim);                                               // roof fascia
@@ -3844,6 +4159,8 @@ function renderVictorianManor(e, px, py, t) {
       if (night) { ctx.fillStyle = '#fff4c0'; ctx.fillRect(8 * u, -3 * u, 1.2 * u, 1.5 * u); ctx.fillRect(8 * u, 1.5 * u, 1.2 * u, 1.5 * u); }
       ctx.restore();
     }
+
+    manorDoor.walkers();
 
     if (Camera.zoom > 0.5) {
       const label = 'Thornfield House';
@@ -4028,6 +4345,12 @@ function renderGlasswaterPavilion(e, px, py, t) {
         person(170 + Math.sin(t * 0.4) * 6, 140, L('#e06040', '#e08060', '#1a1a1a'), '#8a5a3a', 0, 1.6);
       }
     }
+    // glass pivot door at the west end of the glazing, where the family
+    // comes and goes by the carport path
+    const pavDoor = homeDoor({ scale: 1.7, X, Y, S }, e, t, { x0: 89, x1: 101, y0: 106, y1: 142, hinge: 'L',
+      leaf: on ? 'rgba(170,205,225,0.6)' : 'rgba(24,30,36,0.9)', edge: L('#e8e8e4', '#4a4a48', '#1e1e1c'), on, tier: 'glass', lanes: 3,
+      path: [[95, 142], [95, 147], [68, 147], [56, 165], [40, 192]] });
+    if (detail) R(89, 106, 12, 0.8, L('#e8e8e4', '#4a4a48', '#1e1e1c'));
     // mullions + reflections
     for (let x = 62; x <= 298; x += 26) R(x - 0.6, 96, 1.2, 46, L('#e8e8e4', '#4a4a48', '#1e1e1c'));
     if (!night) for (let k = 0; k < 4; k++) poly([[80 + k * 60, 96], [96 + k * 60, 96], [80 + k * 60, 142], [64 + k * 60, 142]], 'rgba(255,255,255,0.12)');
@@ -4115,6 +4438,7 @@ function renderGlasswaterPavilion(e, px, py, t) {
     dot(313, 98, 2.4, L('#8a6a3a', '#4a3820', '#1e160c'));
     if (on && night) glow(313, 104, 14, '255,210,140', 0.35);
 
+    pavDoor.walkers();
     if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(px, py, 320 * S, 200 * S); }
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
@@ -4319,8 +4643,13 @@ function renderGlassGardens(e, px, py, t) {
       R(x0 - 1, baseY - 8, x1 - x0 + 2, 1.6, L('#e0d6c0', '#6a6458', '#2e2c28'));
     }
     R(146, 100, 28, 24, RIB);                                                  // porch stands proud of the wall
-    R(149, 103, 22, 21, grow ? 'rgba(255,120,230,0.7)' : evening ? '#ffd890' : L('#8ab4c8', '#2a3444', '#0c1014'));
-    if (detail) { R(159.6, 103, 0.8, 21, RIB); dot(157.5, 114, 0.6, '#c8a040'); dot(162.5, 114, 0.6, '#c8a040'); }   // double doors
+    const ggDoor = homeDoor({ scale: 1.35, X, Y, S }, e, t, { x0: 149, x1: 171, y0: 103, y1: 124, hinge: 'LR',
+      leaf: grow ? 'rgba(255,120,230,0.7)' : evening ? 'rgba(255,216,144,0.85)' : L('rgba(138,180,200,0.85)', '#2a3444', '#0c1014'),
+      edge: RIB, on, tier: 'glass', lanes: 3, path: [[160, 124], [160, 136], [90, 137], [89, 178], [136, 191]] });
+    if (!ggDoor.open) {
+      R(149, 103, 22, 21, grow ? 'rgba(255,120,230,0.7)' : evening ? '#ffd890' : L('#8ab4c8', '#2a3444', '#0c1014'));
+      if (detail) { R(159.6, 103, 0.8, 21, RIB); dot(157.5, 114, 0.6, '#c8a040'); dot(162.5, 114, 0.6, '#c8a040'); }   // double doors
+    }
     // ridge vents along the vaults, propped open on a warm afternoon
     const ventsOpen = daytime && hr >= 11 && hr < 16;
     for (const [x0, x1] of wings) for (let x = x0 + 12; x < x1 - 12; x += 14) {
@@ -4421,6 +4750,7 @@ function renderGlassGardens(e, px, py, t) {
       dot(lx, 127, 2, on && night ? '#fff0c0' : L('#e8e4d8', '#5a5448', '#2a2820'));
       if (on && night) glow(lx, 127, 12, '255,230,170', 0.4);
     }
+    ggDoor.walkers();
 
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
@@ -4547,6 +4877,17 @@ function renderAshmereVineyard(e, px, py, t) {
     }
     // small windows + wine-sign over the door
     for (const wxx of [188, 226, 264]) { R(wxx, 104, 6, 7, (tasting || (on && night)) ? '#ffd890' : L('#3a4a52', '#1a2430', '#101418')); R(wxx - 0.6, 111, 7.2, 1, STONE_D); }
+    // the family's own front door, between the cellar doors, and the walk
+    // from it out to the drive
+    R(220.5, 114, 11, 18, STONE_D);
+    R(221.5, 132, 9, 1.4, STONE_D);
+    const estateDoor = homeDoor({ scale: 1.35, X, Y, S }, e, t, { x0: 222, x1: 230, y0: 115.5, y1: 132, hinge: 'R',
+      leaf: L('#6a4a2a', '#3a2818', '#1a120a'), edge: STONE_D, on, tier: 'premium', lanes: 3,
+      path: [[226, 132], [226, 143], [178, 143], [163, 152], [160, 198]] });
+    if (!estateDoor.open) {
+      R(222, 115.5, 8, 16.5, L('#6a4a2a', '#3a2818', '#1a120a'));
+      if (detail) { ln(226, 115.5, 226, 132, 'rgba(0,0,0,0.25)', 0.4); dot(224.6, 124, 0.5, '#c8a040'); }
+    }
     RR(214, 101, 24, 6, 1, L('#4a2a3a', '#2a1822', '#140c10'));
     if (Camera.zoom > 0.5) { ctx.save(); ctx.font = `bold ${3.6 * S}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = L('#e8c890', '#c8a870', '#4a4030'); ctx.fillText('ASHMERE', X(226), Y(104.2)); ctx.restore(); }
     // bell tower (west end of the range)
@@ -4645,6 +4986,7 @@ function renderAshmereVineyard(e, px, py, t) {
     // lanterns on the gate piers + warm winery windows at night
     for (const gx of [148, 172]) { dot(gx, 181, 1.4, on && night ? '#fff0c0' : L('#e8e4d8', '#5a5448', '#2a2820')); if (on && night) glow(gx, 181, 12, '255,220,150', 0.45); }
     if (on && night) glow(226, 116, 60, '255,200,120', 0.16);
+    estateDoor.walkers();
 
     if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(px, py, 320 * S, 200 * S); }
     ctx.restore();
@@ -5244,7 +5586,12 @@ function renderBirchwoodApartments(e, px, py, t) {
     }
     // lobby
     R(38, GND - 20, 44, 20, on ? (dim ? 'rgba(255,220,160,0.85)' : '#9cc0da') : '#2a3038');
-    ln(60, GND - 20, 60, GND, 'rgba(40,40,44,0.8)', 0.8);
+    const bwDoor = homeDoor({ scale: 1.25, X: K.X, Y: K.Y, S: K.sm }, e, t, { x0: 53, x1: 67, y0: GND - 16, y1: GND, hinge: 'LR',
+      leaf: on ? (dim ? 'rgba(255,226,170,0.75)' : 'rgba(170,205,225,0.8)') : '#2a3038', edge: 'rgba(40,40,44,0.9)', on, tier: 'glass', lanes: 5,
+      path: [[60, GND], [60, 159]] });
+    ctx.strokeStyle = 'rgba(40,40,44,0.8)'; ctx.lineWidth = 0.6*K.sm; ctx.strokeRect(K.X(53), K.Y(GND - 16), 14*K.sx, 16*K.sy);
+    if (!bwDoor.open) ln(60, GND - 20, 60, GND, 'rgba(40,40,44,0.8)', 0.8);
+    else ln(60, GND - 20, 60, GND - 16, 'rgba(40,40,44,0.8)', 0.8);
     R(36, GND - 23, 48, 3, on || !dim ? '#3a3a3e' : '#1e1e20');
     if (detail) {
       ctx.fillStyle = on ? '#f4f0e6' : '#6a6a6a';
@@ -5260,6 +5607,7 @@ function renderBirchwoodApartments(e, px, py, t) {
     // bike rack + a street tree
     if (detail) for (let k = 0; k < 4; k++) { ctx.strokeStyle = '#8a8e94'; ctx.lineWidth = 0.6*K.sm; ctx.beginPath(); ctx.arc(K.X(90 + k*5), K.Y(GND + 6), 2*K.sm, Math.PI, 0); ctx.stroke(); }
     circ(14, GND + 1, 6, dim ? '#2c4a2e' : '#5a9a4a'); R(13.4, GND + 1, 1.2, 8, '#5a4030');
+    bwDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -5496,8 +5844,11 @@ function renderFoundryLofts(e, px, py, t) {
     R(67, 122.6, 22, GND - 122.6, STONE);
     R(69, 124.6, 18, GND - 124.6, '#1c1e22');
     const door = on ? (dim ? 'rgba(255,214,150,0.8)' : '#6a8aa4') : '#22262c';
-    R(70, 125.4, 16, 2.4, door); R(70, 128.6, 7.6, GND - 128.6, door); R(78.4, 128.6, 7.6, GND - 128.6, door);
-    if (detail) { R(76.5, 136, 0.6, 3, '#c8b070'); R(78.9, 136, 0.6, 3, '#c8b070'); R(72, GND, 12, 1.3, '#5a3a2a'); }
+    R(70, 125.4, 16, 2.4, door);
+    const flDoor = homeDoor({ scale: 1.25, X, Y, S: sm }, e, t, { x0: 70, x1: 86, y0: 128.6, y1: GND, hinge: 'LR',
+      leaf: door, edge: '#1c1e22', on, tier: 'apt', lanes: 5, path: [[78, GND], [78, 159]] });
+    if (!flDoor.open) { R(70, 128.6, 7.6, GND - 128.6, door); R(78.4, 128.6, 7.6, GND - 128.6, door); }
+    if (detail) { if (!flDoor.open) { R(76.5, 136, 0.6, 3, '#c8b070'); R(78.9, 136, 0.6, 3, '#c8b070'); } R(72, GND, 12, 1.3, '#5a3a2a'); }
     R(65, 121.6, 26, 1.7, STEEL); R(65, 123.3, 26, 0.6, 'rgba(0,0,0,0.3)');           // steel canopy on its tie rods
     ln(66.5, 121.6, 69.5, 117.6, STEEL, 0.4); ln(89.5, 121.6, 86.5, 117.6, STEEL, 0.4);
     for (const lx of [64, 92]) { circ(lx, 128, 1.1, night ? '#fff0c0' : '#4a4a4a'); if (night) glow(lx, 128, 7, '255,220,160', 0.4); }
@@ -5515,6 +5866,7 @@ function renderFoundryLofts(e, px, py, t) {
     R(103, GND - 9, 9, 9, C('#4a5a4a', '#20261f')); R(102.5, GND - 9.8, 10, 1.3, C('#5e705e', '#2a322a'));
     ln(107.5, GND - 9.8, 107.5, GND - 15, '#5a4030', 1);
     circ(107.5, GND - 18, 5.2, dim ? '#2c4a2e' : '#4f8a44'); circ(105.2, GND - 16, 3.4, dim ? '#27432a' : '#5f9a52');
+    flDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -5580,6 +5932,11 @@ function renderWillowbankApartments(e, px, py, t) {
     R(aX, aTop - 4, aW, 34, dim ? '#1c2a22' : '#86b870');                      // the garden beyond
     R(aX, GND - 8, aW, 8, dim ? '#2a2a26' : '#c8bca0');
     circ(aX + 10, aTop + 8, 8, dim ? '#1e3422' : '#4e8a44'); circ(aX + 32, aTop + 12, 7, dim ? '#22382a' : '#5a9a4a');
+    // the residents' door on the far side of the courtyard
+    R(aX + 14, GND - 25, 16, 17, BRICK); R(aX + 14, GND - 25, 16, 1, 'rgba(0,0,0,0.2)');
+    const wbDoor = homeDoor({ scale: 1.2, X: K.X, Y: K.Y, S: K.sm }, e, t, { x0: aX + 18, x1: aX + 26, y0: GND - 21, y1: GND - 8, hinge: 'R',
+      leaf: on || !dim ? '#2e5244' : '#16281f', edge: '#e8dcc4', on, tier: 'apt', lanes: 4, path: [[aX + 22, GND - 8], [aX + 22, GND], [aX + 22, GND + 13]] });
+    if (!wbDoor.open) { R(aX + 18, GND - 21, 8, 13, on || !dim ? '#2e5244' : '#16281f'); if (detail) circ(aX + 19.6, GND - 14, 0.5, '#c8a040'); }
     if (detail) {
       R(aX + 16, GND - 12, 12, 1.6, '#7a5a3a'); R(aX + 16, GND - 10, 1, 3, '#5a4028'); R(aX + 27, GND - 10, 1, 3, '#5a4028');   // bench
       if (on && !dim && hr >= 15 && hr < 19) {                                // kids playing in the courtyard
@@ -5606,6 +5963,7 @@ function renderWillowbankApartments(e, px, py, t) {
     }
     // front railings
     if (detail) { ctx.strokeStyle = on || !dim ? '#2a2c30' : '#141518'; ctx.lineWidth = 0.5*K.sm; ctx.beginPath(); for (let x = 6; x < 114; x += 2.5) { if (x > aX - 3 && x < aX + aW + 3) continue; ctx.moveTo(K.X(x), K.Y(GND + 1)); ctx.lineTo(K.X(x), K.Y(GND + 7)); } ctx.moveTo(K.X(6), K.Y(GND + 2)); ctx.lineTo(K.X(aX - 3), K.Y(GND + 2)); ctx.moveTo(K.X(aX + aW + 3), K.Y(GND + 2)); ctx.lineTo(K.X(114), K.Y(GND + 2)); ctx.stroke(); }
+    wbDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -5725,8 +6083,10 @@ function renderPembertonMansions(e, px, py, t) {
     ctx.fillStyle = on ? (dim ? 'rgba(255,214,150,0.9)' : '#9cb8cc') : '#22262c';
     ctx.beginPath(); ctx.arc(X(69), Y(124), 7*sm, Math.PI, 0); ctx.fill();                       // fanlight
     if (detail) for (let k = 1; k < 6; k++) { const a = Math.PI + k*Math.PI/6; ln(69, 124, 69 + Math.cos(a)*7, 124 + Math.sin(a)*7, STONE, 0.4); }
-    R(62, 124, 14, GND - 124, GREEN);
-    if (detail) {
+    const pmDoor = homeDoor({ scale: 1.25, X, Y, S: sm }, e, t, { x0: 62, x1: 76, y0: 124, y1: GND, hinge: 'L',
+      leaf: GREEN, edge: STONE, on, tier: 'premium', lanes: 5, path: [[69, GND], [69, 159]] });
+    if (!pmDoor.open) R(62, 124, 14, GND - 124, GREEN);
+    if (detail && !pmDoor.open) {
       R(63.4, 126, 5, 7, 'rgba(0,0,0,0.18)'); R(69.6, 126, 5, 7, 'rgba(0,0,0,0.18)'); R(63.4, 135, 5, 8, 'rgba(0,0,0,0.18)'); R(69.6, 135, 5, 8, 'rgba(0,0,0,0.18)');
       circ(69, 134, 0.6, '#c8a040');                                                               // knob
       R(67.6, 131, 2.8, 1, '#c8a040');                                                             // letterbox
@@ -5757,6 +6117,7 @@ function renderPembertonMansions(e, px, py, t) {
       ctx.moveTo(X(2), Y(GND + 1.8)); ctx.lineTo(X(56), Y(GND + 1.8)); ctx.moveTo(X(82), Y(GND + 1.8)); ctx.lineTo(X(118), Y(GND + 1.8));
       ctx.stroke();
     }
+    pmDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -5828,7 +6189,10 @@ function renderLindenCourt(e, px, py, t) {
     R(8, UND, 104, 2.4, 'rgba(0,0,0,0.35)');
     const lobby = on ? (dim ? 'rgba(255,220,160,0.88)' : '#9cc4d8') : '#262c34';
     R(46, UND + 3, 30, GND - UND - 3, lobby);
-    if (detail) { for (let k = 1; k < 4; k++) ln(46 + k*7.5, UND + 3, 46 + k*7.5, GND, C('#4a4e54', '#22242a'), 0.5); ln(46, UND + 9, 76, UND + 9, C('#4a4e54', '#22242a'), 0.5); }
+    const lcDoor = homeDoor({ scale: 1.25, X, Y, S: sm }, e, t, { x0: 53.5, x1: 68.5, y0: UND + 9, y1: GND, hinge: 'LR',
+      leaf: on ? (dim ? 'rgba(255,226,170,0.75)' : 'rgba(170,205,225,0.8)') : '#262c34', edge: C('#4a4e54', '#22242a'), on, tier: 'glass', lanes: 5,
+      path: [[61, GND], [61, 159]] });
+    if (detail) { for (let k = 1; k < 4; k++) ln(46 + k*7.5, UND + 3, 46 + k*7.5, k === 2 && lcDoor.open ? UND + 9 : GND, C('#4a4e54', '#22242a'), 0.5); ln(46, UND + 9, 76, UND + 9, C('#4a4e54', '#22242a'), 0.5); }
     if (on && dim) { const g = ctx.createRadialGradient(X(61), Y(GND), 0, X(61), Y(GND), 24*sm); g.addColorStop(0, 'rgba(255,220,160,0.3)'); g.addColorStop(1, 'rgba(255,220,160,0)'); ctx.fillStyle = g; ctx.fillRect(X(37), Y(UND), 48*sx, (GND - UND + 10)*sy); }
     for (const cx of [10, 38, 82, 108]) { R(cx, UND, 3, GND - UND, FRAME); R(cx + 2, UND, 1, GND - UND, 'rgba(0,0,0,0.18)'); }
     // the night shift's cars: parked by day, gone from about 21:00 to 07:00
@@ -5849,6 +6213,7 @@ function renderLindenCourt(e, px, py, t) {
       ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
     }
     if (night) for (const lx of [24, 98]) { circ(lx, UND + 2.6, 1, '#fff0c0'); const g = ctx.createRadialGradient(X(lx), Y(UND + 3), 0, X(lx), Y(UND + 3), 12*sm); g.addColorStop(0, 'rgba(255,230,170,0.3)'); g.addColorStop(1, 'rgba(255,230,170,0)'); ctx.fillStyle = g; ctx.fillRect(X(lx - 12), Y(UND), 24*sx, 22*sy); }
+    lcDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -5941,7 +6306,10 @@ function renderRialto(e, px, py, t) {
     }
     const lobby = on ? (dim ? 'rgba(255,220,160,0.9)' : '#a8c8d8') : '#262c34';
     R(45, 121, 28, GND - 121, lobby);
-    if (detail) { ln(59, 121, 59, GND, CHROME, 0.9); for (const dx of [50, 68]) R(dx, 131, 1, 6, CHROME); for (let k = 0; k < 4; k++) ln(45, 122 + k*1.6, 73, 122 + k*1.6, CHROME, 0.3); }
+    const riDoor = homeDoor({ scale: 1.25, X, Y, S: sm }, e, t, { x0: 45, x1: 73, y0: 127.6, y1: GND, hinge: 'LR',
+      leaf: on ? (dim ? 'rgba(255,226,170,0.8)' : 'rgba(176,206,222,0.85)') : '#262c34', edge: CHROME, on, tier: 'luxury', lanes: 5,
+      path: [[59, GND], [59, 159]] });
+    if (detail) { ln(59, 121, 59, riDoor.open ? 127.6 : GND, CHROME, 0.9); if (!riDoor.open) for (const dx of [50, 68]) R(dx, 131, 1, 6, CHROME); for (let k = 0; k < 4; k++) ln(45, 122 + k*1.6, 73, 122 + k*1.6, CHROME, 0.3); }
     if (night) glow(59, GND, 22, '255,214,150', 0.25);
     // marquee canopy with chasing bulbs
     poly([[34, 114], [84, 114], [86, 120], [32, 120]], CHROME);
@@ -5962,6 +6330,7 @@ function renderRialto(e, px, py, t) {
       circ(cx + 5, GND + 9.2, 1.9, '#1a1a1c'); circ(cx + 19, GND + 9.2, 1.9, '#1a1a1c');
       circ(cx + 23.6, GND + 6, 0.8, '#fff6c8'); glow(cx + 25, GND + 6, 6, '255,240,180', 0.4);
     }
+    riDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -6058,6 +6427,8 @@ function renderLumiereCondos(e, px, py, t) {
       ln(60 - wg, 177, 60 - wg, GND, '#2a3034', 0.5); ln(60 + wg, 177, 60 + wg, GND, '#2a3034', 0.5); ln(60, 177, 60, GND, '#2a3034', 0.6);
     }
     R(52, GND, 16, 3, on || !dim ? '#8a1e24' : '#3a1214');                     // red carpet out to the kerb
+    const luDoor = homeDoor({ scale: 1.2, X: K.X, Y: K.Y, S: K.sm }, e, t, { x0: 54, x1: 66, y0: 176, y1: GND, revolving: true, on, lanes: 5,
+      path: [[60, GND], [60, GND + 3], [60 + (K.hash(4, 4) > 0.5 ? 1 : -1) * 18, GND + 12]] });
     R(30, 164, 60, 3, on || !dim ? '#1e2226' : '#101214');
     if (on && dim && detail) for (let x = 34; x < 88; x += 8) circ(x, 167.3, 0.7, warm(0.95));   // canopy downlights
     R(30, 167, 1, 19, '#1e2226'); R(89, 167, 1, 19, '#1e2226');
@@ -6085,6 +6456,7 @@ function renderLumiereCondos(e, px, py, t) {
       R(x - 3, GND - 5, 6, 5, '#3a3a3e'); circ(x, GND - 7, 3.6, dim ? '#1e3422' : '#4a8a44');
       if (fine && !dim) for (let k = 0; k < 4; k++) circ(x - 2 + k*1.4, GND - 8 + (k % 2)*1.6, 0.6, ['#f4f0e6', '#e05a6a', '#f4f0e6', '#b070d0'][k]);   // white and pink blooms
     }
+    luDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -6143,8 +6515,13 @@ function renderAshfordCondos(e, px, py, t) {
       }
     }
     // entrance: green awning, doors, brass lamps, doorman
-    R(44, GND - 22, 32, 22, on ? (dim ? 'rgba(255,220,160,0.85)' : '#6a5238') : '#2a2218');
-    ln(60, GND - 22, 60, GND, on || !dim ? '#3a2a1a' : '#1a140c', 0.8);
+    const asDoor = homeDoor({ scale: 1.3, X: K.X, Y: K.Y, S: K.sm }, e, t, { x0: 44, x1: 76, y0: GND - 22, y1: GND, hinge: 'LR',
+      leaf: on || !dim ? '#5a4228' : '#2a2218', edge: on || !dim ? '#3a2a1a' : '#1a140c', on, tier: 'luxury', lanes: 5,
+      path: [[60, GND], [60, GND + 12]] });
+    if (!asDoor.open) {
+      R(44, GND - 22, 32, 22, on ? (dim ? 'rgba(255,220,160,0.85)' : '#6a5238') : '#2a2218');
+      ln(60, GND - 22, 60, GND, on || !dim ? '#3a2a1a' : '#1a140c', 0.8);
+    }
     poly([[40, GND - 26], [80, GND - 26], [84, GND - 20], [36, GND - 20]], on || !dim ? '#2e5a44' : '#16281f');
     ln(36, GND - 20, 36, GND + 6, '#c8a860', 0.6); ln(84, GND - 20, 84, GND + 6, '#c8a860', 0.6);
     if (detail) {
@@ -6156,6 +6533,7 @@ function renderAshfordCondos(e, px, py, t) {
     for (const lx of [40, 80]) { R(lx - 1, GND - 18, 2, 4, on ? '#e8c060' : '#5a4a2a'); if (on && dim) { ctx.fillStyle = 'rgba(255,210,120,0.25)'; ctx.beginPath(); ctx.arc(K.X(lx), K.Y(GND - 16), 7*K.sm, 0, Math.PI*2); ctx.fill(); } }
     if (on && K.hr >= 7 && K.hr < 23) { R(86, GND - 7, 2.6, 6, '#2a3a2e'); circ(87.3, GND - 8.4, 1.3, '#e0c0a0'); R(85.9, GND - 10, 2.8, 1, '#2a3a2e'); }
     for (const x of [14, 104]) { R(x - 4, GND - 5, 8, 5, STONE_D); circ(x, GND - 7, 4, dim ? '#1e3422' : '#3e7a3a'); }
+    asDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -6172,6 +6550,7 @@ function renderCedarPointCondos(e, px, py, t) {
     const K = _aptKit(e, px, py, t, 200, DW);
     const { R, circ, poly, ln, on, dim, dusk, win, detail, fine, hr, hash } = K;
     const GND = 186, FH = 24, N = 7, L = 8, RX = DW - 8, STEP = 13, CORE = 18, GX = L + CORE + 4;
+    let cpDoor = null;
     const day = on || !dim;
     const CONC = day ? '#ece6da' : '#66625a', CEDAR = day ? '#b8804e' : '#4a3422', CEDAR_D = day ? '#96643a' : '#3a2818';
     const LEAF = dim ? ['#1e3422', '#284a2e'] : ['#4a8a44', '#5ea050'], PINE = dim ? '#16301e' : '#2e6a3c';
@@ -6207,8 +6586,13 @@ function renderCedarPointCondos(e, px, py, t) {
         // glazed lobby under a cedar canopy, then the garage door
         R(GX, y + 6, 52, FH - 6, on ? (dim ? warm(0.85) : '#9cc0d4') : '#22282e');
         for (let x = GX + 13; x < GX + 52; x += 13) ln(x, y + 6, x, GND, MULL, 0.6);
-        R(GX + 20, y + 9, 12, FH - 9, on ? (dim ? 'rgba(255,236,200,0.95)' : '#b8d8e8') : '#2a3038');
-        ln(GX + 26, y + 9, GX + 26, GND, MULL, 0.5);
+        cpDoor = homeDoor({ X: K.X, Y: K.Y, S: K.sm }, e, t, { scale: 1.25, x0: GX + 20, x1: GX + 32, y0: y + 9, y1: GND, hinge: 'LR',
+          leaf: on ? (dim ? 'rgba(255,236,200,0.85)' : 'rgba(184,216,232,0.9)') : '#2a3038', edge: MULL, on, tier: 'glass', lanes: 5,
+          path: [[GX + 26, GND], [GX + 26, GND + 12]] });
+        if (!cpDoor.open) {
+          R(GX + 20, y + 9, 12, FH - 9, on ? (dim ? 'rgba(255,236,200,0.95)' : '#b8d8e8') : '#2a3038');
+          ln(GX + 26, y + 9, GX + 26, GND, MULL, 0.5);
+        }
         R(GX - 3, y + 2, 58, 4, CEDAR_D);
         R(RX - 50, y + 8, 40, FH - 8, day ? '#5a5a5e' : '#2a2a2c');
         if (detail) {
@@ -6265,6 +6649,7 @@ function renderCedarPointCondos(e, px, py, t) {
       g.addColorStop(0, warm(0.32)); g.addColorStop(1, warm(0));
       ctx.fillStyle = g; ctx.fillRect(K.X(GX - 4), K.Y(GND), 60*K.sx, 14*K.sy);
     }
+    if (cpDoor) cpDoor.walkers();
     ctx.restore();
     _drawHouseStatusDots(e, px + K.W - TILE, py);
   }
@@ -23335,7 +23720,10 @@ function renderArcology(e, px, py, t) {
   // foot: arched entrance, plaza fountain, planters, lamps, people
   ctx.fillStyle = on ? (night ? 'rgba(255,224,170,0.92)' : '#a8d0dc') : '#22282e';
   ctx.beginPath(); ctx.moveTo(X(126), Y(GND)); ctx.lineTo(X(126), Y(GND - 20)); ctx.ellipse(X(CX), Y(GND - 20), 34 * S, 16 * S, 0, Math.PI, 0); ctx.lineTo(X(194), Y(GND)); ctx.closePath(); ctx.fill();
-  for (const x of [143, CX, 177]) ln(x, GND - 34, x, GND, L('#3a4450', '#2a2e34', '#16181c'), 0.7);
+  const arDoor = homeDoor(K, e, t, { scale: 1.25, x0: 143, x1: 177, y0: GND - 20, y1: GND, hinge: 'LR',
+    leaf: on ? (night ? 'rgba(255,226,170,0.8)' : 'rgba(176,214,232,0.85)') : '#22282e', edge: L('#3a4450', '#2a2e34', '#16181c'), on, tier: 'glass', lanes: 7,
+    path: [[CX, GND], [CX, GND + 12], [CX + (h(77) > 0.5 ? 40 : -40), GND + 24]] });
+  for (const x of [143, CX, 177]) ln(x, GND - 34, x, x === CX && arDoor.open ? GND - 20 : GND, L('#3a4450', '#2a2e34', '#16181c'), 0.7);
   ln(126, GND - 20, 194, GND - 20, L('#3a4450', '#2a2e34', '#16181c'), 0.7);
   text('NOVA ARCOLOGY', CX, GND - 42, 7, L('#2a3a52', '#9ae0ff', '#3a4250'));
   if (on && night) glow(CX, GND, 46, '255,224,170', 0.22);
@@ -23344,6 +23732,7 @@ function renderArcology(e, px, py, t) {
   for (const [x, k] of [[22, 0], [104, 1], [214, 2], [250, 3], [298, 4]]) { RR(x - 4, GND + 7, 8, 3, 1, L('#8a8e94', '#3a3e44', '#1e2024')); tree(x, GND + 7, 5 + h(700 + k) * 2, k); }
   for (const lx of [40, 280]) { R(lx - 0.5, GND - 4, 1, 16, L('#2a2a2e', '#1a1a1e', '#141414')); dot(lx, GND - 5, 1.3, on && night ? '#fff0c0' : '#6a6a6a'); if (on && night) glow(lx, GND - 3, 18, '255,230,170', 0.3); }
   if (on && detail) for (let i = 0; i < 12; i++) { const u = (t * (0.02 + (i % 4) * 0.006) + i / 12) % 1; person(i % 2 ? 8 + u * 304 : 312 - u * 304, GND + 18 + (i % 3) * 4, _N_SHIRT[i % 8], _N_SKIN[i % 6], 0, 1.2); }
+  arDoor.walkers();
   if (!on) { R(120, 150, 80, 16, 'rgba(20,16,20,0.75)'); text('NO POWER', CX, 158, 9, 'rgba(255,90,70,0.95)', 'Courier New'); }
   ctx.restore();
   _drawHouseStatusDots(e, px + TILE * ((e.width || 8) - 1), py);
@@ -25278,11 +25667,16 @@ function renderEvergreenSpires(e, px, py, t) {
     R(x0 + 8, GND - 18, w - 16, 18, on ? (night ? '#ffdc9c' : '#8ec4dc') : '#1a1e24');
     if (on && !night) R(x0 + 8, GND - 18, w - 16, 5, 'rgba(255,255,255,0.25)');
     for (let m = 0; m <= 6; m++) R(x0 + 8 + m * (w - 16) / 6 - 0.4, GND - 18, 0.8, 18, L('#5a6068', '#2a2420', '#101012'));
-    R(cx - 7, GND - 13, 14, 13, on ? (night ? '#fff0c8' : '#b4dcec') : '#14181c'); R(cx - 0.3, GND - 13, 0.6, 13, L('#5a6068', '#2a2420', '#101012'));
+    const esDoor = homeDoor(K, e, t, { scale: 1.05, x0: cx - 7, x1: cx + 7, y0: GND - 13, y1: GND, hinge: 'LR',
+      leaf: on ? (night ? 'rgba(255,240,200,0.85)' : 'rgba(180,220,236,0.9)') : '#14181c', edge: L('#5a6068', '#2a2420', '#101012'), on, tier: 'glass', lanes: 4, key: seed + 1,
+      path: [[cx, GND], [cx, GND + 14]] });
+    spireDoors.push(esDoor);
+    if (!esDoor.open) { R(cx - 7, GND - 13, 14, 13, on ? (night ? '#fff0c8' : '#b4dcec') : '#14181c'); R(cx - 0.3, GND - 13, 0.6, 13, L('#5a6068', '#2a2420', '#101012')); }
     R(x0 - 7, GND - 25, w + 14, 3, SLAB); R(x0 - 7, GND - 22, w + 14, 0.9, SOFFIT);
     for (let p = 0; p < 9; p++) { const k = h(seed + 2100 + p); shrub(x0 - 4 + p * (w + 8) / 8, GND - 24.6, 2.4 + k * 1.8, k); }
     if (on && night) _lgAdd(K, cx, GND - 6, w * 0.6, '255,214,150', 0.22);
   };
+  const spireDoors = [];
   tower(30, 90, 62, 0);
   tower(164, 86, 100, 3000);
 
@@ -25348,6 +25742,7 @@ function renderEvergreenSpires(e, px, py, t) {
       if (a > 0.3) { dot(fx, fy, 0.7, `rgba(226,255,140,${a.toFixed(2)})`); _lgAdd(K, fx, fy, 4, '210,255,120', a * 0.5); }
     }
   }
+  spireDoors.forEach(d => d.walkers());
 
   if (!on) _lgNoPower(K, 140, 200, 'NO POWER');
   ctx.restore();
@@ -25506,6 +25901,10 @@ function renderPrismCrest(e, px, py, t) {
   R(46, BASE + 2, 148, GND - BASE - 2, on ? (night ? '#ffdc9c' : '#8ec4dc') : '#1a1e24');
   if (on && !night) R(46, BASE + 2, 148, 5, 'rgba(255,255,255,0.25)');
   for (let m = 0; m <= 8; m++) R(46 + m * 148 / 8 - 0.4, BASE + 2, 0.8, GND - BASE - 2, L('#5a6068', '#2a2420', '#101012'));
+  const pcDoor = homeDoor(K, e, t, { scale: 1.1, x0: 110.75, x1: 129.25, y0: GND - 15, y1: GND, hinge: 'LR',
+    leaf: on ? (night ? 'rgba(255,226,170,0.8)' : 'rgba(176,214,232,0.85)') : '#1a1e24', edge: L('#5a6068', '#2a2420', '#101012'), on, tier: 'glass', lanes: 6,
+    path: [[CX, GND], [CX, GND + 4], [72, GND + 6], [66, GND + 30]] });
+  ctx.strokeStyle = L('#5a6068', '#2a2420', '#101012'); ctx.lineWidth = 0.8 * S; ctx.strokeRect(X(110.75), Y(GND - 15), 18.5 * S, 15 * S);
   R(28, BASE - 7, 184, 3.2, L('#f4f6f8', '#5a6070', '#2c2c30'));
   if (on && night) _lgAdd(K, CX, GND - 8, 80, '255,214,150', 0.22);
 
@@ -25535,6 +25934,7 @@ function renderPrismCrest(e, px, py, t) {
   }
   for (const lx of [60, 180]) { ln(lx, GND + 22, lx, GND + 6, L('#34383e', '#1c1e24', '#141416'), 1); dot(lx, GND + 5.4, 1.4, on && night ? '#fff2cc' : L('#e8eaec', '#6a6e74', '#3a3c40')); if (on && night) _lgAdd(K, lx, GND + 10, 20, '255,232,180', 0.3); }
   if (on && detail) for (let i = 0; i < 5; i++) { const u = (t * 0.022 + i / 5) % 1; person(i % 2 ? 16 + u * 208 : 224 - u * 208, GND + 30 + (i % 3), _N_SHIRT[(i + 3) % 8], _N_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.5, 1.05); }
+  pcDoor.walkers();
   RR(70, GND + 30, 100, 8.6, 2, L('#1c2a3c', '#0a1220', '#141618')); R(70, GND + 37.4, 100, 1.2, L('#7fc0e8', '#3a5a9a', '#1c2228'));
   text('PRISM CREST', CX, GND + 34.4, 7, on ? (night ? '#c6e8ff' : '#f2f7fc') : '#3a4250');
 
@@ -25741,6 +26141,9 @@ function renderTidecrest(e, px, py, t) {
   R(110, GND - 11, 100, 11, on ? (night ? '#ffdc9c' : '#8ec4dc') : '#1a1e24');
   if (on && !night) R(110, GND - 11, 100, 3, 'rgba(255,255,255,0.3)');
   for (let m = 0; m <= 5; m++) R(110 + m * 20 - 0.4, GND - 11, 0.8, 11, L('#5a6068', '#2a2420', '#101012'));
+  const tcDoor = homeDoor(K, e, t, { scale: 1.05, x0: 150.4, x1: 169.6, y0: GND - 11, y1: GND, hinge: 'LR',
+    leaf: on ? (night ? 'rgba(255,226,170,0.8)' : 'rgba(176,214,232,0.85)') : '#1a1e24', edge: L('#5a6068', '#2a2420', '#101012'), on, tier: 'glass', lanes: 6,
+    path: [[160, GND], [160, GND + 14]] });
   // lit arcades under each tower
   for (const ax of [22, 222]) for (let c = 0; c < 6; c++) RR(ax + c * 13, GND - 10, 9, 10, 4, on ? (night ? '#ffcf86' : '#7fb4cc') : '#1a1e24');
   R(8, GND - 16, 304, 2.4, L('#ffffff', '#5a6070', '#2c2c30'));
@@ -25845,6 +26248,7 @@ function renderTidecrest(e, px, py, t) {
     ln(bx - 4, by - fl, bx, by, '#f6f6f2', 0.9); ln(bx, by, bx + 4, by - fl, '#f6f6f2', 0.9);
   }
 
+  tcDoor.walkers();
   if (!on) _lgNoPower(K, 160, 170, 'NO POWER');
   ctx.restore();
   _drawHouseStatusDots(e, px + TILE * ((e.width || 8) - 1), py);
@@ -25953,6 +26357,9 @@ function renderHalcyonHelix(e, px, py, t) {
   RR(36, GND - PODIUM, 172, PODIUM, 3, L('#e6e2da', '#3c3e4a', '#222226'));
   R(48, GND - PODIUM + 5, 148, PODIUM - 5, on ? (night ? '#ffdc9c' : '#8ec4dc') : '#1a1e24');
   for (let m = 0; m <= 8; m++) R(48 + m * 148 / 8 - 0.4, GND - PODIUM + 5, 0.8, PODIUM - 5, L('#5a6068', '#2a2420', '#101012'));
+  const hxDoor = homeDoor(K, e, t, { scale: 1.1, x0: 103.9, x1: 121.6, y0: GND - 14, y1: GND, hinge: 'LR',
+    leaf: on ? (night ? 'rgba(255,226,170,0.8)' : 'rgba(176,214,232,0.85)') : '#1a1e24', edge: L('#5a6068', '#2a2420', '#101012'), on, tier: 'glass', lanes: 6,
+    path: [[112.75, GND], [112.75, GND + 3], [72, GND + 5], [64, GND + 28]] });
   R(30, GND - PODIUM - 2, 184, 3, L('#f4f6f8', '#5a6070', '#2c2c30'));
   for (let p = 0; p < 10; p++) _fxShrub(K, 34 + p * 19, GND - PODIUM - 1.4, 2.2 + h(1200 + p) * 1.4, LEAF);
   if (on && night) _lgAdd(K, CX + 10, GND - 8, 80, '255,214,150', 0.22);
@@ -25976,6 +26383,7 @@ function renderHalcyonHelix(e, px, py, t) {
     dot(tx + sw, cy + r * 0.3, r, LEAF[0]); dot(tx - r * 0.5 + sw, cy, r * 0.8, LEAF[1]); dot(tx + r * 0.4 + sw, cy - r * 0.45, r * 0.75, LEAF[2]);
   }
   if (on && detail) for (let i = 0; i < 5; i++) { const u = (t * 0.02 + i / 5) % 1; person(i % 2 ? 18 + u * 204 : 222 - u * 204, GND + 30 + (i % 3), _N_SHIRT[(i + 1) % 8], _N_SKIN[(i + 2) % 6], Math.abs(Math.sin(t * 5 + i)) * 0.5, 1.05); }
+  hxDoor.walkers();
   RR(70, GND + 30, 100, 8.6, 2, L('#1e3430', '#0a1614', '#141616')); R(70, GND + 37.4, 100, 1.2, L('#6ad0b8', '#2a6a5a', '#1c2826'));
   text('HALCYON HELIX', 120, GND + 34.4, 6.6, on ? (night ? '#b4f0e0' : '#f2fbf8') : '#3a4a46');
 
@@ -30854,8 +31262,14 @@ function renderVerdanceHabitat(e, px, py, t) {
   ell(fallX + 34, GND + 2, 44, 7, L('#5ab0e0', '#1a3a70', '#1a2228'));
   if (on) for (let r = 0; r < 3; r++) { const q = (t * 0.4 + r / 3) % 1; ctx.strokeStyle = `rgba(255,255,255,${(0.4 * (1 - q)).toFixed(2)})`; ctx.lineWidth = 0.6 * S; ctx.beginPath(); ctx.ellipse(X(fallX), Y(GND + 1), (3 + q * 14) * S, (1 + q * 3) * S, 0, 0, Math.PI * 2); ctx.stroke(); }
   RR(CX - 12, GND - 18, 24, 18, 4, on ? (night ? 'rgba(255,230,180,0.95)' : '#b8d8e8') : '#1a1e22');
+  const vdDoor = homeDoor(K, e, t, { scale: 1.05, x0: CX - 8, x1: CX + 8, y0: GND - 14, y1: GND, hinge: 'LR',
+    leaf: on ? (night ? 'rgba(255,236,196,0.85)' : 'rgba(190,222,236,0.9)') : '#1a1e22', edge: L('#3a5a4a', '#2a3a30', '#141816'), on, tier: 'glass', lanes: 6,
+    path: [[CX, GND], [CX, GND + 20]] });
+  ctx.strokeStyle = L('#3a5a4a', '#2a3a30', '#141816'); ctx.lineWidth = 0.7 * S; ctx.strokeRect(X(CX - 8), Y(GND - 14), 16 * S, 14 * S);
+  if (!vdDoor.open) ln(CX, GND - 14, CX, GND, L('#3a5a4a', '#2a3a30', '#141816'), 0.6);
   text('VERDANCE', CX + 70, GND + 12, 10, L('#2a5a3a', '#ffe0a0', '#2a2c30'));
   if (on && detail) for (let i = 0; i < 6; i++) { const u = (t * 0.025 + i / 6) % 1; person(i % 2 ? u * 360 : 360 - u * 360, GND + 20, _N_SHIRT[i % 8], _N_SKIN[i % 6]); }
+  vdDoor.walkers();
   // birds by day
   if (on && !night) for (let b = 0; b < 5; b++) {
     const u = (t * 0.03 + b / 5) % 1, bx = u * 400 - 20, by = 40 + _cmFrac(b) * 80 + Math.sin(t + b) * 4;
@@ -31757,10 +32171,16 @@ function renderCelestineArch(e, px, py, t) {
   }
 
   // ── Lobbies at each foot ──
+  const celDoors = [];
   for (const s of [-1, 1]) {
     const x0 = s < 0 ? CX - OH + 10 : CX + IH + 6, w = OH - IH - 16;
     R(x0, GND - 14, w, 14, on ? (night ? 'rgba(255,220,160,0.95)' : '#5a7a98') : '#141618');
     for (let k = 1; k < 5; k++) R(x0 + k * w / 5, GND - 14, 0.6, 14, L('rgba(255,255,255,0.6)', 'rgba(120,90,50,0.6)', 'rgba(60,60,60,0.4)'));
+    const dcx = x0 + w / 2;
+    celDoors.push(homeDoor(K, e, t, { scale: 1.05, x0: dcx - 8, x1: dcx + 8, y0: GND - 12, y1: GND, hinge: 'LR',
+      leaf: on ? (night ? 'rgba(255,226,170,0.85)' : 'rgba(150,186,214,0.9)') : '#141618', edge: L('#eef4fa', '#4a5a7a', '#2a2c30'), on, tier: 'glass', lanes: 5, key: s + 2,
+      path: [[dcx, GND], [dcx, GND + 14]] }));
+    ctx.strokeStyle = L('#eef4fa', '#4a5a7a', '#2a2c30'); ctx.lineWidth = 0.8 * S; ctx.strokeRect(X(dcx - 8), Y(GND - 12), 16 * S, 12 * S);
     poly([[x0 - 4, GND - 14], [x0 + w + 4, GND - 14], [x0 + w, GND - 18], [x0, GND - 18]], L('#eef4fa', '#4a5a7a', '#2a2c30'));
     if (on && night) add(x0 + w / 2, GND - 6, 30, '255,220,160', 0.3);
   }
@@ -31797,6 +32217,7 @@ function renderCelestineArch(e, px, py, t) {
     const x = side ? CX + IH + 36 + u * 90 : CX - IH - 36 - u * 90;
     person(x, GND + 12 + (i % 3) * 4, _N_SHIRT[i % 8], _N_SKIN[i % 6]);
   }
+  celDoors.forEach(d => d.walkers());
 
   // ── Fireworks over the span, now and then at night ──
   if (on && night) {
