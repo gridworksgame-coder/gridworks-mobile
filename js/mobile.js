@@ -649,12 +649,17 @@
       if (!one) return;
       // Duplicate mode: a double tap anywhere ends it, and puts away what
       // is in hand (like ✕). The first tap did its normal thing.
-      if (pickMode && !one.locked && !one.moved) {
+      // Sizes are in real screen px (the page is scaled down on a phone), and
+      // a finger may wobble a little: one.moved trips at a few px, too
+      // strict for a fingertip tap.
+      const spx = (_applied && _applied.s) || 1;
+      const drift = Math.hypot(one.x - one.sx, one.y - one.sy) * spx;
+      if (pickMode && !one.locked && drift < 22) {
         // Timed from the touch events themselves: a busy frame between the
         // handlers must not turn a quick tap into a slow one.
         const now = e.timeStamp;
-        if (now - one.et < 300 && lastPickTap && now - lastPickTap.t < DTAP_MS + 250
-            && Math.hypot(one.x - lastPickTap.x, one.y - lastPickTap.y) < DTAP_SLOP) {
+        if (now - one.et < 400 && lastPickTap && now - lastPickTap.t < 600
+            && Math.hypot(one.x - lastPickTap.x, one.y - lastPickTap.y) * spx < 60) {
           lastPickTap = null;
           clearTimeout(one.timer); clearTimeout(one.longTimer);
           if (one.down) mouse(cv, 'mouseup', one.x, one.y, one.button);
