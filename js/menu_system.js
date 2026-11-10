@@ -1150,18 +1150,39 @@ const MenuSystem = (() => {
     // after every reload until Windowed -> Full Screen was pressed again.
     if (_desk || _fsArmed || !_wantFull() || _fsEl()) return;
     _fsArmed = true;
+    // Try on every part of every tap until it holds: which of these the
+    // browser accepts as the go-ahead varies (on a phone the map swallows
+    // the click, and its touchend may not count).
     const evs = ['pointerup', 'touchend', 'click', 'keydown'];
+    let busy = false;
+    const done = () => { evs.forEach(t => document.removeEventListener(t, go, true)); _fsArmed = false; _fsButton(false); };
     const go = (e) => {
       if (e.type === 'keydown' && (e.key === 'Escape' || e.key === 'F11')) return;   // not a usable gesture
-      evs.forEach(t => document.removeEventListener(t, go, true));
-      _fsArmed = false;
-      if (!_wantFull() || _fsEl()) return;
-      _enterBrowserFull().then(() => {
-        _syncDisplaySeg();
-        if (!_fsEl()) setTimeout(_resumeFullScreen, 300);   // refused this time: next tap
-      });
+      if (!_wantFull() || _fsEl()) { done(); return; }
+      if (busy) return;
+      busy = true;
+      _enterBrowserFull().then(() => { busy = false; _syncDisplaySeg(); if (_fsEl()) done(); });
     };
     evs.forEach(t => document.addEventListener(t, go, true));
+    // And a real button, which always counts: on a phone a tap on the map
+    // can be refused where a tap on a button never is.
+    if (window.GW_MOBILE) _fsButton(true);
+  }
+  function _fsButton(show) {
+    let b = document.getElementById('gwm-fsprompt');
+    if (!show || _fsEl()) { if (b) b.remove(); return; }
+    if (b) return;
+    b = document.createElement('button');
+    b.id = 'gwm-fsprompt'; b.type = 'button';
+    b.textContent = '⛶ Tap to return to full screen';
+    const tap = (e) => {
+      e.preventDefault(); e.stopPropagation();
+      _enterBrowserFull().then(() => { _syncDisplaySeg(); if (_fsEl()) b.remove(); });
+    };
+    b.addEventListener('click', tap);
+    b.addEventListener('touchend', tap, { passive: false });
+    for (const t of ['touchstart', 'mousedown', 'pointerdown']) b.addEventListener(t, (e) => e.stopPropagation());
+    document.body.appendChild(b);
   }
   function _syncDisplaySeg() {
     const seg = document.getElementById('opt-display-seg');
@@ -1187,6 +1208,7 @@ const MenuSystem = (() => {
       if (full) await _enterBrowserFull();
       else if (_fsEl()) { try { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (_e) {} }
       _saveWantFull(full && _wantFull());   // the mobile "stay windowed" card may have cleared it
+      if (!_wantFull()) _fsButton(false);
     }
     _syncDisplaySeg();
   }
