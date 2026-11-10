@@ -1480,6 +1480,8 @@
     // Page not scaled (browser full screen, or inside a frame): a class
     // for the few sizes that need their own tuning there.
     document.documentElement.classList.toggle('gwm-unscaled', !!_applied && Math.abs(innerWidth - _applied.vw) > 2);
+    // Full screen (the Options toggle / return button): a few panels size down.
+    document.documentElement.classList.toggle('gwm-fs', !!(document.fullscreenElement || document.webkitFullscreenElement));
     // The return-to-full-screen button, however full screen came back.
     if (document.fullscreenElement || document.webkitFullscreenElement) { const fb = $('gwm-fsprompt'); if (fb) fb.remove(); }
     fitTopBar();

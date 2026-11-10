@@ -247,6 +247,8 @@ html.gw-mobile.gwm-toppanel #tutorial-card { z-index: 30 !important; }
 /* Requests panel sits inside the toolbar (zoomed 0.525): undo that, so it is
    the normal panel size, not 0.42. */
 html.gw-mobile #req-panel { zoom: calc(var(--gwm-panel-zoom, 0.8) / var(--gwm-hotbar-zoom, 0.525)) !important; }
+/* Full screen: the connection-request window 20% smaller. */
+html.gw-mobile.gwm-fs #req-panel { zoom: calc(0.8 * var(--gwm-panel-zoom, 0.8) / var(--gwm-hotbar-zoom, 0.525)) !important; }
 
 /* After the game reloads the page (new game), a tap puts full screen back. */
 #gwm-fsprompt {
