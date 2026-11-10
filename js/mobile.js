@@ -390,6 +390,7 @@
     let two = null;         // pinch state
     let suppressUntilClear = false;
     let lastTap = null;     // previous quick tap (double tap → zoom)
+    let lastPickTap = null; // previous quick tap in duplicate mode (double tap → off)
     // Only bare ground: a double tap on a truck drives it, and one on a
     // building or road is two clicks on it, as before.
     function emptyGround(x, y) {
@@ -567,7 +568,7 @@
           if (im && im.lastMouseSX != null) p = { x: im.lastMouseSX + r.left, y: im.lastMouseSY + r.top };
         }
         const f0 = pt(ts[0]);
-        one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, fx: f0.x, fy: f0.y, t: performance.now(), down: false, moved: false, button: 0, locked };
+        one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, fx: f0.x, fy: f0.y, t: performance.now(), et: e.timeStamp, down: false, moved: false, button: 0, locked };
         if (!locked) mouse(cv, 'mousemove', p.x, p.y, 0);   // hover → ghost/tooltips
         // Duplicate mode: a touch on an item picks it up (on release); a
         // touch on open ground goes on as normal (places what's in hand).
@@ -646,6 +647,30 @@
       }
       if (two) return;
       if (!one) return;
+      // Duplicate mode: a double tap anywhere ends it, and puts away what
+      // is in hand (like ✕). The first tap did its normal thing.
+      if (pickMode && !one.locked && !one.moved) {
+        // Timed from the touch events themselves: a busy frame between the
+        // handlers must not turn a quick tap into a slow one.
+        const now = e.timeStamp;
+        if (now - one.et < 300 && lastPickTap && now - lastPickTap.t < DTAP_MS + 250
+            && Math.hypot(one.x - lastPickTap.x, one.y - lastPickTap.y) < DTAP_SLOP) {
+          lastPickTap = null;
+          clearTimeout(one.timer); clearTimeout(one.longTimer);
+          if (one.down) mouse(cv, 'mouseup', one.x, one.y, one.button);
+          one = null;
+          setPick(false);
+          // Escape first cancels anything the first tap started (a road or
+          // pipe being drawn), so keep going until the hand is empty.
+          let n = 0;
+          const putAway = () => { if (tool() && n++ < 3) { tapKey('Escape', 'Escape'); setTimeout(putAway, 60); } };
+          putAway();
+          buzz(15);
+          toast('Duplicate mode off');
+          return;
+        }
+        lastPickTap = { t: now, x: one.x, y: one.y };
+      }
       if (one.pick) {
         // A tap (not a drag) on an item: pick it up, and stay in duplicate
         // mode for the next one. Already holding that very item: leave it
@@ -850,7 +875,7 @@
     pickMode = on;
     pickBtn?.classList.toggle('on', on);
     quick?.querySelector('.gwm-pick')?.classList.toggle('on', on);
-    if (on) toast('Duplicate mode: tap any item to pick it up · tap ⌖ again to stop');
+    if (on) toast('Duplicate mode: tap any item to pick it up · double tap or ⌖ to stop');
   }
   function setShift(on) {
     if (mods.shift === on) return;
