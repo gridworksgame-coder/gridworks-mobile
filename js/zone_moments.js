@@ -132,7 +132,23 @@ const ZoneMoments = (() => {
   let _t = 0, _dark = 0, _detail = true, _hr = 12, _day = 1, _season = 1, _rain = 0, _snow = 0, _temp = 15, _el = 0, _weekend = false;
 
   // ── Arrivals ──────────────────────────────────────────────────────
-  // u: 0..1 through the first game day.
+  // An arrival plays out in working hours, not round the clock: removal
+  // men don't unload at 2 a.m. and nobody queues at a new shop door all
+  // night. Accepted in the day, it starts there and then; accepted late
+  // or overnight, it waits for the next morning. Each is
+  // [earliest start hour, latest start hour, how many hours it runs].
+  const ARRIVE = { home: [7.5, 16, 5], business: [9, 15, 7], plant: [6, 14, 8] };
+  // How far through its arrival a building is (0..1), or -1 outside it.
+  function _arrival(e, [from, until, len]) {
+    if (e._movedIn === undefined) return -1;
+    const el0 = e._movedIn, hr0 = (el0 % DAY) / HOUR;
+    let start = el0;
+    if (hr0 < from) start += (from - hr0) * HOUR;
+    else if (hr0 >= until) start += (24 - hr0 + from) * HOUR;
+    const u = (_el - start) / (len * HOUR);
+    return u >= 0 && u < 1 ? u : -1;
+  }
+  // u: 0..1 through the arrival.
   function moveInHome(ctx, base, e, u, k) {
     _note('moveIn', e.col, e.row);
     const w = e.width || 1, h = e.height || 1;
@@ -686,19 +702,19 @@ const ZoneMoments = (() => {
       const w = (e.width || 1) * TS, h = (e.height || 1) * TS;
       return e.col * TS + w > _vx0 - 3 * TS && e.col * TS < _vx1 + 3 * TS && e.row * TS - 3 * TS < _vy1 && e.row * TS + h + 2 * TS > _vy0;
     };
-    const fresh = (e) => e._movedIn !== undefined && _el - e._movedIn >= 0 && _el - e._movedIn < DAY;
-
     for (const e of EntityRegistry.getByType(T.HOUSE)) {
       if (_budget <= 0) break;
       if (!e.fromRequest || e._constructing || !onScreen(e)) continue;
-      if (fresh(e)) { moveInHome(ctx, base, e, (_el - e._movedIn) / DAY, _id(e)); continue; }
+      const mu = _arrival(e, ARRIVE.home);
+      if (mu >= 0) { moveInHome(ctx, base, e, mu, _id(e)); continue; }
       if (!e.commercialSubtype && (e.width || 1) === 1) home(ctx, base, e);
     }
     for (const type of [T.COMMERCIAL, T.INDUSTRIAL]) for (const e of EntityRegistry.getByType(type)) {
       if (_budget <= 0) break;
       if (!e.fromRequest || e._constructing || !onScreen(e)) continue;
       const ind = type === T.INDUSTRIAL || e.isIndustrial;
-      if (fresh(e)) { grandOpening(ctx, base, e, (_el - e._movedIn) / DAY, _id(e), ind); continue; }
+      const ou = _arrival(e, ind ? ARRIVE.plant : ARRIVE.business);
+      if (ou >= 0) { grandOpening(ctx, base, e, ou, _id(e), ind); continue; }
       if (ind) plant(ctx, base, e); else business(ctx, base, e);
     }
     const streets = _homeStreets();
