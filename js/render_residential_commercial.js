@@ -326,7 +326,8 @@ function _drawHouseStatusDots(e, px, py) {
 //   path            [[x, y], …] the walk out from the threshold; residents
 //                   appear and vanish at the last point (default: 8 down)
 //   tier            hall style: budget | mid | premium | luxury | apt | glass
-//   lanes           how many residents use this door (default 2)
+//   lanes           residents, when the building has no population (default 2)
+//   share           this door's share of the building's residents (default 1)
 //   scale           person size (default: from the door's height)
 //   on              powered (the hall is lit after dark)
 //   key             tells apart several doors on one sprite
@@ -349,22 +350,37 @@ function _homeHash(e, k) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-// How busy a front door is at this hour (0 … 1), and how likely each trip
-// is someone going out rather than coming home.
-function _homeActivity(hr) {
-  if (hr < 5.5 || hr >= 23.5) return 0.03;
-  if (hr < 7)  return 0.25 + (hr - 5.5) / 1.5 * 0.4;
-  if (hr < 9)  return 0.7;
-  if (hr < 16) return 0.35;
-  if (hr < 20) return 0.7;
-  if (hr < 22) return 0.4;
-  return 0.15;
-}
-function _homeOutChance(hr) {
-  if (hr >= 5 && hr < 10) return 0.8;
-  if (hr >= 16)           return 0.25;
-  if (hr < 5)             return 0.2;
-  return 0.5;
+// One resident's comings and goings on game day `d`: a list of
+// { h: game hour at the door, out } in order, every "out" followed by its
+// "in". `H` is the door's hash; `r` which resident. Who they are (worker,
+// at home, a schoolkid, the dog owner) stays the same day to day; when
+// they go varies.
+function _homeDay(H, r, d) {
+  const D = k => H(7001 + r * 131 + (d % 9973) * 17 + k * 3);
+  const weekend = d % 7 >= 5;
+  const kid = r >= 2 && H(30 + r) < 0.55;
+  const works = kid || H(400 + r) < 0.7;
+  const dog = r === 0 && H(90) < 0.25;
+  const ev = [];
+  const trip = (o, i, f = {}) => { ev.push({ h: o, out: true, kid, ...f, shop: false }); ev.push({ h: i, out: false, kid, ...f, bag: false }); };
+  let free = 6;                                              // when they're next home and free
+  if (dog && (weekend || !works)) { const o = 6.6 + D(1) * 1.2; trip(o, o + 0.3 + D(2) * 0.4, { dog: true }); free = o + 1; }
+  if (works && !weekend) {
+    const o = kid ? 7.5 + D(3) * 0.6 : 6.8 + D(3) * 2.2;
+    const i = kid ? 15.1 + D(4) * 0.9 : 16 + D(4) * 3;
+    trip(o, i, { bag: !kid && D(5) < 0.5, shop: !kid && D(6) < 0.35 });
+    free = i + 0.4;
+  } else if (D(7) < 0.75) {                                  // an errand, a visit, the shops
+    const o = Math.max(free, 9.5 + D(8) * 5);
+    const i = o + 0.6 + D(9) * 2.4;
+    trip(o, i, { shop: D(10) < 0.6 });
+    free = i + 0.4;
+  }
+  if (!kid && D(11) < (weekend ? 0.4 : 0.22)) {              // an evening out
+    const o = Math.max(free, 18.6 + D(12) * 1.6);
+    if (o < 21.5) trip(o, Math.min(23.6, o + 1 + D(13) * 1.8), { dog: dog && works && !weekend });
+  }
+  return ev;
 }
 
 // For sprites drawn straight in canvas pixels.
@@ -383,22 +399,32 @@ function homeDoor(K, e, t, o) {
     const d = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
     segs.push(d); len += d;
   }
-  const speed = 1.5 * sc, walkT = Math.max(0.5, len / speed);
-  const hr = DayNight.hour(), act = _homeActivity(hr), outP = _homeOutChance(hr);
+  const hr = DayNight.hour();
   const H = k => _homeHash(e, key * 4093 + k);
 
-  // Each lane is one resident on a loop of trips; some loops they stay in.
+  // Each resident keeps a day of their own on the game clock (_homeDay):
+  // out to work or school in the morning and home in the late afternoon,
+  // or an errand mid-morning for those at home, maybe an evening out, a
+  // dog walk. Every trip out has its trip home, in that order, so a door
+  // never lets out the same person twice. Times are game time (a game
+  // hour is DayNight.secondsPerGameHour() of the clock), the walk itself
+  // takes `walkT` of it.
+  const GH = DayNight.secondsPerGameHour ? DayNight.secondsPerGameHour() : 50;
+  const el = DayNight.getElapsed(), dayN = Math.floor(el / (GH * 24)), day0 = dayN * GH * 24;
+  const speed = 1.5 * sc, walkT = Math.max(0.5, len / speed);
+  // Everyone who lives there (e._population, the info panel's Residents),
+  // shared between the building's doors; a sprite drawn outside the game
+  // (thumbnails) falls back to a small household.
+  const pop = e._population > 0 ? e._population * (o.share || 1) : 0;
+  const people = pop ? Math.max(1, Math.min(18, Math.round(pop))) : (lanes <= 3 ? lanes : lanes * 2);
   let swing = 0;
   const trips = [];
-  for (let l = 0; l < lanes; l++) {
-    const C = walkT + 9 + H(l * 7 + 1) * 10;                 // seconds per loop
-    const tt = t + H(l * 7 + 2) * C, n = Math.floor(tt / C), f = tt - n * C;
-    for (let m = n - 1; m <= n + 1; m++) {
-      const mk = ((m % 65521) + 65521) % 65521;
-      if (H(100 + l * 65521 + mk * 3) >= act) continue;
-      const out = H(101 + l * 65521 + mk * 3) < outP;
-      swing = Math.max(swing, doorSwing(tt - (m * C + (out ? 0 : walkT))));   // at the threshold
-      if (m === n && f < walkT) trips.push({ l, out, d: out ? f * speed : len - f * speed });
+  for (let r = 0; r < people; r++) {
+    for (const ev of _homeDay(H, r, dayN)) {
+      const at = day0 + ev.h * GH;                             // when they're at the threshold
+      swing = Math.max(swing, doorSwing(el - at));
+      const s = ev.out ? el - at : at - el;                    // seconds of walk between them and the door
+      if (s >= 0 && s < walkT) trips.push({ l: r, out: ev.out, d: s * speed, kid: ev.kid, bag: ev.bag, shop: ev.shop, dog: ev.dog });
     }
   }
 
@@ -495,12 +521,13 @@ function homeDoor(K, e, t, o) {
     for (const tr of trips) {
       const alpha = Math.min(1, tr.d / (0.9 * sc), (len - tr.d) / (1.4 * sc));   // through the door; at the far end
       if (alpha <= 0.02) continue;
-      const kid = tr.l === 2 && H(30) < 0.6, ps = sc * (kid ? 0.72 : 1);
+      const kid = tr.kid, ps = sc * (kid ? 0.72 : 1);
       const [x, y] = pt(tr.d);
-      const top = _HOME_TOPS[Math.floor(H(31 + tr.l) * _HOME_TOPS.length)];
-      const legs = _HOME_LEGS[Math.floor(H(41 + tr.l) * _HOME_LEGS.length)];
-      const skin = _HOME_SKINS[Math.floor(H(51 + tr.l) * _HOME_SKINS.length)];
-      const hair = ['#2a1e14', '#5a3a22', '#c8a060', '#1a1a1a', '#8a8a86'][Math.floor(H(61 + tr.l) * 5)];
+      const who = k => H(1000 + tr.l * 7 + k);                  // the same person every trip
+      const top = _HOME_TOPS[Math.floor(who(1) * _HOME_TOPS.length)];
+      const legs = _HOME_LEGS[Math.floor(who(2) * _HOME_LEGS.length)];
+      const skin = _HOME_SKINS[Math.floor(who(3) * _HOME_SKINS.length)];
+      const hair = ['#2a1e14', '#5a3a22', '#c8a060', '#1a1a1a', '#8a8a86'][Math.floor(who(4) * 5)];
       const step = Math.sin(t * 8 + tr.l * 2.1), bob = Math.abs(step) * 0.3 * ps;
       ctx.globalAlpha = alpha;
       ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(X(x + 0.3 * ps), Y(y + 0.2 * ps), 1.5 * ps * S, 0.55 * ps * S, 0, 0, Math.PI * 2); ctx.fill();
@@ -509,11 +536,12 @@ function homeDoor(K, e, t, o) {
       ctx.fillStyle = top; ctx.beginPath(); ctx.roundRect(X(x - 1.15 * ps), Y(y - 4.2 * ps - bob), 2.3 * ps * S, 2.8 * ps * S, 0.8 * ps * S); ctx.fill();
       ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(X(x), Y(y - 5.05 * ps - bob), 0.95 * ps * S, 0, Math.PI * 2); ctx.fill();
       if (Camera.zoom > 0.6) { ctx.fillStyle = hair; ctx.beginPath(); ctx.arc(X(x), Y(y - 5.25 * ps - bob), 0.95 * ps * S, Math.PI, 0); ctx.fill(); }
-      // what they carry: a work bag heading out in the morning, shopping coming home later
-      if (!kid && tr.out && hr < 11 && H(71 + tr.l) < 0.45) P(x + 1.1 * ps, y - 2.4 * ps - bob, 1.3 * ps, 1.1 * ps, '#3a2a1e');
-      else if (!kid && !tr.out && hr >= 15 && H(81 + tr.l) < 0.4) P(x + 1.1 * ps, y - 2.8 * ps - bob, 1.5 * ps, 1.7 * ps, '#e8dcc0');
-      // the family dog, out on a walk with the first of them
-      if (tr.l === 0 && H(90) < 0.25 && !kid) {
+      // what they carry: a work bag going out to work, shopping coming home
+      if (tr.bag) P(x + 1.1 * ps, y - 2.4 * ps - bob, 1.3 * ps, 1.1 * ps, '#3a2a1e');
+      else if (tr.shop) P(x + 1.1 * ps, y - 2.8 * ps - bob, 1.5 * ps, 1.7 * ps, '#e8dcc0');
+      else if (kid && Camera.zoom > 0.6) P(x - 1.2 * ps, y - 4.2 * ps - bob, 0.7 * ps, 2.2 * ps, '#c83a3a');   // school backpack
+      // the family dog, out on its walk
+      if (tr.dog) {
         const dx = x - 2.2 * ps, dy = y + 0.3 * ps, dc = ['#2a2420', '#c8a060', '#f0ece4', '#7a5a3a'][Math.floor(H(91) * 4)];
         ctx.fillStyle = dc; ctx.beginPath(); ctx.ellipse(X(dx), Y(dy - 0.8 * ps - bob * 0.5), 1.1 * ps * S, 0.55 * ps * S, 0, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(X(dx - 1 * ps), Y(dy - 1.3 * ps - bob * 0.5), 0.45 * ps * S, 0, Math.PI * 2); ctx.fill();
@@ -1499,7 +1527,7 @@ function renderTownhouse(e, px, py, t) {
       ctx.fillStyle = porchLit ? 'rgba(255,210,130,0.8)' : (day ? '#5a748e' : '#141a22');
       ctx.beginPath(); ctx.arc(dX + dW/2, dTop, dW/2, Math.PI, 0); ctx.fill();          // fanlight
       const hd = homeDoor(_PIXK, e, t, { x0: dX, x1: dX + dW, y0: dTop, y1: faceBot, hinge: hash(i, 80) > 0.5 ? 'L' : 'R',
-        leaf: P.door, edge: P.trim, on, tier: 'premium', key: i, path: [[dX + dW/2, faceBot], [dX + dW/2, GND + 6*s]] });
+        share: 1 / units, leaf: P.door, edge: P.trim, on, tier: 'premium', key: i, path: [[dX + dW/2, faceBot], [dX + dW/2, GND + 6*s]] });
       homeDoors.push(hd);
       if (!hd.open) {
         ctx.fillStyle = P.door; ctx.fillRect(dX, dTop, dW, faceBot - dTop);
@@ -2385,7 +2413,7 @@ function renderCompanyTown(e, px, py, t) {
       if (detail) { R(x + 6.2, y + 19, 0.6, 4, wall); R(x + 2.5, y + 23, 8, 0.8, on ? '#f4f0e6' : '#5a564c'); }
       const cdoor = on ? ['#3a5a8a', '#7a3a2a', '#3a6a4a', '#5a4a3a'][Math.floor(hash(i, 13)*4)] : '#1e1c1a';
       const hd = homeDoor({ X, Y, S: sm }, e, t, { x0: x + 15, x1: x + 19, y0: y + 18.5, y1: y + 25, hinge: hash(i, 14) > 0.5 ? 'L' : 'R',
-        leaf: cdoor, edge: on ? '#f4f0e6' : '#3a3a36', on, tier: 'budget', key: i, path: [[x + 17, y + 25], [x + 17, y + 38]] });
+        share: 1 / 24, leaf: cdoor, edge: on ? '#f4f0e6' : '#3a3a36', on, tier: 'budget', key: i, path: [[x + 17, y + 25], [x + 17, y + 38]] });
       cottageDoors.push(hd);
       if (!hd.open) R(x + 15, y + 18.5, 4, 6.5, cdoor);
       R(x + 14.5, y + 25, 5, 1.2, on ? '#b8b0a0' : '#4a463e');
@@ -3193,7 +3221,7 @@ function renderDuplex(e, px, py, t) {
       R(ddx - 0.8, 48.2, 7.6, 13.8, U.trim);
       const dcx = ddx + 3, gx = side ? 40.4 : 39.6;
       const hd = homeDoor({ X, Y, S: u }, e, t, { x0: ddx, x1: ddx + 6, y0: 49, y1: 62, hinge: side ? 'R' : 'L',
-        leaf: U.door, edge: U.trim, on, tier: 'mid', key: side, path: [[dcx, 62], [dcx, 65.5], [gx, 70], [gx, 79]] });
+        share: 0.5, leaf: U.door, edge: U.trim, on, tier: 'mid', key: side, path: [[dcx, 62], [dcx, 65.5], [gx, 70], [gx, 79]] });
       duplexDoors.push(hd);
       if (!hd.open) {
         R(ddx, 49, 6, 13, U.door);
@@ -3326,7 +3354,7 @@ function renderRetirementVillage(e, px, py, t) {
         for (let f = 0; f < 4; f++) dot(wx + 1.1 + f*2.2, 27.1, 0.95, ['#e05a7a', '#f0c040', '#d070e0', '#f07a40'][(f + i + w) % 4]);
       }
       const hd = homeDoor({ X, Y, S: s }, e, t, { scale: 0.9, x0: cx0 + 15, x1: cx0 + 21, y0: 21.5, y1: 32, hinge: 'L',
-        leaf: '#6c4a3a', edge: wall, on, tier: 'mid', key: i, lanes: 2,
+        share: 1 / 3, leaf: '#6c4a3a', edge: wall, on, tier: 'mid', key: i, lanes: 2,
         path: [[cx0 + 18, 32], [cx0 + 18, 38.5], [cx0 + 18 + (hash(i + 90) < 0.5 ? -12 : 12), 38.5]] });
       villageDoors.push(hd);
       if (!hd.open) {
@@ -25668,7 +25696,7 @@ function renderEvergreenSpires(e, px, py, t) {
     if (on && !night) R(x0 + 8, GND - 18, w - 16, 5, 'rgba(255,255,255,0.25)');
     for (let m = 0; m <= 6; m++) R(x0 + 8 + m * (w - 16) / 6 - 0.4, GND - 18, 0.8, 18, L('#5a6068', '#2a2420', '#101012'));
     const esDoor = homeDoor(K, e, t, { scale: 1.05, x0: cx - 7, x1: cx + 7, y0: GND - 13, y1: GND, hinge: 'LR',
-      leaf: on ? (night ? 'rgba(255,240,200,0.85)' : 'rgba(180,220,236,0.9)') : '#14181c', edge: L('#5a6068', '#2a2420', '#101012'), on, tier: 'glass', lanes: 4, key: seed + 1,
+      leaf: on ? (night ? 'rgba(255,240,200,0.85)' : 'rgba(180,220,236,0.9)') : '#14181c', edge: L('#5a6068', '#2a2420', '#101012'), share: 0.5, on, tier: 'glass', lanes: 4, key: seed + 1,
       path: [[cx, GND], [cx, GND + 14]] });
     spireDoors.push(esDoor);
     if (!esDoor.open) { R(cx - 7, GND - 13, 14, 13, on ? (night ? '#fff0c8' : '#b4dcec') : '#14181c'); R(cx - 0.3, GND - 13, 0.6, 13, L('#5a6068', '#2a2420', '#101012')); }
@@ -32178,7 +32206,7 @@ function renderCelestineArch(e, px, py, t) {
     for (let k = 1; k < 5; k++) R(x0 + k * w / 5, GND - 14, 0.6, 14, L('rgba(255,255,255,0.6)', 'rgba(120,90,50,0.6)', 'rgba(60,60,60,0.4)'));
     const dcx = x0 + w / 2;
     celDoors.push(homeDoor(K, e, t, { scale: 1.05, x0: dcx - 8, x1: dcx + 8, y0: GND - 12, y1: GND, hinge: 'LR',
-      leaf: on ? (night ? 'rgba(255,226,170,0.85)' : 'rgba(150,186,214,0.9)') : '#141618', edge: L('#eef4fa', '#4a5a7a', '#2a2c30'), on, tier: 'glass', lanes: 5, key: s + 2,
+      leaf: on ? (night ? 'rgba(255,226,170,0.85)' : 'rgba(150,186,214,0.9)') : '#141618', edge: L('#eef4fa', '#4a5a7a', '#2a2c30'), share: 0.5, on, tier: 'glass', lanes: 5, key: s + 2,
       path: [[dcx, GND], [dcx, GND + 14]] }));
     ctx.strokeStyle = L('#eef4fa', '#4a5a7a', '#2a2c30'); ctx.lineWidth = 0.8 * S; ctx.strokeRect(X(dcx - 8), Y(GND - 12), 16 * S, 12 * S);
     poly([[x0 - 4, GND - 14], [x0 + w + 4, GND - 14], [x0 + w, GND - 18], [x0, GND - 18]], L('#eef4fa', '#4a5a7a', '#2a2c30'));
