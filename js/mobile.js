@@ -666,7 +666,6 @@
           const putAway = () => { if (tool() && n++ < 3) { tapKey('Escape', 'Escape'); setTimeout(putAway, 60); } };
           putAway();
           buzz(15);
-          toast('Duplicate mode off');
           return;
         }
         lastPickTap = { t: now, x: one.x, y: one.y };
@@ -875,7 +874,6 @@
     pickMode = on;
     pickBtn?.classList.toggle('on', on);
     quick?.querySelector('.gwm-pick')?.classList.toggle('on', on);
-    if (on) toast('Duplicate mode: tap any item to pick it up · double tap or ⌖ to stop');
   }
   function setShift(on) {
     if (mods.shift === on) return;
