@@ -38,6 +38,201 @@
   if (!ON) return;
 
   document.documentElement.classList.add('gw-mobile');
+  _mixWithOtherAudio();
+
+  // ── Game sound plays alongside the phone's own media ──────────────
+  // A podcast or music app on the phone keeps playing at its own level
+  // under the game: no dip on every click, no pause when a song starts.
+  // The player sets the game's volumes in Settings.
+  //
+  // iPhone (Safari 16.4+): an "ambient" audio session, which mixes with
+  // other apps and never interrupts or ducks them.
+  //
+  // Android: Chrome gives every <audio> element the phone's audio focus,
+  // and a short one (a click) asks the other app to duck for it, a long
+  // one (a song) to pause. Web Audio output takes no focus and just mixes.
+  // So here `new Audio(…)` (every sound the game makes outside its Web
+  // Audio beds) hands back a stand-in with the same face (src, volume,
+  // play/pause, currentTime, duration, loop, playbackRate, muted, the
+  // events the game listens for) that plays the file through Web Audio.
+  // Short files are decoded once and kept; long ones (the music) are
+  // decoded at 24 kHz to keep a song's memory down, and let go when done.
+  // pause_audio.js fades real elements for the pause menu; the same fade
+  // is done here for these. ?mixaudio=0 turns all this off.
+  function _mixWithOtherAudio() {
+    try { if (navigator.audioSession) { navigator.audioSession.type = 'ambient'; return; } } catch (_e) {}
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || qs.get('mixaudio') === '0') return;
+
+    let _ctx = null, _out = null;
+    const ctxGet = () => {
+      if (!_ctx) {
+        _ctx = typeof SFX !== 'undefined' && SFX.context ? SFX.context() : null;
+        if (!_ctx) _ctx = new AC();
+        // SFX.context() points `destination` at its limiter-and-mute stage;
+        // these sounds carry their own levels, so they go straight to the
+        // speakers the way the <audio> elements did.
+        let real = null;
+        try {
+          const base = window.BaseAudioContext ? BaseAudioContext.prototype : AC.prototype;
+          real = Object.getOwnPropertyDescriptor(base, 'destination').get.call(_ctx);
+        } catch (_e) {}
+        _out = real || _ctx.destination;
+      }
+      if (_ctx.state === 'suspended') _ctx.resume().catch(() => {});
+      return _ctx;
+    };
+    // Chrome starts a context suspended until the player touches the page.
+    const unlock = () => { if (_ctx && _ctx.state === 'suspended') _ctx.resume().catch(() => {}); };
+    window.addEventListener('touchend', unlock, true);
+    window.addEventListener('click', unlock, true);
+
+    const BIG = 1.5e6;                           // bytes: a file this size is a song, not a click
+    const cache = new Map();                     // src → Promise<AudioBuffer>, short files only
+    const load = (src) => {
+      if (cache.has(src)) return cache.get(src);
+      const p = fetch(src).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf => {
+        if (buf.byteLength > BIG) {
+          cache.delete(src);
+          const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+          const dec = OAC ? new OAC(2, 1, 24000).decodeAudioData(buf) : ctxGet().decodeAudioData(buf);
+          return dec.then(b => { b.__big = true; return b; });
+        }
+        return new Promise((res, rej) => ctxGet().decodeAudioData(buf, res, rej));
+      });
+      cache.set(src, p);
+      p.catch(() => cache.delete(src));
+      return p;
+    };
+
+    const live = new Set();                      // stand-ins sounding now
+    const waiting = new Set();                   // asked to start while the pause menu was open
+    class MixAudio extends EventTarget {
+      constructor(src) {
+        super();
+        this._src = ''; this._buf = null; this._node = null; this._gain = null; this._tick = null;
+        this._vol = 1; this._muted = false; this._rate = 1; this.loop = false;
+        this._pos = 0; this._t0 = 0; this._want = false; this._fade = 1;
+        this.paused = true; this.ended = false; this.seeking = false;
+        this.preload = 'auto'; this.preservesPitch = true;
+        if (src) this.src = src;
+      }
+      get src() { return this._src; }
+      set src(v) {
+        this._stopNode(); this._buf = null; this._pos = 0; this.ended = false;
+        this._src = v ? new URL(v, location.href).href : '';
+        if (!this._src) return;
+        const me = this._src;
+        load(me).then(b => {
+          if (this._src !== me) return;
+          this._buf = b;
+          for (const t of ['loadedmetadata', 'loadeddata', 'canplay', 'canplaythrough']) this._fire(t);
+          if (this._want && !this._node) this._start();
+        }, () => { if (this._src === me) this._fire('error'); });
+      }
+      get currentSrc() { return this._src; }
+      get readyState() { return this._buf ? 4 : 0; }
+      get duration() { return this._buf ? this._buf.duration : NaN; }
+      get volume() { return this._vol; }
+      set volume(v) { this._vol = Math.max(0, Math.min(1, +v || 0)); this._level(); }
+      get muted() { return this._muted; }
+      set muted(v) { this._muted = !!v; this._level(); }
+      get playbackRate() { return this._rate; }
+      set playbackRate(r) {
+        if (this._node) { this._pos = this.currentTime; this._t0 = this._node.context.currentTime; }
+        this._rate = +r || 1;
+        if (this._node) this._node.playbackRate.value = this._rate;
+      }
+      get currentTime() {
+        if (!this._node) return this._pos;
+        const d = this.duration, t = this._pos + (this._node.context.currentTime - this._t0) * this._rate;
+        return this.loop && d > 0 ? t % d : Math.min(t, d || t);
+      }
+      set currentTime(v) {
+        this._pos = Math.max(0, +v || 0); this.ended = false;
+        if (this._node) { this._stopNode(); this._start(); }
+      }
+      play() {
+        if (this.ended) { this._pos = 0; this.ended = false; }
+        if (this._background() && typeof PauseAudio !== 'undefined' && PauseAudio.isPaused()) {
+          this._played = true; waiting.add(this);   // the pause menu is open: start when it closes
+          return Promise.resolve();
+        }
+        this._played = true;
+        this._want = true;
+        if (this.paused) { this.paused = false; this._fire('play'); }
+        if (this._buf && !this._node) this._start();
+        return Promise.resolve();
+      }
+      pause() {
+        waiting.delete(this);
+        this._want = false;
+        if (this._node) { this._pos = this.currentTime; this._stopNode(); }
+        if (!this.paused) { this.paused = true; this._fire('pause'); }
+      }
+      load() {}
+      canPlayType() { return 'maybe'; }
+      _background() { return !this._gwExempt && (this._played || this.loop || /\/music\//.test(this._src)); }
+      _level() { if (this._gain) this._gain.gain.value = this._muted ? 0 : this._vol * this._fade; }
+      _start() {
+        const c = ctxGet(), b = this._buf;
+        if (!b) return;
+        if (this._pos >= b.duration) { if (!this.loop) { this._end(); return; } this._pos %= b.duration; }
+        const n = c.createBufferSource(), g = c.createGain();
+        n.buffer = b; n.loop = this.loop; n.playbackRate.value = this._rate;
+        n.connect(g); g.connect(_out);
+        this._node = n; this._gain = g; this._level();
+        this._t0 = c.currentTime;
+        n.onended = () => { if (this._node === n && !this.loop) this._end(); };
+        n.start(0, this._pos);
+        live.add(this);
+        this._fire('playing');
+        this._tick = setInterval(() => this._fire('timeupdate'), 250);
+      }
+      _stopNode() {
+        if (this._tick) { clearInterval(this._tick); this._tick = null; }
+        const n = this._node; this._node = null;
+        if (n) { n.onended = null; try { n.stop(); } catch (_e) {} try { n.disconnect(); } catch (_e) {} }
+        if (this._gain) { try { this._gain.disconnect(); } catch (_e) {} this._gain = null; }
+        live.delete(this);
+      }
+      _end() {
+        this._stopNode();
+        this._pos = this.duration || 0; this._want = false;
+        this.ended = true; this.paused = true;
+        this._fire('timeupdate'); this._fire('pause'); this._fire('ended');
+        if (this._buf && this._buf.__big) this._buf = null;   // a song: let its memory go
+      }
+      _fire(type) {
+        const ev = new Event(type);
+        this.dispatchEvent(ev);
+        const h = this['on' + type];
+        if (typeof h === 'function') { try { h.call(this, ev); } catch (_e) {} }
+      }
+    }
+
+    // The pause menu: background sounds fade out over 350 ms and pause,
+    // then pick up where they were with a 250 ms fade in.
+    let held = null, fade = 1;
+    setInterval(() => {
+      const quiet = typeof PauseAudio !== 'undefined' && PauseAudio.isPaused();
+      if (quiet && !held) { held = new Set(); for (const a of live) if (a._background()) held.add(a); }
+      if (!held) return;
+      fade = quiet ? Math.max(0, fade - 50 / 350) : Math.min(1, fade + 50 / 250);
+      for (const a of held) { a._fade = fade; a._level(); }
+      if (quiet && fade === 0) for (const a of held) if (!a.paused) { a.pause(); a._resume = true; }
+      if (!quiet) {
+        for (const a of held) if (a._resume) { a._resume = false; a.play(); }
+        for (const a of waiting) { waiting.delete(a); a.play(); }
+        if (fade === 1) { for (const a of held) { a._fade = 1; a._level(); } held = null; }
+      }
+    }, 50);
+
+    function Audio(src) { return new MixAudio(src); }
+    Audio.prototype = MixAudio.prototype;
+    Audio.Native = window.Audio;
+    window.Audio = Audio;
+  }
 
   // ── 0. Save storage ────────────────────────────────────────────────
   // A real city serialises to several MB, and a phone browser gives
@@ -123,7 +318,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm19';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm20';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
