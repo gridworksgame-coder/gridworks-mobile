@@ -107,6 +107,9 @@
         }
       } catch (_) {}
     });
+    // The game must not read a save before this resolves (menu_system.js
+    // waits on it): until then the in-memory copy is still filling.
+    window.GWM_SAVES_READY = dbReady;
     return { ready: dbReady };
   })();
 

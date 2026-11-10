@@ -579,6 +579,15 @@ const MenuSystem = (() => {
     const el = document.getElementById('save-game-status');
     if (!el) return;
     const usedMb = (SaveSystem.storageUsedBytes() / 1048576).toFixed(1);
+    // Mobile keeps the save files in IndexedDB (js/mobile.js), not in
+    // localStorage's ~5 MB, so that figure and limit don't apply there.
+    if (window.GW_MOBILE) {
+      el.className = errorMsg ? 'save-game-status error' : 'save-game-status';
+      el.textContent = errorMsg
+        ? `⚠ ${errorMsg}. Delete a save below, or export it first to keep a copy.`
+        : 'Saves are kept on this device, in this browser.';
+      return;
+    }
     if (errorMsg) {
       el.className = 'save-game-status error';
       el.textContent = `⚠ ${errorMsg} (using ~${usedMb} MB of the browser's ~5 MB limit). Delete a save below, or export it first to keep a copy.`;
@@ -596,6 +605,12 @@ const MenuSystem = (() => {
     const btn     = document.getElementById('save-folder-connect');
     const section = document.getElementById('save-folder-section');
     if (!el) return;
+    // Phones can't pick a save folder, and don't need one: saves live in the
+    // browser's own storage there, with plenty of room (js/mobile.js).
+    if (window.GW_MOBILE && !SaveSystem.folderActive()) {
+      if (section) section.style.display = 'none';
+      return;
+    }
 
     if (SaveSystem.folderActive()) {
       // Working as intended — keep this quiet, just a one-line confirmation
@@ -789,6 +804,10 @@ const MenuSystem = (() => {
   // before the folder listing arrived — swap to the newest real slot.
   async function readAndStartLoad(slotId, { useLatestIfMissing = false } = {}) {
     if (gameStarted) return;
+    // Mobile keeps save files in IndexedDB, loaded into memory as the page
+    // starts (js/mobile.js). Loading from the pause menu reloads the page and
+    // reads the save at once, before that copy has filled: wait for it.
+    if (window.GWM_SAVES_READY) { try { await window.GWM_SAVES_READY; } catch (_e) {} }
     if (!(await ensureFolderReadyForLoad())) return;
 
     let sid = slotId || null;
