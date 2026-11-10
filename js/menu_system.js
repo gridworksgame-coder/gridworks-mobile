@@ -1134,8 +1134,11 @@ const MenuSystem = (() => {
     if (_fsEl()) return;
     const r = document.documentElement;
     const req = r.requestFullscreen || r.webkitRequestFullscreen;
-    if (!req) return;
-    try { await req.call(r, { navigationUI: 'hide' }); } catch (_e) {}
+    const diag = (window.GWM_FS_DIAG = window.GWM_FS_DIAG || { tries: 0 });
+    diag.tries++; diag.last = (window.event && window.event.type) || 'call';
+    if (!req) { diag.result = 'no API'; return; }
+    try { await req.call(r, { navigationUI: 'hide' }); diag.result = _fsEl() ? 'ok' : 'no change'; }
+    catch (_e) { diag.result = 'refused: ' + String(_e && (_e.message || _e.name) || _e).slice(0, 60); }
     if (_fsEl()) { try { screen.orientation?.lock?.('landscape')?.catch(() => {}); } catch (_e) {} }
   }
   // Full screen chosen but not in it: a reload, an app switch, the

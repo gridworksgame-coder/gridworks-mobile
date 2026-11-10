@@ -123,7 +123,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm15';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm16';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -932,6 +932,10 @@
       </div>`);
     card.id = 'gwm-install';
     for (const t of ['touchstart', 'mousedown', 'pointerdown']) card.addEventListener(t, (e) => e.stopPropagation());
+    // It can open mid-tap (a tap that asked for full screen): the rest of
+    // that same tap must not land on one of its buttons.
+    const shownAt = performance.now();
+    card.addEventListener('click', (e) => { if (performance.now() - shownAt < 450) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
     card.querySelector('.gwm-install-go').addEventListener('click', (e) => {
       e.preventDefault();
       LS.set('fsWant', '');   // don't ask again on every reload of this tab
@@ -1189,6 +1193,9 @@
           ` · vv ${Math.round(visualViewport?.width || 0)}×${Math.round(visualViewport?.height || 0)} @ ${(visualViewport?.scale || 0).toFixed(3)}` +
           ` · outer ${outerWidth}×${outerHeight} · dpr ${devicePixelRatio.toFixed(2)}${cineMode ? ' · CUTSCENE' : ''}` +
           `\n${isAppMode() ? 'APP/fullscreen' : 'browser tab'} · screen ${screen.width}×${screen.height} · cutout L${safeL} R${safeR}` +
+          `\nFS want ${LS.get('fsWant', '') || '-'} · in ${document.fullscreenElement ? 'YES' : 'no'} · dm ${['fullscreen', 'standalone', 'minimal-ui', 'browser'].find(m => matchMedia('(display-mode: ' + m + ')').matches) || '?'}` +
+          ` · standalone ${navigator.standalone ? 'yes' : '-'} · api ${document.documentElement.requestFullscreen ? 'yes' : (document.documentElement.webkitRequestFullscreen ? 'webkit' : 'NONE')}` +
+          ` · btn ${document.getElementById('gwm-fsprompt') ? 'shown' : '-'} · tries ${window.GWM_FS_DIAG?.tries || 0} (${window.GWM_FS_DIAG?.last || '-'} → ${window.GWM_FS_DIAG?.result || '-'})` +
           `\n${navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 110)}`;
         n = 0; t0 = now; worst = 0;
       }
