@@ -1144,9 +1144,11 @@ const MenuSystem = (() => {
   // and keep trying until it holds. Only the Windowed button clears it.
   let _fsArmed = false;
   function _resumeFullScreen() {
-    // The installed app already runs full screen: asking the browser for
-    // it as well there throws away the app's phone-sized layout.
-    if (_desk || _fsArmed || !_wantFull() || _fsEl() || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches) return;
+    // The installed (home-screen) app included: it opens with the system
+    // bars showing, and only this request gives the full-screen layout that
+    // the Options toggle gives. Skipping it there left the app windowed
+    // after every reload until Windowed -> Full Screen was pressed again.
+    if (_desk || _fsArmed || !_wantFull() || _fsEl()) return;
     _fsArmed = true;
     const evs = ['pointerup', 'touchend', 'click', 'keydown'];
     const go = (e) => {
