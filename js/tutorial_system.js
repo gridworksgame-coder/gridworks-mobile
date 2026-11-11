@@ -260,6 +260,28 @@ const TutorialSystem = (() => {
       ],
     },
     {
+      id: 'crewdispatch',
+      title: 'Dispatching a Crew',
+      // The first time a repeat order the player could send a crew to right
+      // now is on the board (ContractSystem.dispatchBlocker clears it): the
+      // DISPATCH CREW button is live, so this is when it is worth explaining.
+      trigger: () => typeof ContractSystem !== 'undefined' && typeof ContractSites !== 'undefined'
+                  && ContractSystem.getOffers().some(o => {
+                       const c = ContractSites.getContract(o.contractId);
+                       return !!(c && c.repeat && !ContractSystem.dispatchBlocker(c));
+                     }),
+      steps: [
+        {
+          text: "A client you have finished three jobs for now trusts a crew of yours. When they want the same job again, a REPEAT ORDER appears on your contract board.\n\nYou can still ACCEPT & TRAVEL and do it yourself for the full pay. Or choose DISPATCH CREW: a crew puts up the build you finished there last time, piece for piece, while you stay home.\n\nThe client pays for all of the crew's equipment, so there is nothing to buy. You are paid half the usual profit once the client signs the job off.",
+          manual: true,
+        },
+        {
+          text: "You have one crew, so only one crew job can be out at a time, and it takes one of your three contract slots. Crews are sent from home, not while you are at a site.\n\nThe deadline still runs. Now and then a crew hits a snag part-way and stops: a notification asks for you on site, and they get back to work as soon as you arrive. A finished build that is not passing the client's checklist needs you on site too.\n\nYou can travel to a crew job at any time to watch or lend a hand.",
+          manual: true,
+        },
+      ],
+    },
+    {
       id: 'blackout',
       title: 'Power Failure',
       trigger: () => {
