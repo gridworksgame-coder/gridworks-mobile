@@ -4651,6 +4651,15 @@ const InputManager = (() => {
         const _truckMoved = dragEntity.type === T.TRUCK &&
           Math.hypot(sx - dragDownSX, sy - dragDownSY) >= TRUCK_DRAG_PX;
         const _wantsMove = _truckMoved || col - dragOffsetC !== dragOriginC || row - dragOffsetR !== dragOriginR;
+        // A customer's property (house, cabin, commercial, industrial) is
+        // never dragged to a new spot: it moves only through its panel's
+        // Relocate button, after the penalty warning, to an A/B/C site
+        // (EntityInfoPanel.askRelocate). A drag that starts on one pans the
+        // map instead.
+        if (!dragStarted && _wantsMove && CUSTOMER_TYPES.has(dragEntity.type)) {
+          dragEntity = null;
+          isPanning = true;
+        } else
         // An overheating reactor can't be carried away from its detonation either.
         if (!dragStarted && _wantsMove && reactorOverheating(dragEntity) !== null) {
           wasteRemovalBlockedToast(dragEntity, reactorOverheating(dragEntity));
