@@ -56,7 +56,7 @@
   // play/pause, currentTime, duration, loop, playbackRate, muted, the
   // events the game listens for) that plays the file through Web Audio.
   // Short files are decoded once and kept; long ones (the music) are
-  // decoded at 24 kHz to keep a song's memory down, and let go when done.
+  // decoded at full quality while they play and let go when done.
   // pause_audio.js fades real elements for the pause menu; the same fade
   // is done here for these. ?mixaudio=0 turns all this off.
   function _mixWithOtherAudio() {
@@ -94,9 +94,7 @@
       const p = fetch(src).then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(buf => {
         if (buf.byteLength > BIG) {
           cache.delete(src);
-          const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-          const dec = OAC ? new OAC(2, 1, 24000).decodeAudioData(buf) : ctxGet().decodeAudioData(buf);
-          return dec.then(b => { b.__big = true; return b; });
+          return new Promise((res, rej) => ctxGet().decodeAudioData(buf, res, rej)).then(b => { b.__big = true; return b; });
         }
         return new Promise((res, rej) => ctxGet().decodeAudioData(buf, res, rej));
       });
@@ -318,7 +316,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm20';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm21';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
