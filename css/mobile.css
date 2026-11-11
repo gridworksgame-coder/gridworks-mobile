@@ -163,6 +163,9 @@ html.gw-mobile :is(#tutorial-card, #msg-log-panel, #advisor-panel,
   zoom: var(--gwm-panel-zoom);
 }
 html.gw-mobile #tutorial-card { zoom: calc(var(--gwm-panel-zoom) * 0.88); }
+/* The property panel (tap a building) runs a size smaller still: it
+   opens over the map beside what was tapped. */
+html.gw-mobile #entity-panel { zoom: calc(var(--gwm-panel-zoom) * 0.8); }
 
 /* ── Build toolbar, clock and time controls: 30% smaller ─────────── */
 html.gw-mobile { --gwm-bar-zoom: 0.7; --gwm-hotbar-zoom: 0.525; }
