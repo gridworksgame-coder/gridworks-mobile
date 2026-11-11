@@ -3411,11 +3411,37 @@ const HouseRequestSystem = (() => {
     getPendingCount() { return pending.length; },
     renderPanel() { renderPanel(); },
     togglePanel() { togglePanel(); },
+    // Sites for relocating an existing property: the same A..G a new
+    // request of its kind would be offered (anchored to its zones, F and G
+    // far out, its site rule if it has one), minus the spot it stands on.
     freshLocations(requireSubstation, entity = null) {
       const fp = entity
-        ? { width: entity.width, height: entity.height }
+        ? { width: entity.width || 1, height: entity.height || 1 }
         : { width: 1, height: 1 };
-      return pickCandidateLocations(requireSubstation, 3, fp);
+      if (!entity) return pickCandidateLocations(requireSubstation, 3, fp);
+      const ind = entity.type === T.INDUSTRIAL || entity.isIndustrial;
+      const zoneKey = ind ? 'industrial' : entity.type === T.COMMERCIAL ? 'commercial' : 'residential';
+      const nType   = ind ? T.INDUSTRIAL : entity.type === T.COMMERCIAL ? T.COMMERCIAL : T.HOUSE;
+      const sub = entity.commercialSubtype && entity.commercialSubtype !== 'commercial_default' ? entity.commercialSubtype : null;
+      let locs = [];
+      try {
+        locs = _drain((function* () {
+          const l = yield* _firstGuessLocations(requireSubstation, fp, nType, zoneKey);
+          yield* _anchorOptionsToZones(zoneKey, fp, l, { subtype: sub, tier: entity.houseWealthTier || null });
+          return _applySiteRule(sub, fp, l);
+        })()) || [];
+      } catch (err) { console.warn('[relocate] site search failed', err); locs = []; }
+      const seen = new Set();
+      const out = [];
+      for (const l of locs) {
+        if (!l || l.col == null) continue;
+        if (l.col === entity.col && l.row === entity.row) continue;
+        const k = l.col + ',' + l.row;
+        if (seen.has(k)) continue;
+        seen.add(k); out.push({ col: l.col, row: l.row });
+      }
+      if (out.length) return out.slice(0, OPTION_COUNT);
+      return pickCandidateLocations(requireSubstation, OPTION_COUNT, fp);
     },
 
     serialise() {

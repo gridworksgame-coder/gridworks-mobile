@@ -5033,7 +5033,7 @@ const EntityInfoPanel = (() => {
     const canAfford = Economy.canAfford(fine);
     pendingAction = 'relocate';
     confirmMsg().textContent =
-      `Move this building to a new A/B/C location.\nPenalty: ${formatMoney(fine)} (${Math.round(RELOCATE_PCT*100)}% of upfront).` +
+      `Move this building to a new site: pick one of the lettered sites on the map.\nPenalty: ${formatMoney(fine)} (${Math.round(RELOCATE_PCT*100)}% of upfront).` +
       (canAfford ? '' : '\n⚠ Insufficient funds!');
     confirmYes().disabled = !canAfford;
     confirmEl().classList.add('visible');
@@ -5067,15 +5067,16 @@ const EntityInfoPanel = (() => {
       return;
     }
 
+    const from = { col: e.col, row: e.row };
     if (e.width > 1 || e.height > 1) GridManager.removeEntityFootprint(e);
     else GridManager.removeEntity(e.col, e.row);
     ZoneSystem.removeBuilding(e); // call AFTER removing from grid so scan doesn't re-add it
-    showToast('Choose new location: A, B, or C', '#f0c040', '#0e0a00', '#604010');
     hideConfirm();
     target = null;
     panel().classList.remove('visible');
     actionsEl().style.display = 'none';
-    RelocatePicker.start(e, locs);
+    // Cancelling puts it back where it stood and refunds the penalty.
+    RelocatePicker.start(e, locs, { fine, from });
   }
 
   function initButtons() {

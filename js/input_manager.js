@@ -4192,17 +4192,14 @@ const InputManager = (() => {
           // Don't return — allow camera drag to proceed
         }
       }
-      // If a relocation is in progress, check if player clicked a pin
+      // A relocation in progress: a click on a site (its pin, just above
+      // its first tile, or anywhere in its outline) moves the building
+      // there. Anywhere else just drags the map, so the player can look
+      // around for the sites; Cancel on the banner (or Escape) cancels.
       if (RelocatePicker.active) {
-        const locs = RelocatePicker.locations;
-        for (let i = 0; i < locs.length; i++) {
-          if (locs[i] && locs[i].col === col && locs[i].row === row) {
-            RelocatePicker.choose(i);
-            return;
-          }
-        }
-        // Clicked elsewhere — cancel relocation
-        RelocatePicker.cancel();
+        const i = RelocatePicker.siteAt(col, row);
+        if (i >= 0) { RelocatePicker.choose(i); return; }
+        isPanning = true;
         return;
       }
 
@@ -5587,6 +5584,11 @@ if (e.code === 'Space' && !e.target.matches('input, textarea')) {
       }
       return;
     }
+    if (e.key === 'Escape' && typeof RelocatePicker !== 'undefined' && RelocatePicker.active) {
+      e.preventDefault();
+      RelocatePicker.cancel();
+      return;
+    }
     if (e.key === 'Escape') {
       // Circuit Switch assignment owns Escape first — it is a transient
       // cursor mode, and leaving it should never also close a panel or
@@ -6004,6 +6006,7 @@ if (e.code === 'Space' && !e.target.matches('input, textarea')) {
     // checked directly by name wherever this is consulted.
     hasEscapeTarget() {
       return _pathActive || !!TruckSystem.getDriven() || _anyPanelOpen() || _selArmed || _sel.size > 0
+        || (typeof RelocatePicker !== 'undefined' && RelocatePicker.active)
         || (typeof ContractSystem !== 'undefined' && ContractSystem.isOpen());
     },
   };
