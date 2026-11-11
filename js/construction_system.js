@@ -157,7 +157,10 @@ const ConstructionSystem = (() => {
   }
 
   // ── Drawing ───────────────────────────────────────────────────────
-  // Tiles go up bottom row first, left to right along each row. Finished
+  // Tiles go up bottom row first, snaking along the rows: left to right on
+  // the bottom one, right to left on the next, and so on, so the work only
+  // ever moves on to the tile beside it (it used to jump back across the
+  // whole plot at the end of every row). Finished
   // tiles show the real building (unpowered, so shut); the tile being
   // worked on shows it rising course by course behind scaffolding; the
   // rest of the plot is the site — groundworks, plant, materials, clutter
@@ -168,7 +171,17 @@ const ConstructionSystem = (() => {
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
   };
 
-  function _tileAt(i, w, h) { return { c: i % w, r: h - 1 - Math.floor(i / w) }; }
+  function _tileAt(i, w, h) {
+    const rb = Math.floor(i / w), k = i % w;
+    return { c: rb % 2 === 0 ? k : w - 1 - k, r: h - 1 - rb };
+  }
+  // The other way round: which tile number (build order) a column and a
+  // row counted from the top is.
+  function _idxAt(c, r, w, h) {
+    const rb = h - 1 - r;
+    return rb * w + (rb % 2 === 0 ? c : w - 1 - c);
+  }
+  const _ease = (u) => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
 
   // Small drawing helpers.
   const _r = (ctx, c, x, y, w, h) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
@@ -307,6 +320,24 @@ const ConstructionSystem = (() => {
       _r(ctx, '#fff4b0', tx + TILE * 0.6, top + 2, 1.5, 1.5);
       _r(ctx, '#ffd860', tx + TILE * 0.6 + 2, top + 0.5, 1, 1);
     }
+  }
+
+  // Topping out: a small evergreen lashed to the top of the last scaffold,
+  // and a pennant flapping beside it.
+  function _toppingOut(ctx, tx, ty, frac, t, seed) {
+    const top = ty + TILE * (1 - Math.max(0.15, frac)) - 3;
+    const bx = tx + TILE / 2;
+    _r(ctx, '#6a4a28', bx - 0.4, top - 9, 0.8, 9);
+    ctx.fillStyle = '#2f6a3a';
+    ctx.beginPath(); ctx.moveTo(bx, top - 14); ctx.lineTo(bx - 3.2, top - 8); ctx.lineTo(bx + 3.2, top - 8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#3c8048';
+    ctx.beginPath(); ctx.moveTo(bx, top - 12); ctx.lineTo(bx - 2.4, top - 7.5); ctx.lineTo(bx + 2.4, top - 7.5); ctx.closePath(); ctx.fill();
+    const fx = tx + TILE - 4;
+    _r(ctx, '#8a8e92', fx, top - 12, 0.6, 12);
+    const wave = Math.sin(t * 6 + seed) * 0.8;
+    ctx.fillStyle = (Math.floor(seed) % 2) ? '#d83a2a' : '#2a6ad8';
+    ctx.beginPath(); ctx.moveTo(fx + 0.6, top - 12); ctx.quadraticCurveTo(fx + 3.5, top - 11 + wave, fx + 6.5, top - 10.5 + wave * 1.5);
+    ctx.lineTo(fx + 0.6, top - 8.5); ctx.closePath(); ctx.fill();
   }
 
   // How high each block-wide column of the tile going up has got: the wall
@@ -766,20 +797,27 @@ const ConstructionSystem = (() => {
   // Stands on one of the plot's top-row tiles — the last row built — so it
   // never spills onto a road or a neighbour. `side` 1 is the right-hand
   // crane, jib swinging left over the site; -1 the left one, swinging right.
-  function _crane(ctx, x, y, w, h, t, seed, side, dark) {
+  function _crane(ctx, x, y, w, h, t, seed, side, dark, aim) {
     const mx = side > 0 ? x + w * TILE - TILE / 2 : x + TILE / 2, base = y + TILE * 0.9;
     const height = Math.min(10, Math.max(5, h + 2)) * TILE;
     const topY = base - height;
     if (side < 0) {
       // Mirrored about the mast, so the same drawing serves both sides.
       ctx.save(); ctx.translate(mx, 0); ctx.scale(-1, 1); ctx.translate(-mx, 0);
-      try { _craneAt(ctx, mx, base, topY, height, w, t, seed, dark); } finally { ctx.restore(); }
-    } else _craneAt(ctx, mx, base, topY, height, w, t, seed, dark);
+      // The work's x mirrors with it.
+      const a = aim ? { x: 2 * mx - aim.x, y: aim.y } : null;
+      try { _craneAt(ctx, mx, base, topY, height, w, t, seed, dark, a); } finally { ctx.restore(); }
+    } else _craneAt(ctx, mx, base, topY, height, w, t, seed, dark, aim);
   }
-  function _craneAt(ctx, mx, base, topY, height, w, t, seed, dark) {
+  function _craneAt(ctx, mx, base, topY, height, w, t, seed, dark, aim) {
     const Y = '#e8b820', YD = '#b08810';
     const reach = Math.max(w, 3) * TILE * 0.9;
-    const swing = 0.55 + 0.45 * Math.sin(t * 0.25 + seed);
+    // With work going on, the hook rides over the tile going up (the work
+    // point glides between tiles, so the jib slews smoothly after it), with
+    // a slow sway; otherwise it idles back and forth.
+    const swing = aim
+      ? Math.max(0.12, Math.min(1, (mx - aim.x) / reach + 0.06 + 0.05 * Math.sin(t * 0.6 + seed)))
+      : 0.55 + 0.45 * Math.sin(t * 0.25 + seed);
     const jx = mx - reach * swing;
     // The jib's shadow across the site.
     ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 3;
@@ -810,7 +848,10 @@ const ConstructionSystem = (() => {
     _r(ctx, Y, mx, j0, 16, 0.8); _r(ctx, YD, mx, j1 - 0.6, 16, 0.9);
     for (let i = 0; i < 3; i++) _r(ctx, i % 2 ? '#7a7e82' : '#6a6e72', mx + 9.5, j1 + i * 1.6, 6, 1.6);
     // Trolley, cables, hook block and the load — a steel beam or a pallet.
-    const drop = height * (0.45 + 0.25 * Math.sin(t * 0.4 + seed * 3));
+    // Lowered toward the work, bobbing as it's landed and lifted off.
+    const drop = aim
+      ? Math.max(height * 0.2, Math.min(height - 8, (aim.y - TILE * 0.6 - (topY - 3)) * (0.82 + 0.12 * Math.sin(t * 0.5 + seed * 3))))
+      : height * (0.45 + 0.25 * Math.sin(t * 0.4 + seed * 3));
     const hx = jx + 4;
     _r(ctx, '#3a3e42', hx - 2, j1, 4, 1.4);
     ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 0.35; ctx.beginPath();
@@ -850,12 +891,12 @@ const ConstructionSystem = (() => {
     const n = w * h;
     const cranes = n >= CRANE_AREA || tier >= 2 ? (tier >= 3 && w >= 4 ? [1, -1] : [1]) : [];
     const taken = new Set();
-    if (cranes.includes(1)) taken.add(n - 1);
-    if (cranes.includes(-1)) taken.add(n - w);
+    if (cranes.includes(1)) taken.add(_idxAt(w - 1, 0, w, h));
+    if (cranes.includes(-1)) taken.add(_idxAt(0, 0, w, h));
     const lastRow = h >= 3 ? h - 2 : Math.floor((h - 1) / 2);   // rows from the top that props may use
     const slots = [];
     for (let r = 0; r <= lastRow; r++)
-      for (let c = 0; c < w; c++) { const i = (h - 1 - r) * w + c; if (!taken.has(i)) slots.push(i); }
+      for (let c = 0; c < w; c++) { const i = _idxAt(c, r, w, h); if (!taken.has(i)) slots.push({ i, c, r }); }
     const props = [];
     // Bigger plots get more of the small stuff, about one piece per five
     // free tiles beyond the set list, so the middle of a big dig isn't bare.
@@ -864,7 +905,7 @@ const ConstructionSystem = (() => {
     if (tier >= 1) for (let k = 0, more = Math.floor(slots.length / 5) - kinds.length; k < more; k++) kinds.push(EXTRA[k % EXTRA.length]);
     kinds.forEach((kind, idx) => {
       const span = kind === 'office' ? 2 : 1;
-      const fits = (j) => span === 1 || (slots[j + 1] === slots[j] + 1 && (slots[j] % w) + 1 < w);
+      const fits = (j) => span === 1 || (slots[j + 1] && slots[j + 1].r === slots[j].r && slots[j + 1].c === slots[j].c + 1);
       const cands = [];
       for (let j = 0; j < slots.length; j++) if (fits(j)) cands.push(j);
       if (!cands.length) return;
@@ -872,7 +913,9 @@ const ConstructionSystem = (() => {
       // Clutter sits off-centre in its tile so the site doesn't look gridded.
       const jx = BIG_PROPS.has(kind) || kind === 'office' ? 0 : (_h(idx + 3, w * h) - 0.5) * TILE * 0.4;
       const jy = BIG_PROPS.has(kind) || kind === 'office' ? 0 : (_h(idx + 9, w * h) - 0.5) * TILE * 0.25;
-      props.push({ kind, i: slots[at], jx, jy });
+      // Cleared when the crew reaches its tile (an office: the first of its two).
+      const until = span === 2 ? Math.min(slots[at].i, slots[at + 1].i) : slots[at].i;
+      props.push({ kind, i: slots[at].i, until, jx, jy });
       slots.splice(at, span);
     });
     L = { cranes, props };
@@ -893,7 +936,13 @@ const ConstructionSystem = (() => {
     const wet = typeof ZoneLife !== 'undefined' && ZoneLife.rain ? ZoneLife.rain() > 0.2 : false;
     const L = _layout(w, h, tier);
     const curRow = Math.floor(full / w);            // rows counted from the bottom
-    const tx = (i) => x + (i % w) * TILE, ty = (i) => y + (h - 1 - Math.floor(i / w)) * TILE;
+    const tx = (i) => x + _tileAt(i, w, h).c * TILE, ty = (i) => y + _tileAt(i, w, h).r * TILE;
+    // Where the work is, gliding from the tile going up toward the next one
+    // over the back of each tile, so what follows it (the crane's hook, the
+    // lamp) moves on smoothly instead of hopping.
+    const nxt = Math.min(n - 1, full + 1), glide = _ease((frac - 0.7) / 0.3);
+    const workX = tx(Math.min(full, n - 1)) + (tx(nxt) - tx(Math.min(full, n - 1))) * glide + TILE / 2;
+    const workY = ty(Math.min(full, n - 1)) + (ty(nxt) - ty(Math.min(full, n - 1))) * glide + TILE / 2;
 
     _pad(ctx, x, y, w, h, seed, wet);
     if (!started || (full === 0 && frac === 0 && tier === 0)) _stakes(ctx, x, y, w, h);
@@ -939,8 +988,36 @@ const ConstructionSystem = (() => {
     }
 
     if (full < n && started) {
+      // The tile just finished: its scaffold is struck and lowered away while
+      // the next one goes up, with a puff of dust off the new work, rather
+      // than vanishing the moment the tile tops out.
+      const strike = full > 0 ? 1 - frac / 0.3 : 0;
+      if (strike > 0) {
+        const px = tx(full - 1), py = ty(full - 1), u = 1 - strike;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(px - 2, py - 12, TILE + 4, TILE + 12); ctx.clip();
+        ctx.globalAlpha = strike;
+        ctx.translate(0, TILE * 0.7 * u * u);
+        try { _scaffold(ctx, px, py, 1, t, tier); }
+        finally { ctx.restore(); }
+        for (let i = 0; i < 6; i++) {
+          const d = (3 + 7 * _h(seed + full, i)) * Math.sqrt(u), a = _h(seed + full, i + 9) * Math.PI * 2;
+          _ell(ctx, `rgba(205,186,152,${(0.45 * strike).toFixed(3)})`,
+            px + TILE / 2 + Math.cos(a) * (TILE * 0.35 + d), py + TILE * 0.85 + Math.sin(a) * 3 - 3 * u, 3 + 5 * u, 2 + 3 * u);
+        }
+      }
       if (courses) _blockwork(ctx, tx(full), ty(full), courses);
-      _scaffold(ctx, tx(full), ty(full), frac, t, tier);
+      // The new tile's scaffold goes up as the old one comes down.
+      const rise = full > 0 ? _ease(frac / 0.18) : 1;
+      if (rise < 1) {
+        ctx.save(); ctx.globalAlpha = rise;
+        ctx.translate(0, TILE * 0.35 * (1 - rise));
+        try { _scaffold(ctx, tx(full), ty(full), frac, t, tier); }
+        finally { ctx.restore(); }
+      } else _scaffold(ctx, tx(full), ty(full), frac, t, tier);
+      // The last tile: topping out, with the traditional little tree and a
+      // flag tied to the top of the scaffold.
+      if (full === n - 1 && n > 1) _toppingOut(ctx, tx(full), ty(full), frac, t, seed);
       // Dust kicked up at the foot of the work.
       for (let i = 0; i < 3; i++) {
         const ph = (t * 0.5 + i / 3 + _h(seed, i + 20)) % 1;
@@ -956,7 +1033,7 @@ const ConstructionSystem = (() => {
 
     // Props on their spots, back to front, cleared once the crew reaches them.
     let pileI = -1;
-    const shown = L.props.filter(p => full < p.i).sort((a, b) => ty(a.i) + a.jy - (ty(b.i) + b.jy));
+    const shown = L.props.filter(p => full < p.until).sort((a, b) => ty(a.i) + a.jy - (ty(b.i) + b.jy));
     for (const p of shown) {
       const px = tx(p.i) + TILE / 2 + p.jx, py = ty(p.i) + TILE * 0.8 + p.jy;
       switch (p.kind) {
@@ -980,13 +1057,13 @@ const ConstructionSystem = (() => {
     if (tier >= 1) _tape(ctx, x, y, w, h);
     let craneUp = false;
     for (const side of L.cranes) {
-      const ci = side > 0 ? n - 1 : n - w;
-      if (full < ci) { craneUp = true; _crane(ctx, x, y, w, h, t, (seed % 7) + (side < 0 ? 3 : 0), side, dark); }
+      const ci = side > 0 ? _idxAt(w - 1, 0, w, h) : _idxAt(0, 0, w, h);
+      if (full < ci) { craneUp = true; _crane(ctx, x, y, w, h, t, (seed % 7) + (side < 0 ? 3 : 0), side, dark, started && full < n ? { x: workX, y: workY } : null); }
     }
     // Sites without a crane (whose floodlight does the job) get a lighting
     // tower on the left edge, aimed at the tile being worked.
     if (started && !craneUp && full < n)
-      _lightTower(ctx, x + 4, y + Math.min(h - 1, 1) * TILE - 1, tier, dark, tx(full) + TILE / 2, ty(full) + TILE / 2);
+      _lightTower(ctx, x + 4, y + Math.min(h - 1, 1) * TILE - 1, tier, dark, workX, workY);
     if (!e._sitePowered && started) _genset(ctx, x + w * TILE - 11, y + h * TILE - 3, t, seed);
     _sign(ctx, x, y, w, h, _siteName(e), tier, progress(e));
 
@@ -1113,7 +1190,7 @@ const ConstructionSystem = (() => {
       const W = f.w * TILE, H = f.h * TILE, u = age / FX_SECS;
       // The scaffold, sinking and fading over the first half.
       if (u < 0.5) {
-        const sx = f.x + W - TILE, sink = TILE * (u / 0.5) * (u / 0.5);
+        const sx = f.x + _tileAt(f.w * f.h - 1, f.w, f.h).c * TILE, sink = TILE * (u / 0.5) * (u / 0.5);
         ctx.save();
         ctx.beginPath(); ctx.rect(sx - 2, f.y - 12, TILE + 4, TILE + 12); ctx.clip();
         ctx.globalAlpha = 1 - u / 0.5;
