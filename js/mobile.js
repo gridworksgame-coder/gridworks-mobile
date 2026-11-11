@@ -316,7 +316,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm26';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm27';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -563,6 +563,7 @@
   const AIM_DEAD   = 40;    // px: casting drags shorter than this auto-aim at the water
   const DTAP_MS    = 300;   // second tap within this → double tap
   const DTAP_SLOP  = 40;    // px between the two taps of a double tap
+  const DUPE_HOLD_MS = 250; // duplicate mode: hold on an item this long, then drag to lay copies
   let pickMode = false;     // duplicate mode: every tap on an item copies it (Q); stays on until ⌖ again
   // What the duplicate (Q) key would copy at the cursor, if anything: the
   // item under it, as long as its tool is unlocked. Read after the hover
@@ -743,6 +744,18 @@
         return true;
       } catch (_) { wireArmed = -1; return false; }
     }
+    // Duplicate mode, held on an item and dragged: pick it up (Q at the
+    // spot it was held) and press from there, so the drag lays a run of it
+    // like any tool in hand: one goes down wherever the next fits.
+    function dupeDrag() {
+      const t = one.pick;
+      one.pick = null; one.armed = false;
+      mouse(cv, 'mousemove', one.sx, one.sy, 0);
+      if (t !== tool()) tapKey('q', 'KeyQ');
+      if (!tool()) return;
+      buzz(12);
+      press(0);
+    }
     function release() {
       if (!one) return;
       if (edgeRaf) edgeStop();
@@ -790,7 +803,12 @@
         // Duplicate mode: a touch on an item picks it up (on release); a
         // touch on open ground goes on as normal (places what's in hand).
         one.pick = pickMode && !locked ? pickHere() : null;
-        if (one.pick) return;
+        if (one.pick) {
+          // Held a moment on the item, a drag lays copies of it the way the
+          // finger goes (dupeDrag). A press without a tool would move the item.
+          const me = one; one.armTimer = setTimeout(() => { if (one === me && one.pick && !one.moved) { one.armed = true; buzz(12); } }, DUPE_HOLD_MS);
+          return;
+        }
         const immediate = !!tool() || fishingHold();
         if (immediate) {
           one.timer = setTimeout(() => press(0), fishingHold() ? 0 : TOOL_MS);
@@ -844,8 +862,11 @@
       one.x = p.x; one.y = p.y;
       if (!one.moved && Math.hypot(p.x - one.sx, p.y - one.sy) > TAP_SLOP) {
         one.moved = true;
-        clearTimeout(one.longTimer);
-        if (one.pick) return;
+        clearTimeout(one.longTimer); clearTimeout(one.armTimer);
+        if (one.pick) {
+          if (one.armed) dupeDrag();
+          return;                                // a quick swipe from an item does nothing, as before
+        }
         if (!one.down) { clearTimeout(one.timer); press(0); return; }
       }
       if (one.down) {
