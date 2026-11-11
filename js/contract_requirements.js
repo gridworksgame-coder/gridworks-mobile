@@ -865,7 +865,12 @@ const ContractRequirements = (() => {
   // ── Requirement set ──────────────────────────────────────────────
 
   function create(specs, ctx = {}) {
-    const list  = specs.slice();
+    // Battery storage is asked for installed and live, never charged to a
+    // level: a bank can take a very long time to fill, which held whole jobs
+    // up. Dropped here so offers and jobs written with one (older saves, the
+    // board) are judged the same way.
+    const list  = specs.map(s => s && s.kind === 'store' && s.minCharge
+      ? (({ minCharge, ...rest }) => ({ ...rest, powered: true }))(s) : s);
     const state = list.map(s => {
       const k = KINDS[s.kind];
       return (k && k.initState) ? k.initState(s) : {};

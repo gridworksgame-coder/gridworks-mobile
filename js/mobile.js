@@ -316,7 +316,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm25';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm26';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 

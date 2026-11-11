@@ -1935,6 +1935,14 @@ const ContractSites = (() => {
       claim(p.col, p.row, w, h);
     }
   }
+  // No client site comes with a substation already standing: storage on a
+  // job site is the player's to put in (a job may ask for one, see the
+  // substation clause in generate()). Taken out of every layout here, before
+  // anything reads them, so stamping, storm targets and the site's load all
+  // agree. A job already under way keeps the site as it was saved.
+  const _NO_PREBUILT = new Set([T.SUBSTATION, T.SUBSTATION2, T.SUBSTATION3, T.SUBSTATION4, T.SUBSTATION5].filter(Boolean));
+  for (const site of Object.values(SITES)) if (site.prebuilt) site.prebuilt = site.prebuilt.filter(p => !_NO_PREBUILT.has(p.type));
+
   for (const site of Object.values(SITES)) if (site.prebuilt && site.bounds) _settlePrebuilt(site);
 
   // ── Client standing (§2) ─────────────────────────────────────────
@@ -3268,7 +3276,7 @@ const ContractSites = (() => {
       const cells = arche === 'peak' ? intBetween(4, 10)
                   : endurance ? Math.min(enduranceCells, 8) : intBetween(1, 3);
       if (endurance || arche === 'peak' || Math.random() < 0.75) {
-        reqs.push({ kind: 'store', type: T.BATTERY, count: cells, zone: site.hub, powered: true, minCharge: 0.5 });
+        reqs.push({ kind: 'store', type: T.BATTERY, count: cells, zone: site.hub, powered: true });
       }
     }
     // A new substation at the client's works, sized to the site: the newest
