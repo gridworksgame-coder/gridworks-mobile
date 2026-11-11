@@ -4164,7 +4164,9 @@ const InputManager = (() => {
         }
         const _tileEnt = GridManager.getEntity(col, row);
         const _zoneHit = ZoneSystem.getZoneAt(col, row);
-        if (_zoneHit && !_tileEnt) {
+        // Phones open the zone panel with a long-press (js/mobile.js): there
+        // a double tap zooms in, so it doesn't open the panel as well.
+        if (_zoneHit && !_tileEnt && !window.GW_MOBILE) {
           const now = Date.now();
           const DBLCLICK_MS = 350;
           if (now - (_lastZoneClick||0) < DBLCLICK_MS &&

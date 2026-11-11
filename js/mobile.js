@@ -602,6 +602,29 @@
         return true;
       } catch (_) { return false; }
     }
+    // Long-press on a zone's open ground (no building, nothing in hand):
+    // open that zone's panel, as a double click does on desktop.
+    function openZonePanelHere(x, y) {
+      try {
+        if (tool()) return false;
+        const r = cv.getBoundingClientRect();
+        const w = gameGlobal('Camera').screenToWorld(x - r.left, y - r.top);
+        const TL = gameGlobal('TILE') || 40, c = Math.floor(w.x / TL), rr = Math.floor(w.y / TL);
+        const ZS = gameGlobal('ZoneSystem'), GM = gameGlobal('GridManager');
+        const hit = ZS && ZS.getZoneAt(c, rr);
+        if (!hit || GM.getEntity(c, rr)) return false;
+        const zp = $('zone-panel');
+        if (!zp) return false;
+        ZS.buildZonePanel(hit.key, hit.index || 0);
+        zp.dataset.zone = hit.key;
+        zp.dataset.zoneIndex = hit.index || 0;
+        zp.classList.add('visible');
+        const sx = x - r.left, sy = y - r.top;
+        zp.style.left = Math.min(sx + 12, innerWidth - 240) + 'px';
+        zp.style.top = Math.min(sy + 12, innerHeight - 300) + 'px';
+        return true;
+      } catch (_) { return false; }
+    }
     // Eased zoom-in by 1.6× about a screen point over ~0.2 s.
     function zoomStep(x, y) {
       const Cam = gameGlobal('Camera');
@@ -814,7 +837,11 @@
           one.timer = setTimeout(() => press(0), fishingHold() ? 0 : TOOL_MS);
         } else {
           one.longTimer = setTimeout(() => {
-            if (one && !one.down && !one.moved) { buzz(25); press(2); }
+            if (!one || one.down || one.moved) return;
+            // Held on open ground inside a zone: its panel (the double
+            // click on desktop). Anywhere else: right-click, as before.
+            if (openZonePanelHere(one.x, one.y)) { buzz(25); one.zoneOpened = true; return; }
+            buzz(25); press(2);
           }, LONG_MS);
         }
       } else if (ts.length === 2) {
@@ -909,6 +936,7 @@
         }
         lastPickTap = { t: now, x: one.x, y: one.y };
       }
+      if (one.zoneOpened) { one = null; return; }   // the hold opened a zone panel
       if (one.pick) {
         // A tap (not a drag) on an item: pick it up, and stay in duplicate
         // mode for the next one. Already holding that very item: leave it
