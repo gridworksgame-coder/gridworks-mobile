@@ -224,7 +224,7 @@ const TutorialSystem = (() => {
         {
           // First arrival on a job site. Rings the two marker regions the
           // text is describing so "the highlighted areas" is unambiguous.
-          text: "You are now at the jobsite.\n\nThe highlighted areas are the build area and the client's existing works, which your new supply has to reach. Anything outside the boundary is not your job.\n\nThe checklist on the right tracks every requirement live. Equipment has to be WORKING, not just placed, and getting the client's own dark buildings back on supply is part of the job.",
+          text: "You are now at the jobsite.\n\nThe highlighted areas are the build area and the client's existing works, which your new supply has to reach. Anything outside the boundary is not your job.\n\nThe contract checklist tracks every requirement live. Equipment has to be WORKING, not just placed, and getting the client's own dark buildings back on supply is part of the job.",
           manual: true,
           highlightWorld: () => {
             if (typeof ContractSystem === 'undefined' || !ContractSystem.isAtSite()) return null;
