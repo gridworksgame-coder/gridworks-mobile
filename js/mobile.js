@@ -316,7 +316,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm22';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm23';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -726,13 +726,37 @@
       };
       chopRaf = requestAnimationFrame(step);
     }
+    // Wires: the first tap on a network lights it up (the hover highlight
+    // a mouse gives on PC), a second tap on the same network opens the
+    // wire's panel. Returns true for a first tap.
+    let wireArmed = -1;
+    function wireFirstTap(x, y) {
+      if (tool()) { wireArmed = -1; return false; }
+      try {
+        const Cam = gameGlobal('Camera'), GM = gameGlobal('GridManager'), T = gameGlobal('T');
+        const TL = gameGlobal('TILE') || 40, r = cv.getBoundingClientRect();
+        const w = Cam.screenToWorld(x - r.left, y - r.top);
+        const ent = GM.getEntity(Math.floor(w.x / TL), Math.floor(w.y / TL));
+        const net = ent && ent.type === T.WIRE && ent.networkId >= 0 ? ent.networkId : -1;
+        if (net < 0 || net === wireArmed) { wireArmed = -1; return false; }
+        wireArmed = net;
+        return true;
+      } catch (_) { wireArmed = -1; return false; }
+    }
     function release() {
       if (!one) return;
       if (edgeRaf) edgeStop();
       if (one.panning) { if (one.down) mouse(cv, 'mouseup', one.x, one.y, one.button); clearTimeout(one.timer); one = null; return; }
       if (one.down) {
-        mouse(cv, 'mouseup', one.x, one.y, one.button);
-        if (one.button === 0 && !one.moved) mouse(cv, 'click', one.x, one.y, 0);
+        if (one.button === 0 && !one.moved && wireFirstTap(one.x, one.y)) {
+          // Let the press go without a release on the map, so no panel
+          // opens; the highlight from the finger's position stays up.
+          cv.dispatchEvent(new MouseEvent('mouseleave', { bubbles: false }));
+          document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+        } else {
+          mouse(cv, 'mouseup', one.x, one.y, one.button);
+          if (one.button === 0 && !one.moved) mouse(cv, 'click', one.x, one.y, 0);
+        }
       }
       clearTimeout(one.timer); clearTimeout(one.longTimer);
       one = null;
