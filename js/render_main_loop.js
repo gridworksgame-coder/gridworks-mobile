@@ -803,7 +803,7 @@ const FixtureCache = (() => {
 // shifts are where the main switch slides poles and pylons standing on a
 // road between zones; the sprite is baked with the shift in it.
 {
-  const kerb = (e, reach) => typeof verticalRoadKerbShift === 'function' ? verticalRoadKerbShift(e, reach) : 0;
+  const kerb = (e, reach) => typeof poleKerbShift === 'function' ? poleKerbShift(e, reach) : 0;
   const hovered = e => _wireHighlightNetId >= 0 && e.networkId === _wireHighlightNetId;
   // Poles: glows and insulator pulses are detail-only (zoom > 0.5), and slow
   // enough to re-bake. A failed pole arcs and smokes, an out-of-range one
@@ -1314,8 +1314,9 @@ function _renderEntitySprite(e, x, y, t) {
     case T.SUBSTATION4:     renderSubstation4(e, x, y, t); break;
     case T.SUBSTATION5:     renderSubstation5(e, x, y, t); break;
     // Poles and towers on a north–south road between zones stand at its kerb
-    // (verticalRoadKerbShift, render_core.js), not down the middle.
-    case T.POLE:            if (e._underWater) renderWater(e._underWater, x, y, t); renderPole(e, x + verticalRoadKerbShift(e, 17), y, t); break;
+    // (verticalRoadKerbShift, render_core.js), not down the middle; on a
+    // commercial zone's own street, at its kerb too (zoneStreetKerbShift).
+    case T.POLE:            if (e._underWater) renderWater(e._underWater, x, y, t); renderPole(e, x + poleKerbShift(e, 17), y, t); break;
     case T.PROTECTOR:       renderProtector(e, x, y, t); break;
     case T.PROTECTOR2:      renderProtector2(e, x, y, t); break;
     case T.PROTECTOR3:      renderProtector3(e, x, y, t); break;
@@ -1338,7 +1339,7 @@ function _renderEntitySprite(e, x, y, t) {
       if (e._waterFooting && e._waterTiles) for (const w of e._waterTiles) {
         if (w.entity instanceof Entity && w.entity.type === T.WATER) renderWater(w.entity, w.c * TILE, w.r * TILE, t);
       }
-      renderPowerTower(e, x + verticalRoadKerbShift(e, 35), y, t);
+      renderPowerTower(e, x + poleKerbShift(e, 35), y, t);
       break;
     case T.LIGHTNINGROD:    renderLightningRod(e, x, y, t); break;
     case T.LIGHTNINGROD2:   renderLightningRod2(e, x, y, t); break;

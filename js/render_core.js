@@ -1698,6 +1698,34 @@ function verticalRoadKerbShift(e, reach) {
   }
   return 0;
 }
+// The same for a commercial zone's own streets: a pole or tower put down
+// on one that runs north–south stands at its kerb on the sidewalk, not in
+// the middle of the street. East–west it already clears it (foot at the
+// tile's lower edge). Goes right unless that side is street too and the
+// left isn't (a street coming in from the east). Same `reach` as above.
+const _POLE_STREET_ZONES = ['commercial'];
+function zoneStreetKerbShift(e, reach) {
+  if (typeof ZoneSystem === 'undefined' || !ZoneSystem.getZoneRects) return 0;
+  const w = e.width || 1, h = e.height || 1;
+  for (const k of _POLE_STREET_ZONES) for (const R of (ZoneSystem.getZoneRects(k) || [])) {
+    if (e.col + w - 1 < R.minC - 1 || e.col > R.maxC + 1 || e.row + h - 1 < R.minR - 1 || e.row > R.maxR + 1) continue;
+    const p = _zoneGroundPlan(k, R);
+    const on = (cc, rr) => (cc >= p.c0 && cc <= p.c1 && rr >= p.r0 && rr <= p.r1 && p.path[(rr - p.r0) * p.w + (cc - p.c0)] === 1)
+                           || p.portalAt.has(cc + ',' + rr);
+    for (let dc = 0; dc < w; dc++) for (let dr = 0; dr < h; dr++) {
+      const c = e.col + dc, r = e.row + dr;
+      if (!on(c, r) || (!on(c, r - 1) && !on(c, r + 1))) continue;
+      const roadCx = (c + 0.5) * TILE, ownCx = (e.col + w / 2) * TILE, kk = reach * TILE / 40;
+      const goLeft = on(c + 1, r) && !on(c - 1, r);
+      return goLeft ? roadCx - kk - ownCx : roadCx + kk - ownCx;
+    }
+  }
+  return 0;
+}
+// Poles and towers: a road between zones first, else a commercial street.
+function poleKerbShift(e, reach) {
+  return verticalRoadKerbShift(e, reach) || zoneStreetKerbShift(e, reach);
+}
 // A street lamp put down on a zone's sidewalk, street or promenade stands on
 // the verge beside it with its arm reaching out over the paving, the way a
 // pole on a road between zones stands at the kerb, rather than planted in
