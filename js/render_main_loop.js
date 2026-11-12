@@ -1315,7 +1315,7 @@ function _renderEntitySprite(e, x, y, t) {
     case T.SUBSTATION5:     renderSubstation5(e, x, y, t); break;
     // Poles and towers on a north–south road between zones stand at its kerb
     // (verticalRoadKerbShift, render_core.js), not down the middle; on a
-    // commercial zone's own street, at its kerb too (zoneStreetKerbShift).
+    // commercial or industrial zone's own street, at its kerb too (zoneStreetKerbShift).
     case T.POLE:            if (e._underWater) renderWater(e._underWater, x, y, t); renderPole(e, x + poleKerbShift(e, 17), y, t); break;
     case T.PROTECTOR:       renderProtector(e, x, y, t); break;
     case T.PROTECTOR2:      renderProtector2(e, x, y, t); break;

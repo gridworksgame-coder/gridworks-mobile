@@ -1698,12 +1698,12 @@ function verticalRoadKerbShift(e, reach) {
   }
   return 0;
 }
-// The same for a commercial zone's own streets: a pole or tower put down
+// The same for a commercial or industrial zone's own streets: a pole or tower put down
 // on one that runs north–south stands at its kerb on the sidewalk, not in
 // the middle of the street. East–west it already clears it (foot at the
 // tile's lower edge). Goes right unless that side is street too and the
 // left isn't (a street coming in from the east). Same `reach` as above.
-const _POLE_STREET_ZONES = ['commercial'];
+const _POLE_STREET_ZONES = ['commercial', 'industrial'];
 function zoneStreetKerbShift(e, reach) {
   if (typeof ZoneSystem === 'undefined' || !ZoneSystem.getZoneRects) return 0;
   const w = e.width || 1, h = e.height || 1;
@@ -1722,7 +1722,7 @@ function zoneStreetKerbShift(e, reach) {
   }
   return 0;
 }
-// Poles and towers: a road between zones first, else a commercial street.
+// Poles and towers: a road between zones first, else a commercial or industrial street.
 function poleKerbShift(e, reach) {
   return verticalRoadKerbShift(e, reach) || zoneStreetKerbShift(e, reach);
 }
