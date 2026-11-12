@@ -16,6 +16,16 @@ const WeatherEventSystem = (() => {
     return n;
   }
 
+  // Notes on a wire just knocked out what did it (overload, smoke, geomag)
+  // and the weather that was in, so the Wire Fault card can say so rather
+  // than blaming a storm that may never have been there.
+  function _markFault(w, cause) {
+    w._faultCause = cause;
+    const def = _activeEvent && WEATHER_EVENTS.find(e => e.type === _activeEvent.type);
+    const label = (_activeEvent && _activeEvent.label) || (def && def.label) || '';
+    w._faultEvent = label.replace(/^[^A-Za-z]+/, '').trim();
+  }
+
   const WEATHER_EVENTS = [
     {
       type: 'storm',
@@ -549,6 +559,7 @@ const WeatherEventSystem = (() => {
       if (Math.random() < failChance) {
         pick.e.failed = true;
         pick.e._weatherFailed = true; // mark as weather-caused for repair UI
+        _markFault(pick.e, 'overload');
         failed++;
       }
     }
@@ -637,7 +648,7 @@ const WeatherEventSystem = (() => {
     for (let k = 0; k < tries; k++) {
       const w = nearTrees[Math.floor(Math.random() * nearTrees.length)];
       if (w.failed || Math.random() >= 0.5 * resist(w.networkId)) continue;
-      w.failed = true; w._weatherFailed = true; tripped.push(w);
+      w.failed = true; w._weatherFailed = true; _markFault(w, 'smoke'); tripped.push(w);
     }
     if (!tripped.length) return;
     PowerNetwork.recomputeWireHops();
@@ -697,7 +708,7 @@ const WeatherEventSystem = (() => {
         if (Math.random() >= chance * resist(id)) continue;
         const w = wires[Math.floor(Math.random() * wires.length)];
         if (w.failed) continue;
-        w.failed = true; w._weatherFailed = true; tripped++;
+        w.failed = true; w._weatherFailed = true; _markFault(w, 'geomag'); tripped++;
         trippedWires.push(w);
       }
     }

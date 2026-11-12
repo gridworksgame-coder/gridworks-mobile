@@ -2818,6 +2818,7 @@ const LightningDamageSystem = (() => {
     // Cable that has been through a fire is cable that needs replacing.
     w.failed         = true;
     w._weatherFailed = true;
+    w._faultCause    = 'fire';     // for the Wire Fault card
     if (typeof GridBreakWatch !== 'undefined') GridBreakWatch.noteChanged();
     return true;
   }

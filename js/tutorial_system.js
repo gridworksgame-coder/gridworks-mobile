@@ -304,11 +304,14 @@ const TutorialSystem = (() => {
     },
     {
       id: 'wirefault',
-      title: 'Storm Damage',
+      title: 'Wire Fault',
       trigger: () => !!_findFirstFaultedWire(),
       steps: [
         {
-          text: "Uh oh, a storm just knocked out one of your wires!\n\nOverloaded wires can fail during severe weather, cutting power to anything downstream until they're repaired.\n\nClick the red, faulted wire to open its panel, then hit Repair Wire to fix it. You can also click on any wire on the grid and click Repair All Faults to fix every broken wire on the map at once.\n\nNOTE: Repairs cost money per wire, discounted 25% if you have a Monitoring Station.",
+          // Names what actually knocked the wire out (weather_events.js
+          // _markFault, lightning fire): it used to blame a storm every time,
+          // even for a fault in fog, a heat wave or a dead calm.
+          text: () => _wireFaultCause() + "\n\nClick the red, faulted wire to open its panel, then hit Repair Wire to fix it. You can also click on any wire on the grid and click Repair All Faults to fix every broken wire on the map at once.\n\nNOTE: Repairs cost money per wire, discounted 25% if you have a Monitoring Station.",
           manual: true,
           highlightWorld: () => _findFirstFaultedWire(),
           onEnter: () => {
@@ -1590,6 +1593,25 @@ const TutorialSystem = (() => {
       for (const e of EntityRegistry.getByType(t)) return e;
     }
     return null;
+  }
+
+  // The first lines of the Wire Fault card: what knocked the wire out.
+  function _wireFaultCause() {
+    const w = _findFirstFaultedWire();
+    const down = 'cutting power to anything downstream until it is repaired';
+    const during = w && w._faultEvent ? ` during the ${w._faultEvent.toLowerCase()}` : ' while the weather was in';
+    switch (w && w._faultCause) {
+      case 'overload':
+        return `One of your wires has failed.\n\nIt was overloaded${during}. Wires carrying more than they are rated for can fail whenever a spell of weather comes through, ${down}.`;
+      case 'smoke':
+        return `One of your wires has failed.\n\nWildfire smoke settled on a line strung beside trees and it flashed over, ${down}.`;
+      case 'geomag':
+        return `One of your wires has failed.\n\nThe geomagnetic storm drove currents through your long lines and tripped one open, ${down}. The longer a network, the more it picks up.`;
+      case 'fire':
+        return `One of your wires has failed.\n\nLightning set a line on fire. Burnt cable has to be replaced, and the line is ${down}.`;
+      default:
+        return `One of your wires has failed, ${down}.`;
+    }
   }
 
   function _findFirstFaultedWire() {
