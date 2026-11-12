@@ -33,7 +33,7 @@ const TutorialSystem = (() => {
           choice: true,
         },
         {
-          text: "Move around the world with W-A-S-D, ARROW KEYS, or Hold/Drag LMB\n\nScroll wheel to zoom in/out\n\nQ Duplicates a placed item\n\nX enables deletion mode\n\nM to open the map\n\nTAB shows / hides the build bar\n\nPress F2 to quicksave\n\nF to enable/disable the nighttime flashlight\n\nE opens the panel for your highest-tier Research Station",
+          text: "Move around the world with W-A-S-D, ARROW KEYS, or Hold/Drag LMB\n\nScroll wheel to zoom in/out\n\nQ Duplicates a placed item\n\nX enables deletion mode\n\nM to open the map\n\nTAB shows / hides the build bar\n\nPress F2 to quicksave\n\nF to enable/disable the nighttime flashlight\n\nE opens the panel for your highest-tier Research Station (so does RESEARCH in the side panels)",
           manual: true,
           controls: [
             { desc: 'Move around the world', keys: [['W','A','S','D'], ['↑','↓','←','→']] },
@@ -105,9 +105,9 @@ const TutorialSystem = (() => {
           highlightDom: ['grid-tab-btn', 'weather-tab-btn', 'btn-progress'],
         },
         {
-          text: "The clock shows the time of day. Pause with SPACE and change speed (up to 10x) with ALT.\n\nOn the right: the COMPENDIUM has details on every item plus all of these tutorials, then ACHIEVEMENTS, RECENTER (jumps back to City Hall) and the MESSAGE LOG of past notifications.",
+          text: "The clock shows the time of day. Pause with SPACE and change speed (up to 10x) with ALT.\n\nBottom right: the PANELS button opens your side panels (close them again with its ✕). In there: the COMPENDIUM has details on every item plus all of these tutorials, RESEARCH opens your top Research Station once you have one, then ACHIEVEMENTS, the MESSAGE LOG of past notifications and RECENTER (jumps back to City Hall). More appear there as you unlock them.",
           manual: true,
-          highlightDom: ['clock', 'playback-controls', 'btn-compendium', 'btn-achievements', 'btn-recenter', 'btn-msglog'],
+          highlightDom: ['clock', 'playback-controls', 'btn-side-dock', 'btn-compendium', 'btn-achievements', 'btn-recenter', 'btn-msglog'],
         },
         {
           text: () => `This is the ${CityInfo.getCityName()} City Hall, your first customer. It needs up to 8 kW of steady power.\n\nOpen the GENERATION tab and place at least 3 Biofuel Generators close to it. Each makes a constant 3 kW, day or night.\n\nNOTE: Most buildings you place have an upkeep fee that cuts into your profits, so keep an eye on INCOME.`,
@@ -672,9 +672,9 @@ const TutorialSystem = (() => {
           manual: true,
         },
         {
-          text: "Tutorials will be added to your compendium, along with everything else you unlock/discover in the world.\n\nOpen the compendium anytime to review tutorials or if you need information on items in the game.",
+          text: "Tutorials will be added to your compendium, along with everything else you unlock/discover in the world.\n\nOpen the compendium anytime from the PANELS button (bottom right) to review tutorials or if you need information on items in the game.",
           manual: true,
-          highlightDom: ['btn-compendium'],
+          highlightDom: ['btn-side-dock', 'btn-compendium'],
         },
       ],
     },
@@ -1163,7 +1163,7 @@ const TutorialSystem = (() => {
           highlight: T.DRONEPORT,
         },
         {
-          text: "What holds the fleet back:\n\nPOWER. A port idles at 40 kW, but every drone recharging on its pad adds up to 30 kW, so a fleet landing empty pulls 340 kW, usually right after a big repair push. An unpowered port cannot launch.\n\nBATTERY. A drone carries 66 seconds of flight, enough to reach anything inside its port's coverage square in ordinary weather, and turns for a pad while it can still reach one.\n\nWEATHER. Storms, rainstorms and blizzards slow drones to half speed or less, so every job takes longer. They clean up after lightning; they can't stop it. Light rain is fine. A cold snap cuts their range by 30%, and a heat wave halves how fast they recharge.\n\nThe drone button beside the truck button opens the fleet roster: what each port is doing, and why one isn't flying.",
+          text: "What holds the fleet back:\n\nPOWER. A port idles at 40 kW, but every drone recharging on its pad adds up to 30 kW, so a fleet landing empty pulls 340 kW, usually right after a big repair push. An unpowered port cannot launch.\n\nBATTERY. A drone carries 66 seconds of flight, enough to reach anything inside its port's coverage square in ordinary weather, and turns for a pad while it can still reach one.\n\nWEATHER. Storms, rainstorms and blizzards slow drones to half speed or less, so every job takes longer. They clean up after lightning; they can't stop it. Light rain is fine. A cold snap cuts their range by 30%, and a heat wave halves how fast they recharge.\n\nThe DRONES button in your side panels (the PANELS button, bottom right) opens the fleet roster: what each port is doing, and why one isn't flying.",
           manual: true,
           highlightDom: ['btn-drones'],
         },

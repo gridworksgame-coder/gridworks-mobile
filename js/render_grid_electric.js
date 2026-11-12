@@ -3446,10 +3446,14 @@ function _poleGlow(X, Y, u, foot, colour) {
 
 // After the night overlay (render_main_loop.js): every unpowered pole on
 // screen gets a faint soft glow over the dark, so a dead pole can still be
-// found at night, zoomed in or out. Fades in with the dark.
+// found at night, zoomed in or out. Fades in with the dark, and breathes.
 function renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd) {
   if (dark <= 0.05 || typeof T === 'undefined' || !T.POLE) return;
-  const a = Math.min(0.22, dark * 0.3);
+  // Breathes slowly in and out (about four seconds a cycle), from barely
+  // there to its full, still faint, strength.
+  const breathe = 0.12 + 0.88 * (0.5 - 0.5 * Math.cos(performance.now() / 1000 * Math.PI * 2 / 4));
+  const a = Math.min(0.22, dark * 0.3) * breathe;
+  if (a <= 0.004) return;
   const u = TILE / 40;
   for (const e of EntityRegistry.getByType(T.POLE)) {
     if (e.powered || e.col < cStart - 1 || e.col > cEnd + 1 || e.row < rStart - 1 || e.row > rEnd + 1) continue;

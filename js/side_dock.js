@@ -6,7 +6,7 @@
    kept growing as things unlocked. They now fold away behind one toggle,
    like the build bar's categories: tap it and they open as a compact grid,
    three across with a short name under each, on a tray with its own ✕.
-   The toggle, or the ✕, folds them away again. A dot on the toggle says
+   The toggle, the ✕, or a click anywhere else folds them away again. A dot on the toggle says
    when something inside has news (a message, an achievement…).
 
    The buttons stay where they always were in the page (body children with
@@ -63,7 +63,17 @@ const SideDock = (() => {
         background: rgba(10,16,24,0.88); border: 1px solid var(--ui-border-b, #2a3a4a); border-radius: 12px;
         -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); box-shadow: var(--shadow-lg);
       }
-      body.side-dock-open #side-dock-tray { display: block; }
+      body.side-dock-open #side-dock-tray { display: block; animation: sdTrayIn 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.15) backwards; }
+      #side-dock-tray { transform-origin: 100% 100%; }
+      @keyframes sdTrayIn { from { opacity: 0; transform: translate(6px, 10px) scale(0.82); } to { opacity: 1; transform: none; } }
+      /* The buttons pop in one after another, in reading order (--sd-i). */
+      body.side-dock-open .side-dock-item {
+        animation: sdItemIn 0.24s cubic-bezier(0.2, 0.8, 0.3, 1.3) backwards;
+        animation-delay: calc(var(--sd-i, 0) * 28ms + 50ms);
+      }
+      @keyframes sdItemIn { from { opacity: 0; transform: translateY(10px) scale(0.55); } to { opacity: 1; transform: none; } }
+      #btn-side-dock svg { transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.3); }
+      #btn-side-dock.open svg { transform: rotate(45deg) scale(0.92); }
       #side-dock-tray .sd-head {
         position: absolute; left: 10px; right: 6px; top: 4px; height: 16px;
         font: 700 9px/16px 'Inter', system-ui, sans-serif; letter-spacing: 0.14em; color: var(--text-dim, #8aa0b4);
@@ -147,6 +157,20 @@ const SideDock = (() => {
     for (const t of ['mousedown', 'touchstart', 'pointerdown', 'wheel']) tray.addEventListener(t, (e) => e.stopPropagation(), { passive: true });
     document.body.appendChild(tray);
 
+    // A click or tap anywhere else folds the tray away. Not one on the tray,
+    // its toggle, a button in it, or a panel opened from it (reading the
+    // Compendium must not close the tray under it and shift the panel).
+    const KEEP = ['side-dock-tray', 'btn-side-dock', 'msg-log-panel', 'achievements-panel', 'compendium-panel',
+                  'advisor-panel', 'trucks-panel', 'drones-panel', 'truck-patrol-panel', 'saved-path-panel', 'blueprint-panel'];
+    document.addEventListener('pointerdown', (e) => {
+      if (!open) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('.side-dock-item')) return;
+      for (const id of KEEP) { const el = $(id); if (el && el.contains(t)) return; }
+      setOpen(false);
+    }, true);
+
     setInterval(tick, 400);
     tick();
   }
@@ -185,6 +209,7 @@ const SideDock = (() => {
     const right0 = innerWidth - tr.right;                 // the toggle's right edge, screen px
     const base = innerHeight - tr.top + 10 * s;           // first row's bottom: just above the toggle
     items.forEach((el, i) => {
+      if (el.style.getPropertyValue('--sd-i') !== String(i)) el.style.setProperty('--sd-i', String(i));
       const r = Math.floor(i / cols), c = i % cols;
       const z = parseFloat(getComputedStyle(el).zoom) || 1;
       const bottomPx = base + (rows - 1 - r) * th + 16 * s;   // the name sits in the 16px under the button
