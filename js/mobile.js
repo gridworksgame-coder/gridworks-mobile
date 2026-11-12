@@ -265,8 +265,12 @@
         tx.onerror = () => resolve(db);
       };
     });
-    const put = (k, v) => dbReady.then((d) => { if (d) d.transaction('kv', 'readwrite').objectStore('kv').put(v, k); });
-    const del = (k) => dbReady.then((d) => { if (d) d.transaction('kv', 'readwrite').objectStore('kv').delete(k); });
+    // 'relaxed': the write counts as done once the browser has it, without
+    // waiting on the disk flush, so the save made as the app is left has
+    // the best chance of landing before the phone freezes the page.
+    const tx = (d) => { try { return d.transaction('kv', 'readwrite', { durability: 'relaxed' }); } catch (_) { return d.transaction('kv', 'readwrite'); } };
+    const put = (k, v) => dbReady.then((d) => { if (d) tx(d).objectStore('kv').put(v, k); });
+    const del = (k) => dbReady.then((d) => { if (d) tx(d).objectStore('kv').delete(k); });
 
     P.getItem = function (k) {
       if (this === window.localStorage && isBig(k) && mem.has(k)) return mem.get(k);
@@ -300,10 +304,47 @@
         }
       } catch (_) {}
     });
+    // Each slot's "saved at" in the index is written the instant a save is
+    // made, but the save itself reaches IndexedDB a moment later, in the
+    // background. Leaving the app saves to the Quicksave slot, and the phone
+    // then freezes the page at once, so that write can be lost while the index
+    // still calls the slot the newest: CONTINUE then loaded an old Quicksave
+    // instead of the autosaves holding the real progress. So at start-up every
+    // slot's time is put back to the one stored inside its own save data.
+    let lostWrites = 0;
+    function reconcileIndex() {
+      try {
+        const idx = JSON.parse(lsGet.call(localStorage, 'powergrid_save_slots') || '[]');
+        if (!Array.isArray(idx)) return;
+        let changed = false;
+        for (const s of idx) {
+          const v = s && mem.get('powergrid_save_' + s.id);
+          if (typeof v !== 'string') continue;
+          const at = v.lastIndexOf('"_savedAt":');
+          if (at < 0) continue;
+          const real = parseInt(v.slice(at + 11, at + 32), 10);
+          if (!(real > 0) || real === s.savedAt) continue;
+          if ((s.savedAt || 0) - real > 5000) lostWrites++;
+          s.savedAt = real;
+          changed = true;
+        }
+        if (changed) lsSet.call(localStorage, 'powergrid_save_slots', JSON.stringify(idx));
+      } catch (_) {}
+    }
+    const ready = dbReady.then((d) => { if (d) reconcileIndex(); return d; });
+    if (typeof window !== 'undefined') window.addEventListener('load', () => ready.then(() => {
+      if (!lostWrites) return;
+      setTimeout(() => {
+        try { gameGlobal('MenuSystem')?.updateLoadButtonVisibility?.(); } catch (_) {}
+        toast(lostWrites > 1 ? `${lostWrites} saves made as the game closed did not finish writing: CONTINUE picks your newest complete save`
+                             : 'The save made as the game last closed did not finish writing: CONTINUE picks your newest complete save');
+      }, 1200);
+    }));
     // The game must not read a save before this resolves (menu_system.js
-    // waits on it): until then the in-memory copy is still filling.
-    window.GWM_SAVES_READY = dbReady;
-    return { ready: dbReady };
+    // waits on it): until then the in-memory copy is still filling, and the
+    // slot times are not yet checked against the saves themselves.
+    window.GWM_SAVES_READY = ready;
+    return { ready };
   })();
 
   // ── Settings ───────────────────────────────────────────────────────
@@ -316,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm29';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm30';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
