@@ -3347,17 +3347,15 @@ function renderPole(e, px, py, t) {
       ctx.fillStyle = '#5a5e60'; ctx.beginPath(); ctx.arc(X(20 + side*15), Y(37), 1*u, 0, Math.PI*2); ctx.fill();
     }
 
-    // An unpowered pole is drawn in pale, weathered timber with a light
-    // outline, so a dead pole stands out against dark ground (the outline is
-    // kept at least ~1.5 screen pixels wide, zoomed out or not). At night
-    // renderUnpoweredPolesNight() draws the outline again over the dark.
+    // An unpowered pole is drawn in lighter, greyer weathered timber, so a
+    // dead pole can be told apart; at night renderUnpoweredPolesNight() gives
+    // it a faint soft glow over the dark so it can still be found.
     const foot = inWater ? 34 : 37;                         // stands on the pier top in water
     const dead = !on && !e._iconThumb;
-    if (dead) _poleOutline(X, Y, u, foot, 'rgba(250,246,232,0.95)');
 
     // Tapered timber shaft
     const sg = ctx.createLinearGradient(X(18), 0, X(22), 0);
-    if (dead) { sg.addColorStop(0, '#9e978a'); sg.addColorStop(0.45, '#d6cfc0'); sg.addColorStop(1, '#8e877a'); }
+    if (dead) { sg.addColorStop(0, '#665c4e'); sg.addColorStop(0.45, '#958a78'); sg.addColorStop(1, '#584f43'); }
     else      { sg.addColorStop(0, '#4a3624'); sg.addColorStop(0.45, '#7e603f'); sg.addColorStop(1, '#3a2b1c'); }
     ctx.fillStyle = sg;
     ctx.beginPath(); ctx.moveTo(X(18.1), Y(foot)); ctx.lineTo(X(18.9), Y(4.5)); ctx.lineTo(X(21.1), Y(4.5)); ctx.lineTo(X(21.9), Y(foot)); ctx.closePath(); ctx.fill();
@@ -3375,7 +3373,7 @@ function renderPole(e, px, py, t) {
     if (detail && !tagWarn) rect(19.3, 25.8, 1.4, 0.4, '#5a5a5a');
 
     // Crossarm on diagonal braces
-    rect(7, 9.6, 26, 2.4, dead ? '#bdb5a5' : '#5e4832');
+    rect(7, 9.6, 26, 2.4, dead ? '#7e7464' : '#5e4832');
     rect(7, 11.4, 26, 0.6, 'rgba(0,0,0,0.3)');
     line(12, 12, 19, 17, '#4a3a2a', 0.8);
     line(28, 12, 21, 17, '#4a3a2a', 0.8);
@@ -3432,30 +3430,31 @@ function renderPole(e, px, py, t) {
     ctx.restore();
   }
 
-// The outline of a pole's shaft and crossarm (tile units, as renderPole),
-// stroked at least ~1.5 screen pixels wide whatever the zoom.
-function _poleOutline(X, Y, u, foot, colour) {
-  const lw = Math.max(1.6 * u, 1.5 / Math.max(0.05, Camera.zoom));
+// A pole's own shape (shaft and crossarm, tile units as renderPole), filled
+// with a soft blur round it: a faint glow, not an outline.
+function _poleGlow(X, Y, u, foot, colour) {
   ctx.save();
-  ctx.strokeStyle = colour; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+  ctx.fillStyle = colour;
+  ctx.shadowColor = colour;
+  ctx.shadowBlur = Math.max(2, 5 * u * Camera.zoom);   // screen px: stays soft zoomed out
   ctx.beginPath();
   ctx.moveTo(X(18.1), Y(foot)); ctx.lineTo(X(18.9), Y(4.5)); ctx.lineTo(X(21.1), Y(4.5)); ctx.lineTo(X(21.9), Y(foot)); ctx.closePath();
   ctx.rect(X(7), Y(9.6), 26 * u, 2.4 * u);
-  ctx.stroke();
+  ctx.fill();
   ctx.restore();
 }
 
-// After the night overlay (render_main_loop.js): the outline of every
-// unpowered pole on screen drawn again over the dark, so a dead pole can be
+// After the night overlay (render_main_loop.js): every unpowered pole on
+// screen gets a faint soft glow over the dark, so a dead pole can still be
 // found at night, zoomed in or out. Fades in with the dark.
 function renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd) {
   if (dark <= 0.05 || typeof T === 'undefined' || !T.POLE) return;
-  const a = Math.min(0.85, dark * 1.3);
+  const a = Math.min(0.22, dark * 0.3);
   const u = TILE / 40;
   for (const e of EntityRegistry.getByType(T.POLE)) {
     if (e.powered || e.col < cStart - 1 || e.col > cEnd + 1 || e.row < rStart - 1 || e.row > rEnd + 1) continue;
     const px = e.col * TILE + (typeof poleKerbShift === 'function' ? poleKerbShift(e, 17) : 0), py = e.row * TILE;
-    _poleOutline(v => px + v * u, v => py + v * u, u, e._underWater ? 34 : 37, `rgba(250,246,232,${a.toFixed(3)})`);
+    _poleGlow(v => px + v * u, v => py + v * u, u, e._underWater ? 34 : 37, `rgba(215,208,190,${a.toFixed(3)})`);
   }
 }
 
