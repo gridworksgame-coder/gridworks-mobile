@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm35';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm36';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -2102,9 +2102,9 @@
     if (cv) bindCanvas(cv);
     setInterval(sync, 250);
     fsPrompt();
-    framedPrompt();
-    // The game's start-up screens can clear it away: put it back once loaded.
-    window.addEventListener('load', () => setTimeout(framedPrompt, 1500));
+    // (No more "open it in its own tab" offer inside a frame, as on itch:
+    // the game played on in the frame behind the new tab, so two copies ran
+    // at once, and it plays fine in the frame. framedPrompt() is kept unused.)
     watchAnchored(); setInterval(watchAnchored, 2000);   // some are built later
     // Cutscenes: switch to the desktop-height screen the moment one's root
     // is added, and back when it goes.
