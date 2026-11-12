@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm30';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm31';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -699,7 +699,10 @@
       const f = (d) => Math.max(0, Math.min(1, d / m));
       let dx = 0, dy = 0;
       if (x < m) dx = -f(m - x); else if (x > W - m) dx = f(x - (W - m));
-      if (y < top + m) dy = -f(top + m - y); else if (y > H - m) dy = f(y - (H - m));
+      // The bottom zone is a little taller: near the foot of a phone the
+      // finger can't get far into it past the build bar and the screen edge.
+      const mb = m * 1.35;
+      if (y < top + m) dy = -f(top + m - y); else if (y > H - mb) dy = Math.max(0, Math.min(1, (y - (H - mb)) / mb));
       return { dx, dy };
     }
     function edgeTick() {
@@ -720,7 +723,9 @@
       edgeTick._t = now;
       const ramp = Math.min(1, Math.max(0, (held - 250) / 400));   // 0.25 s wait, then eases in
       const sp = (k) => Math.sign(k) * 380 * k * k * ramp * dt;   // 0 at the zone's inner edge, ~380 px/s at the screen edge
-      Cam.panByScreen(-sp(v.dx), -sp(v.dy));
+      // Southward a little quicker (x1.35): laying a run down the screen
+      // felt slow next to the other directions.
+      Cam.panByScreen(-sp(v.dx), -sp(v.dy) * (v.dy > 0 ? 1.35 : 1));
       mouse(cv, 'mousemove', one.x, one.y, 0, { held: true });   // the world moved under the finger
       edgeRaf = requestAnimationFrame(edgeTick);
     }

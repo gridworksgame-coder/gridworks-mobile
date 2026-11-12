@@ -3347,11 +3347,19 @@ function renderPole(e, px, py, t) {
       ctx.fillStyle = '#5a5e60'; ctx.beginPath(); ctx.arc(X(20 + side*15), Y(37), 1*u, 0, Math.PI*2); ctx.fill();
     }
 
+    // An unpowered pole is drawn in pale, weathered timber with a light
+    // outline, so a dead pole stands out against dark ground (the outline is
+    // kept at least ~1.5 screen pixels wide, zoomed out or not). At night
+    // renderUnpoweredPolesNight() draws the outline again over the dark.
+    const foot = inWater ? 34 : 37;                         // stands on the pier top in water
+    const dead = !on && !e._iconThumb;
+    if (dead) _poleOutline(X, Y, u, foot, 'rgba(250,246,232,0.95)');
+
     // Tapered timber shaft
     const sg = ctx.createLinearGradient(X(18), 0, X(22), 0);
-    sg.addColorStop(0, '#4a3624'); sg.addColorStop(0.45, '#7e603f'); sg.addColorStop(1, '#3a2b1c');
+    if (dead) { sg.addColorStop(0, '#9e978a'); sg.addColorStop(0.45, '#d6cfc0'); sg.addColorStop(1, '#8e877a'); }
+    else      { sg.addColorStop(0, '#4a3624'); sg.addColorStop(0.45, '#7e603f'); sg.addColorStop(1, '#3a2b1c'); }
     ctx.fillStyle = sg;
-    const foot = inWater ? 34 : 37;                         // stands on the pier top in water
     ctx.beginPath(); ctx.moveTo(X(18.1), Y(foot)); ctx.lineTo(X(18.9), Y(4.5)); ctx.lineTo(X(21.1), Y(4.5)); ctx.lineTo(X(21.9), Y(foot)); ctx.closePath(); ctx.fill();
     if (detail) {
       line(19.7, 8, 19.5, 34, 'rgba(30,20,12,0.35)', 0.35);
@@ -3367,7 +3375,7 @@ function renderPole(e, px, py, t) {
     if (detail && !tagWarn) rect(19.3, 25.8, 1.4, 0.4, '#5a5a5a');
 
     // Crossarm on diagonal braces
-    rect(7, 9.6, 26, 2.4, '#5e4832');
+    rect(7, 9.6, 26, 2.4, dead ? '#bdb5a5' : '#5e4832');
     rect(7, 11.4, 26, 0.6, 'rgba(0,0,0,0.3)');
     line(12, 12, 19, 17, '#4a3a2a', 0.8);
     line(28, 12, 21, 17, '#4a3a2a', 0.8);
@@ -3423,6 +3431,33 @@ function renderPole(e, px, py, t) {
 
     ctx.restore();
   }
+
+// The outline of a pole's shaft and crossarm (tile units, as renderPole),
+// stroked at least ~1.5 screen pixels wide whatever the zoom.
+function _poleOutline(X, Y, u, foot, colour) {
+  const lw = Math.max(1.6 * u, 1.5 / Math.max(0.05, Camera.zoom));
+  ctx.save();
+  ctx.strokeStyle = colour; ctx.lineWidth = lw; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(X(18.1), Y(foot)); ctx.lineTo(X(18.9), Y(4.5)); ctx.lineTo(X(21.1), Y(4.5)); ctx.lineTo(X(21.9), Y(foot)); ctx.closePath();
+  ctx.rect(X(7), Y(9.6), 26 * u, 2.4 * u);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// After the night overlay (render_main_loop.js): the outline of every
+// unpowered pole on screen drawn again over the dark, so a dead pole can be
+// found at night, zoomed in or out. Fades in with the dark.
+function renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd) {
+  if (dark <= 0.05 || typeof T === 'undefined' || !T.POLE) return;
+  const a = Math.min(0.85, dark * 1.3);
+  const u = TILE / 40;
+  for (const e of EntityRegistry.getByType(T.POLE)) {
+    if (e.powered || e.col < cStart - 1 || e.col > cEnd + 1 || e.row < rStart - 1 || e.row > rEnd + 1) continue;
+    const px = e.col * TILE + (typeof poleKerbShift === 'function' ? poleKerbShift(e, 17) : 0), py = e.row * TILE;
+    _poleOutline(v => px + v * u, v => py + v * u, u, e._underWater ? 34 : 37, `rgba(250,246,232,${a.toFixed(3)})`);
+  }
+}
 
 function renderSolar2(e, px, py, t) {
     // Render natively at 2×2 tile size — don't rely on canvas scaling

@@ -2488,6 +2488,7 @@ RenderSystem.render = function (t, inputState) {
       // above the night overlay.
       Camera.applyTransform(ctx);
       ZoneLights.render(ctx, dark, cStart, cEnd, rStart, rEnd);   // zone street, porch, shop and yard lights
+      if (typeof renderUnpoweredPolesNight === 'function') renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // dead poles outlined over the dark
       SiteYard.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // plant yard floodlights (render_site_yard.js)
       if (typeof SeasonalEventFx !== 'undefined') SeasonalEventFx.renderNight(ctx, dark, t, cStart, cEnd, rStart, rEnd);   // festival lights, stage beams, pledge markers
       if (typeof SmallFliers !== 'undefined') SmallFliers.renderNight(ctx);   // fireflies glowing, bats against the dusk
