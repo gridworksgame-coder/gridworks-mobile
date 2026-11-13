@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm41';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm42';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -2095,12 +2095,42 @@
     placeTypingBar(); renderTypingBar();
   }, 300);
 
+  // ── Rotate button in the building panel ───────────────────────────
+  // On desktop R turns the stubs of the building under the cursor; a phone
+  // has no R key and no hover, so the panel of a building whose stubs turn
+  // gets a button that does the same (InputManager.rotatePlacedFromPanel).
+  const ROTATE_STUB_KEYS = ['COALMINE', 'COALMINE2', 'WATEREXTRACTOR', 'HYDROGENERATOR', 'URANIUMMINE',
+    'RAREEARTHMINE', 'SULFURMINE', 'SULFURMINE2', 'GEOWELL', 'HYDROTURBINE', 'OILSTORAGE', 'SOLIDSTORAGE', 'GASSTORAGE'];
+  let ROTATE_STUB_TYPES = null, epRotBtn = null;
+  function syncPanelRotate() {
+    const panel = $('ep-body');
+    if (!panel || typeof EntityInfoPanel === 'undefined' || typeof InputManager === 'undefined' || !InputManager.rotatePlacedFromPanel) return;
+    if (!ROTATE_STUB_TYPES) ROTATE_STUB_TYPES = new Set(ROTATE_STUB_KEYS.map(k => T[k]).filter(Boolean));
+    if (!epRotBtn) {
+      epRotBtn = document.createElement('button');
+      epRotBtn.id = 'ep-rotate-btn';
+      epRotBtn.type = 'button';
+      epRotBtn.textContent = '⟳ Rotate stub';
+      epRotBtn.style.cssText = 'display:none;width:calc(100% - 16px);margin:4px 8px;padding:8px 6px;background:#04141c;border:1px solid #1e4a60;color:#60d0ff;font-family:monospace;font-size:11px;letter-spacing:1px;cursor:pointer;border-radius:3px;';
+      epRotBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      epRotBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); e.preventDefault(); epRotBtn.blur();
+        const t = EntityInfoPanel.target;
+        if (t && InputManager.rotatePlacedFromPanel(t)) EntityInfoPanel.refresh();
+      });
+      panel.insertAdjacentElement('afterend', epRotBtn);
+    }
+    const t = EntityInfoPanel.isOpen() ? EntityInfoPanel.target : null;
+    epRotBtn.style.display = t && ROTATE_STUB_TYPES.has(t.type) && !t._irreparable ? '' : 'none';
+  }
+
   // ── 7. Boot ────────────────────────────────────────────────────────
   function boot() {
     buildUI();
     const cv = $('canvas');
     if (cv) bindCanvas(cv);
     setInterval(sync, 250);
+    setInterval(syncPanelRotate, 150);
     fsPrompt();
     // (No more "open it in its own tab" offer inside a frame, as on itch:
     // the game played on in the frame behind the new tab, so two copies ran

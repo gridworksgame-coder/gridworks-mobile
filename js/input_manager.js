@@ -5953,6 +5953,13 @@ if (e.code === 'Space' && !e.target.matches('input, textarea')) {
     // Poles are in the set only to keep mousemove off them; their drag runs through tryPoleAt.
     isSingleTargetTool: (t) => NO_DRAG_REPLACE_TOOLS.has(t) && t !== T.POLE, updateChop, askClearWreck,
     centreTile: _centreOnCursor,
+    // Mobile: the building panel's Rotate button turns a placed building's
+    // stubs the way R does over it (there is no R key on a phone).
+    rotatePlacedFromPanel(e) {
+      if (!rotatePlaced(e, false)) return false;
+      PowerNetwork.recomputeWireHops(); SFX.click?.();
+      return true;
+    },
     // Circuit Switch roster assignment
     beginCircuitAssign(sw) { _circuitAssignSw = sw; state.selectedTool = null; canvas.style.cursor = 'crosshair'; },
     endCircuitAssign()     { _circuitAssignSw = null; canvas.style.cursor = 'default'; },
