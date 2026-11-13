@@ -9871,64 +9871,215 @@ function renderIndustrial(e, px, py, t) {
       const watchman = on && !shift && dark > 0.3;
       const DYES = ['#d8506a', '#4a9ec4', '#e2b44a', '#6ab87a'];
 
-      // ── Ground and yard ─────────────────────────────────────────────
-      box(0.02, 0.02, 0.96, 0.96, C('#2e2a29', '#151312'));
-      box(0.02, 0.62, 0.96, 0.36, C('#3a3432', '#1a1716'));
+      const lines = (segs, col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); for (const s of segs) { ctx.moveTo(X(s[0]), Y(s[1])); ctx.lineTo(X(s[2]), Y(s[3])); } ctx.stroke(); };
+      const detail = Camera.zoom > 0.45, fine = Camera.zoom > 0.8;
+      const SHADE = 'rgba(0,0,0,0.22)', SHADOW = 'rgba(0,0,0,0.28)';
+      const STONE = C('#c8b8a0', '#3a342c'), STONE_DK = C('#9a8c78', '#2a2620');
+
+      // ── Yard ────────────────────────────────────────────────────────
+      // No ground slab: the buildings stand on the map's own grass, and only
+      // the working yard in front of them is paved, in grey stone setts.
+      box(0.02, 0.62, 0.96, 0.36, C('#6e6862', '#2a2826'));
+      box(0.02, 0.62, 0.96, 0.006, C('#5a5450', '#222020'));
+      if (fine) {                                                               // setts across the yard
+        const segs = [];
+        for (let r = 0; r < 10; r++) {
+          const y = 0.625 + r*0.034;
+          segs.push([0.02, y, 0.98, y]);
+          for (let c = 0; c < 32; c++) { const x = 0.03 + c*0.03 + (r % 2)*0.015; segs.push([x, y, x, y + 0.034]); }
+        }
+        lines(segs, C('rgba(40,34,30,0.35)', 'rgba(0,0,0,0.3)'), 0.2);
+      }
+      // Low brick boundary wall along the street, open at the dock gate
+      box(0.02, 0.95, 0.76, 0.028, C('#7a4238', '#26140f'));
+      box(0.02, 0.946, 0.76, 0.008, STONE);
+      for (let p = 0; p < 7; p++) box(0.02 + p*0.124, 0.94, 0.016, 0.038, C('#6a382f', '#1e100c'));
+      box(0.775, 0.935, 0.022, 0.043, C('#6a382f', '#1e100c'));                  // gate pier
+      box(0.772, 0.93, 0.028, 0.008, STONE);
+
+      // ── Cast shadows (light from the upper left) ────────────────────
+      box(0.055, 0.60, 0.58, 0.028, SHADOW);                                    // weaving shed
+      poly([[0.71, 0.60], [0.735, 0.63], [0.735, 0.60]], SHADOW);               // chimney
+      box(0.745, 0.60, 0.235, 0.022, SHADOW);                                   // engine house
 
       // ── Weaving shed: brick body, sawtooth north-light roof ─────────
       const hX = 0.04, hY = 0.16, hW = 0.58, hH = 0.44;
       box(hX, hY, hW, hH, C('#8c4e44', '#2c1a17'));
       for (let r = 1; r < 8; r++) path([[hX, hY + r*hH/8], [hX + hW, hY + r*hH/8]], C('rgba(60,30,26,0.35)', 'rgba(0,0,0,0.35)'), 0.25);
+      if (fine) {                                                               // stretcher-bond joints
+        const segs = [];
+        for (let r = 0; r < 22; r++) {
+          const y = hY + 0.02 + r*0.02;
+          for (let c = 0; c < 20; c++) { const x = hX + 0.01 + c*0.03 + (r % 2)*0.015; segs.push([x, y, x, y + 0.02]); }
+        }
+        lines(segs, C('rgba(60,30,26,0.22)', 'rgba(0,0,0,0.25)'), 0.15);
+      }
+      // Pilasters between the bays give the long wall its rhythm and relief
+      for (let p = 0; p < 8; p++) {
+        const px0 = p === 0 ? hX : p === 7 ? hX + hW - 0.014 : 0.124 + (p - 1)*0.078;
+        box(px0, hY + 0.018, 0.014, hH - 0.05, C('#9c5a4e', '#301d1a'));
+        box(px0 + 0.011, hY + 0.018, 0.003, hH - 0.05, C('rgba(50,24,20,0.45)', 'rgba(0,0,0,0.4)'));
+      }
+      box(hX, hY + hH - 0.032, hW, 0.032, C('#6a625a', '#221f1c'));            // stone plinth
+      box(hX, hY + hH - 0.032, hW, 0.005, C('#8a8278', '#2c2824'));
+      box(hX + hW - 0.012, hY, 0.012, hH, SHADE);                               // gable end turning away
+      // Sawtooth roof — slates on the slope, glazing bars on the north light
       const teeth = 5, tw = hW/teeth;
       for (let i = 0; i < teeth; i++) {
-        const x0 = hX + i*tw;
-        poly([[x0, hY], [x0 + tw*0.76, 0.05], [x0 + tw*0.76, hY]], C('#5e5050', '#221c1c'));   // solid slope
+        const x0 = hX + i*tw, xa = x0 + tw*0.76;
+        poly([[x0, hY], [xa, 0.05], [xa, hY]], C('#5e5050', '#221c1c'));         // solid slope
+        if (detail) {
+          const segs = [];
+          for (let s = 1; s < 4; s++) { const y = 0.05 + s*(hY - 0.05)/4; segs.push([x0 + (xa - x0)*(hY - y)/(hY - 0.05), y, xa, y]); }
+          lines(segs, C('rgba(30,24,24,0.45)', 'rgba(0,0,0,0.4)'), 0.2);
+          path([[x0, hY], [xa, 0.05]], C('rgba(150,140,140,0.6)', 'rgba(60,56,56,0.5)'), 0.3);   // verge catching the light
+        }
         const glaze = shift ? 0.55 + 0.15*Math.sin(t*1.7 + i*1.2) : 0;
-        box(x0 + tw*0.76, 0.05, tw*0.24, hY - 0.05, glaze ? `rgba(255,210,150,${glaze})` : C('#303a44', '#141618'));   // glazed north face
-        path([[x0 + tw*0.76, 0.05 + (hY - 0.05)/2], [x0 + tw, 0.05 + (hY - 0.05)/2]], C('rgba(60,40,36,0.7)', 'rgba(0,0,0,0.6)'), 0.3);
+        box(xa, 0.05, tw*0.24, hY - 0.05, glaze ? `rgba(255,210,150,${glaze})` : C('#303a44', '#141618'));   // glazed north face
+        if (!glaze && on) box(xa, 0.05, tw*0.08, hY - 0.05, 'rgba(160,190,210,0.25)');                    // sky glint
+        const bar = C('rgba(60,40,36,0.7)', 'rgba(0,0,0,0.6)');
+        path([[xa, 0.05 + (hY - 0.05)/2], [x0 + tw, 0.05 + (hY - 0.05)/2]], bar, 0.3);
+        if (detail) lines([[xa + tw*0.12, 0.05, xa + tw*0.12, hY]], bar, 0.25);
       }
-      // Two storeys of arched windows; looms at work behind the lower row
+      box(hX, hY - 0.004, hW, 0.008, C('#3a3434', '#141212'));                   // valley gutter
+      box(hX - 0.005, hY + 0.004, hW + 0.01, 0.014, STONE);                     // cornice
+      box(hX - 0.005, hY + 0.018, hW + 0.01, 0.004, C('rgba(40,20,16,0.5)', 'rgba(0,0,0,0.5)'));
+      if (fine) for (let d = 0; d < 29; d++) box(hX + 0.004 + d*0.02, hY + 0.018, 0.008, 0.006, STONE_DK);   // dentils
+
+      // Two storeys of arched windows; looms at work behind the lower row.
+      // The middle bay of the upper storey carries the mill clock instead.
       for (let row = 0; row < 2; row++) for (let w = 0; w < 7; w++) {
+        if (row === 0 && w === 3) continue;
         const wx = hX + 0.03 + w*0.078, wy = hY + 0.07 + row*0.20, ww = 0.042, wh = 0.09;
+        const ar = ww/2/fpRatio;                                               // arch rise in y
         const lit = shift || (watchman && row === 0 && w === 5);
         const glass = lit ? `rgba(255,208,140,${shift ? 0.75 + 0.1*Math.sin(t*1.3 + w) : 0.7})`
                           : C(dark > 0.4 ? '#161c22' : '#5a7488', '#121416');
-        box(wx, wy, ww, wh, glass);
+        // Stone voussoirs around the arch head, then the dark reveal
+        ctx.fillStyle = STONE; ctx.beginPath();
+        ctx.ellipse(X(wx + ww/2), Y(wy), W*(ww/2 + 0.008), H*(ar + 0.008/fpRatio), 0, Math.PI, 0); ctx.fill();
+        box(wx + ww/2 - 0.005, wy - ar - 0.012, 0.01, 0.014, C('#ddd0b8', '#423c32'));   // keystone
+        box(wx - 0.003, wy, ww + 0.006, wh, C('#3a221e', '#140c0a'));
+        ctx.fillStyle = C('#3a221e', '#140c0a'); ctx.beginPath();
+        ctx.ellipse(X(wx + ww/2), Y(wy), W*(ww/2 + 0.003), H*(ar + 0.003/fpRatio), 0, Math.PI, 0); ctx.fill();
+        box(wx + 0.002, wy, ww - 0.002, wh, glass);
         ctx.fillStyle = glass; ctx.beginPath();
-        ctx.ellipse(X(wx + ww/2), Y(wy), W*ww/2, H*ww/2/fpRatio, 0, Math.PI, 0); ctx.fill();   // round arch head
-        box(wx - 0.004, wy + wh, ww + 0.008, 0.008, C('#c8b8a0', '#3a342c'));   // sill
+        ctx.ellipse(X(wx + ww/2 + 0.001), Y(wy), W*(ww/2 - 0.001), H*(ar - 0.002), 0, Math.PI, 0); ctx.fill();   // round arch head
+        if (!lit && on && dark <= 0.4) box(wx + 0.004, wy - ar*0.6, 0.008, wh*0.8, 'rgba(220,236,245,0.22)');   // sky reflection
+        if (shift && row === 1 && detail) {                                     // loom frames silhouetted against the light
+          box(wx + 0.006, wy + wh*0.62, ww - 0.01, 0.006, 'rgba(70,40,26,0.55)');
+          box(wx + 0.008, wy + wh*0.62, 0.004, wh*0.38, 'rgba(70,40,26,0.55)');
+          box(wx + ww - 0.01, wy + wh*0.62, 0.004, wh*0.38, 'rgba(70,40,26,0.55)');
+        }
+        if (detail) {                                                           // glazing bars
+          const gb = lit ? 'rgba(90,50,30,0.6)' : C('rgba(210,200,180,0.55)', 'rgba(50,46,40,0.6)');
+          lines([[wx + ww/2 + 0.001, wy - ar, wx + ww/2 + 0.001, wy + wh],
+                 [wx + 0.002, wy + wh*0.33, wx + ww, wy + wh*0.33],
+                 [wx + 0.002, wy + wh*0.66, wx + ww, wy + wh*0.66]], gb, 0.2);
+        }
+        box(wx - 0.006, wy + wh, ww + 0.012, 0.009, STONE);                     // sill
+        box(wx - 0.006, wy + wh + 0.009, ww + 0.012, 0.004, C('rgba(40,20,16,0.4)', 'rgba(0,0,0,0.4)'));
         if (shift && row === 1) box(wx + 0.004 + (0.5 + 0.5*Math.sin(t*3.2 + w*1.7))*(ww - 0.016), wy + wh*0.55, 0.008, 0.014, '#fff4dc');   // shuttle
       }
-      box(hX, hY + 0.185, hW, 0.02, C('#c8b8a0', '#3a342c'));                  // string course
+      box(hX, hY + 0.185, hW, 0.02, STONE);                                     // string course
+      box(hX, hY + 0.205, hW, 0.004, C('rgba(40,20,16,0.45)', 'rgba(0,0,0,0.45)'));
+      box(hX + hW/2 - 0.125, 0.331, 0.25, 0.05, C('#4a2a22', '#1c1210'));      // name board frame
       box(hX + hW/2 - 0.12, 0.335, 0.24, 0.042, C('#eee4cc', '#34302a'));       // name board between the storeys
       label('ALBION MILL', hX + hW/2, 0.369, 1.7, C('#5a2a22', 'rgba(40,30,28,0.8)'));
 
-      // ── Chimney ─────────────────────────────────────────────────────
-      const chX = 0.655, chW = 0.05;
-      box(chX, 0.02, chW, 0.58, C('#7a4238', '#26140f'));
-      box(chX - 0.006, 0.02, chW + 0.012, 0.025, C('#5a3028', '#1e100c'));
-      for (let b = 0; b < 3; b++) box(chX, 0.12 + b*0.14, chW, 0.012, C('#c8b8a0', '#3a342c'));
+      // Mill clock — keeps the game's time while there's power (the knocker-up
+      // of the shift); stopped at ten past ten when the supply is out.
+      {
+        const cx = hX + 0.03 + 3*0.078 + 0.021, cy = 0.262, r = 0.04;
+        const clockHr = on ? hr : 10 + 10/60;
+        disc(cx, cy, r + 0.012, STONE);
+        disc(cx, cy, r + 0.005, C('#3a2a22', '#141010'));
+        disc(cx, cy, r, on ? (dark > 0.3 ? '#ffe9b0' : '#f2ead6') : '#3a362e');
+        if (detail) {
+          const ticks = [];
+          for (let k = 0; k < 12; k++) {
+            const a = k/12*Math.PI*2, r0 = k % 3 ? r*0.84 : r*0.72;
+            ticks.push([cx + Math.sin(a)*r0*fpRatio, cy - Math.cos(a)*r0, cx + Math.sin(a)*r*0.94*fpRatio, cy - Math.cos(a)*r*0.94]);
+          }
+          lines(ticks, C('#3a2a22', '#1a1614'), 0.25);
+        }
+        const hand = (ang, len, lw) => path([[cx, cy], [cx + Math.sin(ang)*len*fpRatio, cy - Math.cos(ang)*len]], C('#1e1410', '#141010'), lw);
+        hand((clockHr % 12)/12*Math.PI*2, r*0.55, 0.6);
+        hand((clockHr % 1)*Math.PI*2, r*0.82, 0.4);
+        disc(cx, cy, 0.005, C('#1e1410', '#141010'));
+      }
+
+      // ── Chimney: tapered, banded, corbelled crown ───────────────────
+      const chBot = 0.60, chTop = 0.045, chCx = 0.68;
+      const chHalf = (y) => 0.022 + 0.01*(y - chTop)/(chBot - chTop);
+      poly([[chCx - chHalf(chTop), chTop], [chCx + chHalf(chTop), chTop], [chCx + chHalf(chBot), chBot], [chCx - chHalf(chBot), chBot]], C('#7a4238', '#26140f'));
+      poly([[chCx + chHalf(chTop)*0.2, chTop], [chCx + chHalf(chTop), chTop], [chCx + chHalf(chBot), chBot], [chCx + chHalf(chBot)*0.2, chBot]], SHADE);   // shaded flank
+      if (fine) {
+        const segs = [];
+        for (let y = chTop + 0.02; y < chBot; y += 0.018) segs.push([chCx - chHalf(y), y, chCx + chHalf(y), y]);
+        lines(segs, C('rgba(50,24,20,0.35)', 'rgba(0,0,0,0.3)'), 0.15);
+      }
+      for (let b = 0; b < 3; b++) { const y = 0.12 + b*0.14; box(chCx - chHalf(y) - 0.002, y, 2*chHalf(y) + 0.004, 0.012, STONE); }
+      box(chCx - chHalf(chTop) - 0.008, 0.02, 2*chHalf(chTop) + 0.016, 0.025, C('#5a3028', '#1e100c'));   // crown
+      box(chCx - chHalf(chTop) - 0.008, 0.02, 2*chHalf(chTop) + 0.016, 0.006, C('#2a1e1a', '#120c0a'));   // soot-blackened cap
+      box(chCx - chHalf(chTop) - 0.004, 0.045, 2*chHalf(chTop) + 0.008, 0.006, C('rgba(40,20,16,0.5)', 'rgba(0,0,0,0.5)'));
+      if (detail) path([[chCx + 0.012, 0.02], [chCx + 0.012, -0.03]], C('#8a9096', '#2a2c2e'), 0.25);   // lightning rod
       if (shift) for (let q = 0; q < 4; q++) {
         const ph = (t*0.28 + q/4) % 1;
-        disc(chX + chW/2 + ph*0.04, 0.01 - ph*0.16, 0.012 + ph*0.035, `rgba(200,196,192,${(1 - ph)*0.3})`);
+        disc(chCx + ph*0.04, 0.01 - ph*0.16, 0.012 + ph*0.035, `rgba(200,196,192,${(1 - ph)*0.3})`);
       }
 
       // ── Water tower on its trestle, engine house below ──────────────
-      path([[0.80, 0.20], [0.79, 0.42]], C('#4a3a2c', '#1c1612'), 0.5);
-      path([[0.93, 0.20], [0.94, 0.42]], C('#4a3a2c', '#1c1612'), 0.5);
-      path([[0.80, 0.30], [0.93, 0.36]], C('#4a3a2c', '#1c1612'), 0.3);
-      path([[0.93, 0.30], [0.80, 0.36]], C('#4a3a2c', '#1c1612'), 0.3);
+      const wood = C('#4a3a2c', '#1c1612');
+      path([[0.80, 0.20], [0.79, 0.42]], wood, 0.5);
+      path([[0.93, 0.20], [0.94, 0.42]], wood, 0.5);
+      path([[0.80, 0.30], [0.93, 0.36]], wood, 0.3);
+      path([[0.93, 0.30], [0.80, 0.36]], wood, 0.3);
+      path([[0.795, 0.30], [0.935, 0.30]], wood, 0.3);
+      if (detail) {                                                             // service ladder up the right leg
+        const rungs = [[0.952, 0.10, 0.952, 0.42], [0.962, 0.10, 0.962, 0.42]];
+        for (let y = 0.12; y < 0.42; y += 0.025) rungs.push([0.952, y, 0.962, y]);
+        lines(rungs, C('#6a6058', '#22201c'), 0.2);
+      }
       box(0.78, 0.09, 0.17, 0.11, C('#7c5a3a', '#261c12'));
+      if (detail) {
+        const staves = [];
+        for (let s = 1; s < 9; s++) staves.push([0.78 + s*0.019, 0.09, 0.78 + s*0.019, 0.20]);
+        lines(staves, C('rgba(60,40,24,0.5)', 'rgba(0,0,0,0.4)'), 0.2);
+      }
+      box(0.78, 0.09, 0.025, 0.11, C('rgba(255,230,190,0.12)', 'rgba(0,0,0,0)'));   // lit side of the tank
+      box(0.915, 0.09, 0.035, 0.11, SHADE);
       for (let hp = 0; hp < 3; hp++) box(0.78, 0.11 + hp*0.035, 0.17, 0.007, C('#3a3a3c', '#141414'));   // hoops
       poly([[0.77, 0.09], [0.865, 0.03], [0.96, 0.09]], C('#5a5048', '#1e1a18'));
+      poly([[0.865, 0.03], [0.96, 0.09], [0.865, 0.09]], SHADE);
+      box(0.862, 0.012, 0.006, 0.02, C('#3a3434', '#141212'));                  // finial
       box(0.73, 0.44, 0.24, 0.16, C('#7e4a40', '#281814'));
+      if (fine) lines([0.47, 0.50, 0.53, 0.56, 0.59].map(y => [0.73, y, 0.97, y]), C('rgba(60,30,26,0.35)', 'rgba(0,0,0,0.35)'), 0.2);
+      box(0.95, 0.44, 0.02, 0.16, SHADE);
       poly([[0.72, 0.44], [0.85, 0.39], [0.98, 0.44]], C('#4e4444', '#1c1818'));
-      for (let w = 0; w < 3; w++) box(0.755 + w*0.075, 0.49, 0.035, 0.06, shift ? `rgba(255,190,110,${0.6 + 0.2*Math.sin(t*2 + w)})` : C('#1a2026', '#101214'));
+      poly([[0.85, 0.39], [0.98, 0.44], [0.85, 0.44]], SHADE);
+      box(0.72, 0.438, 0.26, 0.006, STONE_DK);                                   // eaves
+      box(0.905, 0.385, 0.014, 0.03, C('#3a3434', '#141212'));                   // exhaust stub
+      if (shift) for (let q = 0; q < 2; q++) {
+        const ph = (t*0.6 + q/2) % 1;
+        disc(0.912 + ph*0.02, 0.38 - ph*0.07, 0.008 + ph*0.016, `rgba(235,235,235,${(1 - ph)*0.3})`);
+      }
+      for (let w = 0; w < 3; w++) {
+        const ex = 0.755 + w*0.075, glow = shift ? `rgba(255,190,110,${0.6 + 0.2*Math.sin(t*2 + w)})` : C('#1a2026', '#101214');
+        ctx.fillStyle = STONE; ctx.beginPath(); ctx.ellipse(X(ex + 0.0175), Y(0.49), W*0.023, H*0.023/fpRatio, 0, Math.PI, 0); ctx.fill();
+        box(ex, 0.49, 0.035, 0.06, glow);
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.ellipse(X(ex + 0.0175), Y(0.49), W*0.0175, H*0.0175/fpRatio, 0, Math.PI, 0); ctx.fill();
+        if (detail) lines([[ex + 0.0175, 0.468, ex + 0.0175, 0.55]], shift ? 'rgba(90,50,30,0.6)' : C('rgba(210,200,180,0.4)', 'rgba(50,46,40,0.6)'), 0.2);
+        box(ex - 0.004, 0.55, 0.043, 0.007, STONE);
+      }
 
       // ── Cotton bales at the intake ──────────────────────────────────
       for (let b = 0; b < 5; b++) {
         const bx = 0.04 + (b % 3)*0.05, by = 0.84 - Math.floor(b/3)*0.075;
-        box(bx, by, 0.044, 0.068, C('#d8ccb2', '#3a352c'));
+        box(bx + 0.004, by + 0.004, 0.044, 0.068, SHADOW);
+        box(bx, by, 0.044, 0.068, C(b % 2 ? '#cfc2a6' : '#d8ccb2', '#3a352c'));
+        box(bx, by, 0.044, 0.012, C('#e8dec8', '#433d33'));                     // top face catching the light
+        box(bx + 0.036, by, 0.008, 0.068, C('rgba(90,70,40,0.25)', 'rgba(0,0,0,0.25)'));
         path([[bx + 0.015, by], [bx + 0.015, by + 0.068]], C('rgba(110,80,50,0.7)', 'rgba(20,16,12,0.7)'), 0.25);
         path([[bx + 0.030, by], [bx + 0.030, by + 0.068]], C('rgba(110,80,50,0.7)', 'rgba(20,16,12,0.7)'), 0.25);
       }
@@ -9939,12 +10090,22 @@ function renderIndustrial(e, px, py, t) {
       }
 
       // ── Dye vats ────────────────────────────────────────────────────
-      box(0.20, 0.66, 0.25, 0.22, C('#4a4442', '#1c1a18'));
+      box(0.204, 0.664, 0.25, 0.22, SHADOW);
+      box(0.20, 0.66, 0.25, 0.22, C('#5a4a3c', '#1c1a18'));                      // timber staging
+      if (fine) lines([0.69, 0.72, 0.75, 0.78, 0.81, 0.84].map(y => [0.20, y, 0.45, y]), C('rgba(30,22,16,0.45)', 'rgba(0,0,0,0.4)'), 0.2);
+      box(0.20, 0.66, 0.25, 0.008, C('#7a6a58', '#24201c'));
+      lines([[0.23, 0.60, 0.23, 0.66], [0.43, 0.60, 0.43, 0.66]], C('#8a9096', '#2a2c2e'), 0.45);   // feed pipes from the shed
       for (let v = 0; v < 3; v++) {
         const vx = 0.245 + v*0.08, vy = 0.77;
-        disc(vx, vy, 0.052, C('#6a625c', '#222222'));
+        disc(vx + 0.004, vy + 0.006, 0.054, SHADOW);
+        disc(vx, vy, 0.054, C('#6a4a32', '#221a14'));                           // oak tub
+        disc(vx, vy, 0.047, C('#3a3a3c', '#161616'));                           // iron hoop
         disc(vx, vy, 0.040, on ? DYES[v] : '#1e1c1a');
         if (on) disc(vx - 0.008, vy - 0.014, 0.012, 'rgba(255,255,255,0.22)');
+        if (shift && detail) {                                                  // stirring paddle
+          const a = t*1.6 + v*2.1;
+          path([[vx, vy], [vx + Math.cos(a)*0.034*fpRatio, vy + Math.sin(a)*0.034]], '#c8a878', 0.5);
+        }
         if (shift) for (let q = 0; q < 2; q++) {
           const ph = (t*0.4 + q/2 + v*0.3) % 1;
           disc(vx + Math.sin(t + v + q)*0.01, vy - 0.05 - ph*0.12, 0.018 + ph*0.03, `rgba(235,235,235,${(1 - ph)*0.25})`);
@@ -9952,27 +10113,67 @@ function renderIndustrial(e, px, py, t) {
       }
 
       // ── Tenter lines: dyed cloth drying in the breeze ───────────────
-      for (const pole of [0.49, 0.64, 0.79]) box(pole, 0.64, 0.006, 0.20, C('#6a5a4a', '#221c16'));
+      for (const pole of [0.49, 0.64, 0.79]) {
+        box(pole + 0.006, 0.83, 0.012, 0.01, SHADOW);
+        box(pole, 0.64, 0.006, 0.20, C('#6a5a4a', '#221c16'));
+        box(pole - 0.004, 0.636, 0.014, 0.008, C('#4a3e32', '#1a1612'));
+      }
       path([[0.49, 0.655], [0.795, 0.655]], C('#b8b0a0', '#2e2c28'), 0.25);
       for (let c = 0; c < 4; c++) {
         const cx0 = 0.505 + c*0.071, sway = on ? Math.sin(t*1.4 + c*1.1)*0.012 : 0;
+        box(cx0 + 0.008 + sway, 0.81, 0.055, 0.014, 'rgba(0,0,0,0.2)');          // shadow on the setts
         poly([[cx0, 0.657], [cx0 + 0.055, 0.657], [cx0 + 0.055 + sway, 0.80], [cx0 + sway, 0.80]], on ? DYES[(c + 1) % 4] : '#24201e');
-        if (on) path([[cx0 + 0.027, 0.66], [cx0 + 0.027 + sway, 0.80]], 'rgba(0,0,0,0.12)', 0.25);
+        if (on) {
+          path([[cx0 + 0.027, 0.66], [cx0 + 0.027 + sway, 0.80]], 'rgba(0,0,0,0.12)', 0.25);
+          poly([[cx0 + 0.040, 0.657], [cx0 + 0.055, 0.657], [cx0 + 0.055 + sway, 0.80], [cx0 + 0.040 + sway, 0.80]], 'rgba(0,0,0,0.14)');   // fold in shadow
+          poly([[cx0 + 0.006, 0.657], [cx0 + 0.014, 0.657], [cx0 + 0.014 + sway, 0.80], [cx0 + 0.006 + sway, 0.80]], 'rgba(255,255,255,0.12)');
+          box(cx0, 0.794 + 0.002, 0.055, 0.006, 'rgba(255,255,255,0.08)');
+        }
+        if (detail) { box(cx0 + 0.004, 0.651, 0.005, 0.012, C('#e8dcc0', '#3a3630')); box(cx0 + 0.046, 0.651, 0.005, 0.012, C('#e8dcc0', '#3a3630')); }   // pegs
       }
 
       // ── Loading dock: finished bolts, and the van during the shift ──
+      box(0.824, 0.644, 0.15, 0.16, SHADOW);
       box(0.82, 0.64, 0.15, 0.16, C('#5a5450', '#1e1c1a'));
+      box(0.82, 0.792, 0.15, 0.008, C('#3a3634', '#141312'));                     // dock edge
+      for (let r = 0; r < 2; r++) {
+        box(0.825, 0.712 + r*0.06, 0.14, 0.01, C('#8a6a44', '#261e16'));        // pallet
+        if (fine) lines([[0.84, 0.712 + r*0.06, 0.84, 0.722 + r*0.06], [0.895, 0.712 + r*0.06, 0.895, 0.722 + r*0.06], [0.95, 0.712 + r*0.06, 0.95, 0.722 + r*0.06]], C('#4a3a28', '#140f0b'), 0.3);
+      }
       for (let b = 0; b < 6; b++) {
         const bx = 0.845 + (b % 3)*0.042, by = 0.69 + Math.floor(b/3)*0.06;
         disc(bx, by, 0.026, on ? DYES[b % 4] : '#24201e');
-        if (on) disc(bx - 0.004, by, 0.009, 'rgba(255,255,255,0.25)');
+        if (on) {
+          disc(bx + 0.004, by + 0.004, 0.018, 'rgba(0,0,0,0.12)');
+          disc(bx - 0.004, by, 0.009, 'rgba(255,255,255,0.25)');
+        }
+        disc(bx, by, 0.006, C('#e8dcc0', '#3a3630'));                           // card core
+      }
+      // Striped canvas awning over the dock
+      for (let s = 0; s < 8; s++) poly([[0.815 + s*0.02, 0.615], [0.835 + s*0.02, 0.615], [0.837 + s*0.02, 0.648], [0.817 + s*0.02, 0.648]], s % 2 ? C('#eee4cc', '#34302a') : C('#3a6e9a', '#16222c'));
+      for (let s = 0; s < 8; s++) {
+        ctx.fillStyle = s % 2 ? C('#eee4cc', '#34302a') : C('#3a6e9a', '#16222c');
+        ctx.beginPath(); ctx.ellipse(X(0.827 + s*0.02), Y(0.648), W*0.01, H*0.01/fpRatio*0.6, 0, 0, Math.PI); ctx.fill();   // scalloped valance
+      }
+      box(0.815, 0.612, 0.162, 0.005, C('#2a2a2c', '#121212'));
+      if (on && dark > 0.3) {                                                    // dock lamp
+        disc(0.895, 0.66, 0.045, 'rgba(255,220,150,0.10)');
+        disc(0.895, 0.655, 0.008, '#ffe6a8');
       }
       if (shift) {
+        box(0.805, 0.93, 0.16, 0.014, 'rgba(0,0,0,0.3)');                       // shadow under the van
         box(0.80, 0.855, 0.16, 0.07, '#eeeeea');
+        box(0.80, 0.855, 0.16, 0.008, '#ffffff');
         box(0.80, 0.875, 0.16, 0.012, '#4a78b0');
+        box(0.80, 0.889, 0.16, 0.004, '#d8506a');
         box(0.92, 0.86, 0.035, 0.03, '#1e2a36');
-        disc(0.83, 0.925, 0.011, '#141414');
-        disc(0.92, 0.925, 0.011, '#141414');
+        if (detail) {
+          box(0.925, 0.863, 0.012, 0.012, 'rgba(160,200,230,0.35)');            // windscreen glint
+          lines([[0.915, 0.855, 0.915, 0.925]], 'rgba(0,0,0,0.25)', 0.25);        // cab seam
+          box(0.955, 0.895, 0.006, 0.01, '#ffe6a8');                            // headlamp
+          box(0.80, 0.895, 0.004, 0.012, '#c83a3a');                            // tail lamp
+        }
+        for (const wx of [0.83, 0.92]) { disc(wx, 0.925, 0.011, '#141414'); disc(wx, 0.925, 0.005, '#8a9096'); }
       }
 
     } else if (sub === 'recyclingplant') {
