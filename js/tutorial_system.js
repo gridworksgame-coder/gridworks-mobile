@@ -2086,6 +2086,9 @@ const TutorialSystem = (() => {
   // Compendium is always just reading, so it always pauses regardless of
   // whether the original step had a check.
   function shouldPauseTime() {
+    // A scenario's cards never stop the clock: the run is timed and scored,
+    // and the player keeps building with a card up.
+    if (typeof ScenarioSystem !== 'undefined' && ScenarioSystem.active()) return false;
     if (forcedView) return true;
     if (skipped || !activeSeq) return false;
     const step = activeSeq.steps[stepIdx];

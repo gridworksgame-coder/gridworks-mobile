@@ -274,7 +274,7 @@ const ScenarioSystem = (() => {
       work: { x0: -124, y0: -42, x1: -30, y1: 42 },
       ground: [G.uranium(8, 10), G.sulfur(8, 34), G.lake(54, 56, 30, 22)],
       goals: [place(T.URANIUMMINE, 1), place(T.SULFURMINE, 1), place(T.CHEMICALPLANT, 1), place(T.FUELPLANT, 1),
-              place(T.COOLINGTOWER, 4), install(T.NUCLEARREACTOR, 2), running(T.STEAMTURBINE, 6)],
+              place(T.WATEREXTRACTOR, 4), place(T.COOLINGTOWER, 4), install(T.NUCLEARREACTOR, 2), running(T.STEAMTURBINE, 6)],
       holdH: 8,
       tools: [...GRID, ...STARTER, ...BIG, ...NUCLEAR],
       medals: { gold: 2800000, silver: 3450000 },
@@ -1075,8 +1075,40 @@ const ScenarioSystem = (() => {
   // already happened. `manual` steps are a Continue button instead.
   const _n = (...types) => types.reduce((t, k) => t + EntityRegistry.getByType(k).size, 0);
   const _powered = type => { for (const e of EntityRegistry.getByType(type)) if (e.powered) return true; return false; };
-  const _runs = type => !!(run && run.reqs
-    && ContractRequirements.create([{ kind: 'running', type, count: 1 }], { bounds: run.reqs.context.bounds }).evaluate(true)[0].pass);
+  const _any = (type, pred) => { for (const e of EntityRegistry.getByType(type)) if (pred(e)) return true; return false; };
+  const _runs = (type, count = 1) => !!(run && run.reqs
+    && ContractRequirements.create([{ kind: 'running', type, count }], { bounds: run.reqs.context.bounds }).evaluate(true)[0].pass);
+  // A card asking for a building to be hooked up waits until it is actually
+  // making what it makes, not just standing there with power: the same
+  // tests its info panel uses for PRODUCING / EXTRACTING / COOLING. Anything
+  // not listed works as soon as it has power.
+  const WORKS = {
+    [T.WATEREXTRACTOR]:  e => e.powered && !!e._lakeConnected,
+    [T.HYDROTURBINE]:    e => e.powered && !!e._fuelled,
+    [T.REFINERY]:        e => e.powered && (e._refStatus === 'running' || e._refStatus === 'full'),
+    [T.OILSTORAGE]:      e => (e._crude || 0) > 0,
+    [T.COALGENERATOR]:   e => (e._hopperCoal || 0) > 0,
+    [T.CHEMICALPLANT]:   e => e.powered && !!e._sulfurConveyor && !!e._waterConnected,
+    [T.FUELPLANT]:       e => e.powered && !!e._hasAcid && !!e._hasUranium,
+    [T.COOLINGTOWER]:    e => e.powered && !e._pumpTripped && !!e._hotConnected,
+    [T.NUCLEARREACTOR]:  e => !!e._cooled,
+    [T.ELECTROLYZER]:    e => e.powered && !!e._waterConnected,
+    [T.HABERBOSCH]:      e => e.powered && !!e._hasNitrogen && !!e._hasHydrogen,
+    [T.WASHTOWER]:       e => e.powered && !!e._waterConnected && !!e._hasAmmonia,
+    [T.HE3SEPARATOR]:    e => e.powered && !!e._hasHeliumSource,
+    [T.FUSIONFUELPLANT]: e => e.powered && !!e._hasDeuterium && (!!e._hasTritium || !!e._hasHe3 || (e._he3 || 0) > 0),
+    [T.CRYOPLANT]:       e => e.powered && !e._tripped && !!e._hasHeliumSource,
+    [T.HULKINGFUSIONREACTOR]: e => e.powered && ((e._heCharge || 0) > 0 || !!e._coolingOK),
+    [T.LEACHPLANT]:      e => !!e._running,
+    [T.SCMILL]:          e => !!e._running,
+    [T.COREWORKS]:       e => e.powered && (e._tapeStock || 0) > 0,
+  };
+  const _works = (type, count = 1) => {
+    const ok = WORKS[type] || (e => !!e.powered);
+    let n = 0;
+    for (const e of EntityRegistry.getByType(type)) if (ok(e) && ++n >= count) return true;
+    return false;
+  };
   // The deposit of a kind with nothing built on it yet that is nearest the
   // player's starter turbines (the middle of the work area before there are
   // any), for the card's marker in the world.
@@ -1105,7 +1137,7 @@ const ScenarioSystem = (() => {
     text: `Would you like a guided walkthrough of ${d.title}?\n\nCards will take you through it one step at a time, and the item each step uses will glow in the build bar. Click a card's title to fold it away.\n\nYou can switch these cards off, or back on, at any time: MENU, then OPTIONS, then Tutorial Cards. Switching them back on picks up where you left off.` });
   // How every scenario ends: get the power to town, protect the lines, hold it.
   const deliver = (d, protector, name) => [
-    wait('Time to deliver. Run a line east to City Hall with Power Towers: hold the mouse button and drag to set them at full reach. The Town button on the objectives panel jumps there.', T.POWERTOWER, _hallLit),
+    wait('Time to deliver. Run a line east to City Hall with Power Towers: hold the mouse button and drag to set them at full reach. The Town button on the objectives panel jumps there.', T.POWERTOWER, _hallLit, { deliverStart: true }),
     wait(`A bare wire network carries only 85 kW and burns out above that. Place a ${name} anywhere on the network to raise its limit; they stack.`, protector, () => _n(T.PROTECTOR, T.PROTECTOR2, T.PROTECTOR3) >= 1),
     say(`Carry the lines on into every zone until each building is lit, then keep them lit for ${d.holdH} hours. Watch the wire colours: red means that network needs more protection.\n\nWhen every objective is green, press Sign off.`),
   ];
@@ -1139,27 +1171,27 @@ const ScenarioSystem = (() => {
       // Three touching spots beside the middle coal seam, where the card's camera lands: they share power without a wire.
       ...starter(3, T.WIND2, 'Wind Turbines MK2', 'Mines and pumps need power before they can make anything.', [[16, 36], [19, 36], [22, 36]]),
       wait('Place a Coal Mine on one of the three coal seams. The nearest free one is marked.', T.COALMINE, () => _n(T.COALMINE) >= 1, { highlightWorld: _free(T.COALDEPOSIT) }),
-      wait('Run a wire from your turbines to the mine. It starts digging as soon as it has power.', T.WIRE, () => _powered(T.COALMINE)),
+      wait('Run a wire from your turbines to the mine. It starts digging as soon as it has power.', T.WIRE, () => _works(T.COALMINE)),
       wait('Place a Coal Power Generator a few tiles from the mine.', T.COALGENERATOR, () => _n(T.COALGENERATOR) >= 1),
-      wait("Run a Conveyor Belt from the mine's output to the generator's coal inlet. Click either building to see where its ports are.", T.CONVEYOR, () => _n(T.CONVEYOR) >= 3),
+      wait("Run a Conveyor Belt from the mine's output to the generator's coal inlet. Click either building to see where its ports are. This card moves on when coal reaches the generator.", T.CONVEYOR, () => _works(T.COALGENERATOR)),
       wait('Generators need water too. Place a Water Extractor on the tarn at the south end of the work area. R rotates its outlet before you place it.', T.WATEREXTRACTOR, () => _n(T.WATEREXTRACTOR) >= 1),
-      wait("Run Pipes from the extractor's outlet to the generator's water inlet, and wire the extractor into your grid.", T.PIPE, () => _n(T.PIPE) >= 3),
+      wait("Run Pipes from the extractor's outlet to the generator's water inlet, and wire the extractor into your grid. This card moves on when water reaches the generator.", T.PIPE, () => _works(T.WATEREXTRACTOR) && _any(T.COALGENERATOR, g => !!g._hasWater)),
       wait('Wire the generator in as well. With coal, water and a wire all reaching it, it starts: 100 kW. If it stays dark, click it; its panel says what is missing.', T.WIRE, () => _runs(T.COALGENERATOR)),
-      say('That is the whole chain. Now build it out: three mines, three extractors and six generators. One mine feeds two generators, and so does one extractor. The objectives panel keeps count.'),
+      wait('That is the whole chain. Now build it out: three mines, three extractors and six generators. One mine feeds two generators, and so does one extractor. The objectives panel keeps count.', T.COALGENERATOR, () => _works(T.COALMINE, 3) && _works(T.WATEREXTRACTOR, 3) && _runs(T.COALGENERATOR, 6)),
       ...deliver(d, T.PROTECTOR, 'Surge Protector'),
     ],
     oil: d => [
       ask(d),
       ...starter(4, T.WIND2, 'Wind Turbines MK2', 'A Fuel Generator cannot start itself, and pumps and refineries draw power.'),
       wait('Place a Pump Jack on one of the four oil deposits. The nearest free one is marked.', T.PUMPJACK, () => _n(T.PUMPJACK) >= 1, { highlightWorld: _free(T.OILDEPOSIT) }),
-      wait('Wire the Pump Jack to your turbines so it starts pumping.', T.WIRE, () => _powered(T.PUMPJACK)),
+      wait('Wire the Pump Jack to your turbines so it starts pumping.', T.WIRE, () => _works(T.PUMPJACK)),
       wait('Place a Liquid Storage Tank beside it to hold the crude.', T.OILSTORAGE, () => _n(T.OILSTORAGE) >= 1),
-      wait("Run Pipes from the Pump Jack's outlet into the tank's inlet.", T.PIPE, () => _n(T.PIPE) >= 2),
+      wait("Run Pipes from the Pump Jack's outlet into the tank's inlet. This card moves on when crude reaches the tank.", T.PIPE, () => _works(T.OILSTORAGE)),
       wait('Place an Oil Refinery and wire it in. It turns crude oil into fuel oil.', T.REFINERY, () => _powered(T.REFINERY)),
-      wait("Pipe the tank's outlet into the refinery's crude inlet.", T.PIPE, () => _n(T.PIPE) >= 5),
+      wait("Pipe the tank's outlet into the refinery's crude inlet. This card moves on when the refinery is making fuel oil.", T.PIPE, () => _works(T.REFINERY)),
       wait('Place a Fuel Power Generator near the refinery.', T.FUELGEN, () => _n(T.FUELGEN) >= 1),
       wait("Pipe the refinery's fuel outlet into the generator, and wire the generator to your starter grid: it needs power already on its network to start. When fuel reaches it, it runs.", T.PIPE, () => _runs(T.FUELGEN)),
-      say('That is one complete line. Build three more: a pump jack, tank, refinery and generator on each of the other deposits. The objectives panel keeps count.'),
+      wait('That is one complete line. Build three more: a pump jack, tank, refinery and generator on each of the other deposits. The objectives panel keeps count.', T.PUMPJACK, () => _works(T.PUMPJACK, 4) && _works(T.REFINERY, 4) && _runs(T.FUELGEN, 4)),
       ...deliver(d, T.PROTECTOR, 'Surge Protector'),
     ],
     hydro: d => [
@@ -1167,45 +1199,45 @@ const ScenarioSystem = (() => {
       ...starter(3, T.WIND2, 'Wind Turbines MK2', 'Hydro Turbines draw a little power to run.'),
       wait('Build a Dam across one of the three streams, a little way upstream of its pond. A reservoir forms behind it.', T.DAM, () => _n(T.DAM) >= 1),
       wait('Place a Hydro Turbine in the reservoir behind the dam, partly in the water.', T.HYDROTURBINE, () => _n(T.HYDROTURBINE) >= 1),
-      wait('Wire the turbine to your starter grid. It makes rotation, not electricity.', T.WIRE, () => _powered(T.HYDROTURBINE)),
+      wait('Wire the turbine to your starter grid. It makes rotation, not electricity.', T.WIRE, () => _works(T.HYDROTURBINE)),
       wait('Place a Hydroelectric Generator on the bank near the turbine.', T.HYDROGENERATOR, () => _n(T.HYDROGENERATOR) >= 1),
       wait('Run Drive Shafts from the turbine to the generator in one unbroken line, with no gaps.', T.SHAFT, () => _n(T.SHAFT) >= 1),
       wait('Wire the generator into your grid. Once the shaft is turning it, it produces power, more as the reservoir fills.', T.WIRE, () => _runs(T.HYDROGENERATOR)),
-      say('That is one turbine and generator. Each reservoir takes two, so build a second pair here, then dam the other two streams and do the same: three dams, six turbines, six generators.'),
+      wait('That is one turbine and generator. Each reservoir takes two, so build a second pair here, then dam the other two streams and do the same: three dams, six turbines, six generators.', T.DAM, () => _n(T.DAM) >= 3 && _works(T.HYDROTURBINE, 6) && _runs(T.HYDROGENERATOR, 6)),
       ...deliver(d, T.PROTECTOR2, 'Surge Protector MK2'),
     ],
     nuclear: d => [
       ask(d),
       ...starter(6, T.WIND3, 'Wind Turbines MK3', 'Mines, pumps and plants need about 200 kW before a reactor makes anything.'),
-      wait('Place a Sulfur Mine on the sulfur deposit (marked) and wire it in.', T.SULFURMINE, () => _powered(T.SULFURMINE), { highlightWorld: _free(T.SULFURDEPOSIT) }),
-      wait('Place a Uranium Mine on the uranium deposit (marked) and wire it in.', T.URANIUMMINE, () => _powered(T.URANIUMMINE), { highlightWorld: _free(T.URANIUMDEPOSIT) }),
-      wait('Place a Water Extractor on the lake at the south end of the work area and wire it in. R rotates its outlet.', T.WATEREXTRACTOR, () => _powered(T.WATEREXTRACTOR)),
+      wait('Place a Sulfur Mine on the sulfur deposit (marked) and wire it in.', T.SULFURMINE, () => _works(T.SULFURMINE), { highlightWorld: _free(T.SULFURDEPOSIT) }),
+      wait('Place a Uranium Mine on the uranium deposit (marked) and wire it in.', T.URANIUMMINE, () => _works(T.URANIUMMINE), { highlightWorld: _free(T.URANIUMDEPOSIT) }),
+      wait('Place a Water Extractor on the lake at the south end of the work area and wire it in. R rotates its outlet.', T.WATEREXTRACTOR, () => _works(T.WATEREXTRACTOR)),
       wait('Place a Chemical Plant and wire it in. It turns sulfur and water into sulfuric acid.', T.CHEMICALPLANT, () => _powered(T.CHEMICALPLANT)),
-      wait("Run a Conveyor Belt from the Sulfur Mine into the Chemical Plant, and Pipes from the Water Extractor into its water inlet.", T.CONVEYOR, () => _n(T.CONVEYOR) >= 3 && _n(T.PIPE) >= 3),
+      wait("Run a Conveyor Belt from the Sulfur Mine into the Chemical Plant, and Pipes from the Water Extractor into its water inlet. This card moves on when the plant is producing acid.", T.CONVEYOR, () => _works(T.CHEMICALPLANT)),
       wait('Place a Fuel Processing Plant and wire it in. It turns acid and uranium ore into fuel rods.', T.FUELPLANT, () => _powered(T.FUELPLANT)),
-      say("Pipe the Chemical Plant's acid outlet into the Fuel Processing Plant, and run a Conveyor Belt from the Uranium Mine into it. Click a plant to see its ports and what it is short of. Rods take a while to build up, so carry on with the reactors meanwhile."),
+      wait("Pipe the Chemical Plant's acid outlet into the Fuel Processing Plant, and run a Conveyor Belt from the Uranium Mine into it. Click a plant to see its ports and what it is short of. This card moves on when the plant is making fuel rods.", T.PIPE, () => _works(T.FUELPLANT)),
       wait('Cooling comes before fuel. A reactor needs 20 u/s of cooling and a tower makes 15, so place two Cooling Towers and wire them in.', T.COOLINGTOWER, () => _powered(T.COOLINGTOWER) && _n(T.COOLINGTOWER) >= 2),
       wait('Place a Nuclear Reactor near the towers.', T.NUCLEARREACTOR, () => _n(T.NUCLEARREACTOR) >= 1),
-      say("Each tower drinks 15 u/s of water and an extractor gives 25, so put a second Water Extractor on the lake. Pipe the extractors into both towers' H2O IN, and both towers' COOL OUT into the reactor's COOL IN. Never fuel a reactor that is not cooled: without cooling its core heats up, a meltdown clock starts, and a meltdown levels everything around it."),
+      wait("Each tower drinks 15 u/s of water and an extractor gives 25, so put a second Water Extractor on the lake. Pipe the extractors into both towers' H2O IN, and both towers' COOL OUT into the reactor's COOL IN. Never fuel a reactor that is not cooled: without cooling its core heats up, a meltdown clock starts, and a meltdown levels everything around it. This card moves on when the reactor is cooled.", T.PIPE, () => _works(T.WATEREXTRACTOR, 2) && _works(T.COOLINGTOWER, 2) && _works(T.NUCLEARREACTOR)),
       wait('A reactor makes steam, not power. Place a Steam Turbine beside it.', T.STEAMTURBINE, () => _n(T.STEAMTURBINE) >= 1),
       wait("Pipe the reactor's steam outlet to the turbine and wire the turbine into your grid. Then run a Conveyor Belt of fuel rods from the Fuel Processing Plant to the reactor. When rods, cooling and steam are all connected, the turbine runs: 300 kW.", T.CONVEYOR, () => _runs(T.STEAMTURBINE)),
-      say('Each reactor drives three turbines. Add two more to this one, then build a second reactor with its own two Cooling Towers (and their extractors) and three turbines. One Fuel Processing Plant feeds both.'),
+      wait('Each reactor drives three turbines. Add two more to this one, then build a second reactor with its own two Cooling Towers (and their extractors) and three turbines. One Fuel Processing Plant feeds both.', T.STEAMTURBINE, () => _works(T.NUCLEARREACTOR, 2) && _works(T.COOLINGTOWER, 4) && _works(T.WATEREXTRACTOR, 4) && _runs(T.STEAMTURBINE, 6)),
       ...deliver(d, T.PROTECTOR3, 'Surge Protector MK3'),
     ],
     fusion: d => [
       ask(d),
       wait('The fuel chain and the reactor need about 600 kW before fusion makes a watt. Build a starter grid in the work area west of City Hall: Geothermal Wells and Turbines on the vents, and a coal line on the seams beside the lake. This card moves on at 300 kW.', T.GEOWELL,
            () => (PowerNetwork.stats.totalGenerated || 0) >= 300, { onEnter: _toWork }),
-      wait('Deuterium first. Place a Water Extractor on the lake and an Electrolyzer near it, and wire both in. The Electrolyzer splits water into hydrogen.', T.ELECTROLYZER, () => _powered(T.ELECTROLYZER)),
+      wait('Deuterium first. Place a Water Extractor on the lake and an Electrolyzer near it, and wire both in. The Electrolyzer splits water into hydrogen.', T.ELECTROLYZER, () => _works(T.ELECTROLYZER)),
       wait('Place an Atmosphere Collector and wire it in. It pulls nitrogen out of the air.', T.ATMOSCOLLECTOR, () => _powered(T.ATMOSCOLLECTOR)),
-      wait('Place a Haber-Bosch Complex and wire it in. Pipe the hydrogen and the nitrogen into it; it makes ammonia.', T.HABERBOSCH, () => _powered(T.HABERBOSCH)),
-      wait('Place an Isotopic Wash Tower and wire it in. Pipe in ammonia from the Haber-Bosch Complex and water from an extractor; it washes deuterium out of the water.', T.WASHTOWER, () => _powered(T.WASHTOWER)),
+      wait('Place a Haber-Bosch Complex and wire it in. Pipe the hydrogen and the nitrogen into it; it makes ammonia.', T.HABERBOSCH, () => _works(T.HABERBOSCH)),
+      wait('Place an Isotopic Wash Tower and wire it in. Pipe in ammonia from the Haber-Bosch Complex and water from an extractor; it washes deuterium out of the water.', T.WASHTOWER, () => _works(T.WASHTOWER)),
       wait('Now helium-3. Place a Helium Well on a helium gas field (marked) and wire it in.', T.HELIUMWELL, () => _powered(T.HELIUMWELL), { highlightWorld: _free(T.HELIUMDEPOSIT) }),
-      wait('Place a Helium-3 Separator, wire it in, and pipe the Helium Well into its HE IN.', T.HE3SEPARATOR, () => _powered(T.HE3SEPARATOR)),
+      wait('Place a Helium-3 Separator, wire it in, and pipe the Helium Well into its HE IN.', T.HE3SEPARATOR, () => _works(T.HE3SEPARATOR)),
       wait('Place a Fusion Fuel Plant and wire it in.', T.FUSIONFUELPLANT, () => _powered(T.FUSIONFUELPLANT)),
-      say("Pipe deuterium from the Wash Tower into the Fuel Plant's D2 IN and helium-3 from the Separator into its HE-3 IN. Here it makes D-He3 only, the fuel the MHD Rings run on, and freezes the two into fuel pellets."),
+      wait("Pipe deuterium from the Wash Tower into the Fuel Plant's D2 IN and helium-3 from the Separator into its HE-3 IN. Here it makes D-He3 only, the fuel the MHD Rings run on, and freezes the two into fuel pellets. This card moves on when the plant is making fuel.", T.PIPE, () => _works(T.FUSIONFUELPLANT)),
       wait('The reactor needs cold magnets. Place a second Helium Well on the other gas field.', T.HELIUMWELL, () => _n(T.HELIUMWELL) >= 2, { highlightWorld: _free(T.HELIUMDEPOSIT) }),
-      wait("Place a Cryo Plant, wire it in, and pipe that Helium Well into its HE IN.", T.CRYOPLANT, () => _powered(T.CRYOPLANT)),
+      wait("Place a Cryo Plant, wire it in, and pipe that Helium Well into its HE IN.", T.CRYOPLANT, () => _works(T.CRYOPLANT)),
       wait("Place the Fusion Reactor and wire it in. Pipe the Cryo Plant's LHe OUT into its LHe IN: the magnets must cool to 4.5 K before it will ignite.", T.HULKINGFUSIONREACTOR, () => _powered(T.HULKINGFUSIONREACTOR)),
       wait('Place two MHD Decelerator Rings beside the reactor. Each turns the plasma straight into 4 MW.', T.MHDRING, () => _n(T.MHDRING) >= 2),
       wait('Run a Conveyor Belt of pellets from the Fuel Plant to the reactor, pipe the reactor into both rings, and wire the rings into your grid. When the magnets are cold and the pellets arrive, it ignites.', T.CONVEYOR, () => _runs(T.MHDRING)),
@@ -1217,11 +1249,11 @@ const ScenarioSystem = (() => {
       wait('Place a Geothermal Well on one of the six vents at the north end of the work area. The nearest free one is marked.', T.GEOWELL, () => _n(T.GEOWELL) >= 1, { highlightWorld: _free(T.GEODEPOSIT) }),
       wait('Wire the well to your turbines. It starts raising steam as soon as it has power.', T.WIRE, () => _powered(T.GEOWELL)),
       wait("Place a Geothermal Turbine over the well's steam output port and wire it in. One turbine per well. Ground heat runs the same in a blizzard as on a clear day.", T.GEOTURBINE, () => _runs(T.GEOTURBINE)),
-      say('That is one vent working. Do the same on the other five: six wells, six turbines. The objectives panel keeps count.'),
+      wait('That is one vent working. Do the same on the other five: six wells, six turbines. The objectives panel keeps count.', T.GEOWELL, () => _runs(T.GEOTURBINE, 6)),
       wait('Now the meltwater. Build a Dam across one of the two streams, a little way upstream of its pond. A reservoir forms behind it.', T.DAM, () => _n(T.DAM) >= 1),
-      wait('Place a Hydro Turbine in the reservoir, partly in the water, and wire it in. It makes rotation, not electricity.', T.HYDROTURBINE, () => _powered(T.HYDROTURBINE)),
+      wait('Place a Hydro Turbine in the reservoir, partly in the water, and wire it in. It makes rotation, not electricity.', T.HYDROTURBINE, () => _works(T.HYDROTURBINE)),
       wait('Place a Hydroelectric Generator on the bank and run Drive Shafts from the turbine to it in one unbroken line. Wire the generator into your grid.', T.HYDROGENERATOR, () => _runs(T.HYDROGENERATOR)),
-      say('Each reservoir takes two turbines and two generators. Finish this one, then dam the second stream and do the same.'),
+      wait('Each reservoir takes two turbines and two generators. Finish this one, then dam the second stream and do the same.', T.DAM, () => _n(T.DAM) >= 2 && _works(T.HYDROTURBINE, 4) && _runs(T.HYDROGENERATOR, 4)),
       say('Watch the WEATHER tab. When the blizzard comes in every home turns its heating up, so the town draws well over what it does in the calm. Build enough to carry the storm.'),
       ...deliver(d, T.PROTECTOR2, 'Surge Protector MK2'),
     ],
@@ -1229,10 +1261,10 @@ const ScenarioSystem = (() => {
       ask(d),
       wait('Under this sky a panel gives everything it has. Open GENERATION and place 6 Solar Panels MK2 in the work area west of City Hall, touching, so they share power without a wire.', T.SOLAR2, () => _n(T.SOLAR2) >= 6, { onEnter: _toWork }),
       wait('Place a Battery beside the panels and wire it to them. It fills while the sun is up.', T.BATTERY, () => _n(T.BATTERY) >= 1),
-      say('Keep going: twenty-four panels and ten batteries at least. The batteries are for the evening, when the heat wave is still running and the panels have gone dark.'),
-      wait('Sun will not get the town through the night. Place a Pump Jack on the oil deposit (marked) and wire it in.', T.PUMPJACK, () => _powered(T.PUMPJACK), { highlightWorld: _free(T.OILDEPOSIT) }),
-      wait('Place a Liquid Storage Tank beside it and pipe the Pump Jack into it.', T.OILSTORAGE, () => _n(T.OILSTORAGE) >= 1 && _n(T.PIPE) >= 2),
-      wait("Place an Oil Refinery, wire it in, and pipe the tank's outlet into its crude inlet.", T.REFINERY, () => _powered(T.REFINERY)),
+      wait('Keep going: twenty-four panels and ten batteries at least. The batteries are for the evening, when the heat wave is still running and the panels have gone dark.', T.SOLAR2, () => _n(T.SOLAR2) >= 24 && _n(T.BATTERY) >= 10),
+      wait('Sun will not get the town through the night. Place a Pump Jack on the oil deposit (marked) and wire it in.', T.PUMPJACK, () => _works(T.PUMPJACK), { highlightWorld: _free(T.OILDEPOSIT) }),
+      wait('Place a Liquid Storage Tank beside it and pipe the Pump Jack into it.', T.OILSTORAGE, () => _works(T.OILSTORAGE)),
+      wait("Place an Oil Refinery, wire it in, and pipe the tank's outlet into its crude inlet.", T.REFINERY, () => _works(T.REFINERY)),
       wait("Place a Fuel Power Generator, pipe the refinery's fuel outlet into it and wire it to your panels: it needs power already on its network to start.", T.FUELGEN, () => _runs(T.FUELGEN)),
       say('That generator carries the small hours. It cannot carry the evening on its own: watch the batteries as the sun goes down, and add panels and batteries until they last until the heat wave breaks.'),
       ...deliver(d, T.PROTECTOR, 'Surge Protector'),
@@ -1240,13 +1272,13 @@ const ScenarioSystem = (() => {
     storm: d => [
       ask(d),
       ...starter(3, T.WIND2, 'Wind Turbines MK2', 'Mines and pumps need power before they can make anything, and the wind here is strong.'),
-      wait('Place a Coal Mine on one of the two coal seams (marked) and wire it in.', T.COALMINE, () => _powered(T.COALMINE), { highlightWorld: _free(T.COALDEPOSIT) }),
+      wait('Place a Coal Mine on one of the two coal seams (marked) and wire it in.', T.COALMINE, () => _works(T.COALMINE), { highlightWorld: _free(T.COALDEPOSIT) }),
       wait('Place a Coal Power Generator a few tiles from the mine.', T.COALGENERATOR, () => _n(T.COALGENERATOR) >= 1),
-      wait("Run a Conveyor Belt from the mine's output to the generator's coal inlet.", T.CONVEYOR, () => _n(T.CONVEYOR) >= 3),
+      wait("Run a Conveyor Belt from the mine's output to the generator's coal inlet. This card moves on when coal reaches the generator.", T.CONVEYOR, () => _works(T.COALGENERATOR)),
       wait("Place a Water Extractor on the lagoon, wire it in, and run Pipes from it to the generator's water inlet. Then wire the generator in: with coal, water and a wire it starts.", T.WATEREXTRACTOR, () => _runs(T.COALGENERATOR)),
       wait('Before the first storm: place a Lightning Rod among your plant. Buildings near a rod are far less likely to be struck, and a struck building is off the grid until you click it and repair it.', T.LIGHTNINGROD, () => _n(T.LIGHTNINGROD, T.LIGHTNINGROD2) >= 1),
-      say('Build the coal side out: two mines and four generators, one mine and one extractor to every two generators.'),
-      wait('Now oil. Place a Pump Jack on one of the two oil deposits (marked) and wire it in.', T.PUMPJACK, () => _powered(T.PUMPJACK), { highlightWorld: _free(T.OILDEPOSIT) }),
+      wait('Build the coal side out: two mines and four generators, one mine and one extractor to every two generators.', T.COALGENERATOR, () => _works(T.COALMINE, 2) && _runs(T.COALGENERATOR, 4)),
+      wait('Now oil. Place a Pump Jack on one of the two oil deposits (marked) and wire it in.', T.PUMPJACK, () => _works(T.PUMPJACK), { highlightWorld: _free(T.OILDEPOSIT) }),
       wait('Pipe it into a Liquid Storage Tank, the tank into an Oil Refinery, and the refinery into a Fuel Power Generator. Wire the refinery and the generator in.', T.FUELGEN, () => _runs(T.FUELGEN)),
       say('Build the second oil line, and stand Lightning Rods across the plant and through the town; four is the least that will do. When the rainstorm comes through, watch for struck buildings and repair them quickly: the hold breaks while any building in town is dark.'),
       ...deliver(d, T.PROTECTOR2, 'Surge Protector MK2'),
@@ -1255,9 +1287,9 @@ const ScenarioSystem = (() => {
       ask(d),
       ...starter(3, T.WIND2, 'Wind Turbines MK2', 'Hydro Turbines draw a little power to run.'),
       wait('Build a Dam across one of the three streams, a little way upstream of its pond. A reservoir forms behind it.', T.DAM, () => _n(T.DAM) >= 1),
-      wait('Place a Hydro Turbine in the reservoir, partly in the water, and wire it in. It makes rotation, not electricity.', T.HYDROTURBINE, () => _powered(T.HYDROTURBINE)),
+      wait('Place a Hydro Turbine in the reservoir, partly in the water, and wire it in. It makes rotation, not electricity.', T.HYDROTURBINE, () => _works(T.HYDROTURBINE)),
       wait('Place a Hydroelectric Generator on the bank and run Drive Shafts from the turbine to it in one unbroken line. Wire the generator into your grid.', T.HYDROGENERATOR, () => _runs(T.HYDROGENERATOR)),
-      say('Each reservoir takes two turbines and two generators. Finish this one, then dam the other two streams the same way. The two geothermal vents are there too, if you want a little more.'),
+      wait('Each reservoir takes two turbines and two generators. Finish this one, then dam the other two streams the same way. The two geothermal vents are there too, if you want a little more.', T.DAM, () => _n(T.DAM) >= 3 && _works(T.HYDROTURBINE, 6) && _runs(T.HYDROGENERATOR, 6)),
       wait('Now the part that flies the rocket. Place a Substation MK5 on your network. It stores power while there is spare and gives up to 8 MW of it back at once.', T.SUBSTATION5, () => _n(T.SUBSTATION4, T.SUBSTATION5) >= 1),
       say('The terminal count takes 12.6 MW, and the town and the dams are still there underneath it. Two Substations MK5, or one and a couple of MK4s, will carry it. They fill only from what the dams make beyond what the town is using, so build them early.'),
       ...deliver(d, T.PROTECTOR3, 'Surge Protector MK3'),
@@ -1269,18 +1301,18 @@ const ScenarioSystem = (() => {
       return [
         ask(d),
         ...starter(4, T.WIND3, 'Wind Turbines MK3', 'The reactor and its helium plant need power before fusion makes any.'),
-        wait('Place a Helium Well on the helium gas field (marked) and wire it in.', T.HELIUMWELL, () => _powered(T.HELIUMWELL), { highlightWorld: _free(T.HELIUMDEPOSIT) }),
-        wait('Place a Cryo Plant, wire it in, and pipe the Helium Well into its HE IN.', T.CRYOPLANT, () => _powered(T.CRYOPLANT)),
+        wait('Place a Helium Well on the helium gas field (marked) and wire it in.', T.HELIUMWELL, () => _works(T.HELIUMWELL), { highlightWorld: _free(T.HELIUMDEPOSIT) }),
+        wait('Place a Cryo Plant, wire it in, and pipe the Helium Well into its HE IN.', T.CRYOPLANT, () => _works(T.CRYOPLANT)),
         wait("Place the Fusion Reactor and wire it in. Pipe the Cryo Plant's LHe OUT into its LHe IN: the magnets must cool to 4.5 K before it will ignite.", T.HULKINGFUSIONREACTOR, () => _powered(T.HULKINGFUSIONREACTOR)),
         wait("The client's Storage Container (marked) holds D-T pellets and is kept full. Run a Conveyor Belt from its OUT to the reactor's pellet inlet.", T.CONVEYOR, () => _n(T.CONVEYOR) >= 3, { highlightWorld: bin }),
         wait("Place a Steam Turbine MK2, pipe the reactor's steam outlet to it and wire it in. When the magnets are cold and the pellets arrive, the reactor ignites.", T.STEAMTURBINE2, () => _runs(T.STEAMTURBINE2)),
-        say('One reactor raises steam for five Steam Turbines MK2: 6 MW. Build the other four. That is all the reactor makes on its own, and the town needs more.'),
+        wait('One reactor raises steam for five Steam Turbines MK2: 6 MW. Build the other four. That is all the reactor makes on its own, and the town needs more.', T.STEAMTURBINE2, () => _runs(T.STEAMTURBINE2, 5)),
         wait('Now the Field Cores. Place a Rare Earth Mine on a rare earth deposit (marked) and wire it in.', T.RAREEARTHMINE, () => _powered(T.RAREEARTHMINE), { highlightWorld: _free(T.RAREEARTHDEPOSIT) }),
-        wait('The ore is leached with sulfuric acid. Place a Sulfur Mine on the sulfur deposit (marked), a Chemical Plant, and a Water Extractor on the lake. Belt the sulfur and pipe the water into the Chemical Plant.', T.CHEMICALPLANT, () => _powered(T.CHEMICALPLANT), { highlightWorld: _free(T.SULFURDEPOSIT) }),
-        wait("Place a Leach Plant and wire it in. Belt ore into it from the Rare Earth Mine and pipe in acid from the Chemical Plant. Rare earth oxide comes out on a belt. Its thorium tailings stay in the plant; this job ends long before they fill it.", T.LEACHPLANT, () => _powered(T.LEACHPLANT)),
-        wait('The tape mill needs hydrogen and nitrogen. Place an Electrolyzer, piped from a Water Extractor, and an Atmosphere Collector, and wire both in.', T.ELECTROLYZER, () => _powered(T.ELECTROLYZER) && _powered(T.ATMOSCOLLECTOR)),
-        wait("Place a Superconductor Mill and wire it in. Belt in the Leach Plant's oxide and pipe in the hydrogen and the nitrogen. It makes HTS tape.", T.SCMILL, () => _powered(T.SCMILL)),
-        wait('Place a Core Works and belt the tape into it. 120 tape winds a core, and four hours at 800 kW charges it. Click it to watch its four bays.', T.COREWORKS, () => _powered(T.COREWORKS)),
+        wait('The ore is leached with sulfuric acid. Place a Sulfur Mine on the sulfur deposit (marked), a Chemical Plant, and a Water Extractor on the lake. Belt the sulfur and pipe the water into the Chemical Plant. This card moves on when it is producing acid.', T.CHEMICALPLANT, () => _works(T.CHEMICALPLANT), { highlightWorld: _free(T.SULFURDEPOSIT) }),
+        wait("Place a Leach Plant and wire it in. Belt ore into it from the Rare Earth Mine and pipe in acid from the Chemical Plant. Rare earth oxide comes out on a belt. Its thorium tailings stay in the plant; this job ends long before they fill it.", T.LEACHPLANT, () => _works(T.LEACHPLANT)),
+        wait('The tape mill needs hydrogen and nitrogen. Place an Electrolyzer, piped from a Water Extractor, and an Atmosphere Collector, and wire both in.', T.ELECTROLYZER, () => _works(T.ELECTROLYZER) && _works(T.ATMOSCOLLECTOR)),
+        wait("Place a Superconductor Mill and wire it in. Belt in the Leach Plant's oxide and pipe in the hydrogen and the nitrogen. It makes HTS tape.", T.SCMILL, () => _works(T.SCMILL)),
+        wait('Place a Core Works and belt the tape into it. 120 tape winds a core, and four hours at 800 kW charges it. Click it to watch its four bays.', T.COREWORKS, () => _works(T.COREWORKS)),
         wait('Cores travel by drone. Place a Drone Port within reach of both the Core Works and the reactor, on the same network, and wire it in.', T.DRONEPORT, () => _powered(T.DRONEPORT)),
         wait('Click the Fusion Reactor and set Field Cores to 2. The drones bring each charged core over as soon as there is one; each makes every turbine it feeds run harder.', T.HULKINGFUSIONREACTOR,
              () => { const r = reactor(); return !!(r && FieldCoreSystem.wanted(r) >= 2); }, { highlightWorld: reactor }),
@@ -1291,8 +1323,32 @@ const ScenarioSystem = (() => {
   // Built once per scenario and kept: TutorialSystem tells sequences apart by identity.
   const _guides = new Map();
   function _guide(def) {
-    if (!_guides.has(def.id)) _guides.set(def.id, { id: `scn-${def.id}`, title: def.title, trigger: () => false, steps: GUIDE[def.id](def) });
+    if (!_guides.has(def.id)) _guides.set(def.id, { id: `scn-${def.id}`, title: def.title, trigger: () => false, steps: _gateDeliver(GUIDE[def.id](def)) });
     return _guides.get(def.id);
+  }
+
+  // The plant on the objectives panel is all built (and running, where a
+  // goal asks for that): its first goals are the scenario's own (see
+  // _objectives). `check` goals (the launch, the field cores) are left out:
+  // they only come once power reaches town, which is what the cards after
+  // this are about.
+  const BUILD_KINDS = new Set(['place', 'running', 'store']);
+  const _plantDone = () => {
+    if (!run || !run.reqs) return false;
+    const res = run.reqs.evaluate(), n = run.def.goals.length;
+    for (let i = 0; i < n && i < res.length; i++) if (BUILD_KINDS.has(res[i].kind) && !res[i].pass) return false;
+    return true;
+  };
+  // "Time to deliver" waits until the plant is all ticked off: the card
+  // before it stays up until then (a Continue card loses its button), on
+  // top of whatever that card itself waits for.
+  function _gateDeliver(steps) {
+    const i = steps.findIndex(s => s.deliverStart);
+    if (i < 1) return steps;
+    const prev = steps[i - 1], own = prev.manual ? null : prev.check;
+    steps[i - 1] = { ...prev, manual: false, check: own ? () => own() && _plantDone() : _plantDone,
+                     text: `${prev.text}\n\nThis card stays up until every build goal on the objectives panel is ticked off.` };
+    return steps;
   }
 
   // ── The objectives panel ─────────────────────────────────────────
