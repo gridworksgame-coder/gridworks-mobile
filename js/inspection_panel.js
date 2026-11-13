@@ -323,9 +323,10 @@ const InspectionPanel = (() => {
         {
           type: T.COALGENERATOR,
           name: 'Coal Power Generator',
-          desc: '5×6 coal-fired boiler: 100 kW at Normal, up to 150 kW in Overdrive (watch boiler pressure; held at 100% it explodes), or 60 kW in Eco on under half the coal. Unlocks after mining 2,000t of coal.',
+          // Requirement and progress come from its goals in progression.js.
+          desc: '5×6 coal-fired boiler: 100 kW at Normal, up to 150 kW in Overdrive (watch boiler pressure; held at 100% it explodes), or 60 kW in Eco on under half the coal.',
           cost: 0,
-          getProgress() { return { current: Math.min(Math.floor(CoalSystem.getTotalMined()), 2000), target: 2000, unit: 't coal mined' }; },
+          getProgress: () => Progression.goalProgress(T.COALGENERATOR),
         },
         {
           type: T.SCRUBBER,
@@ -351,9 +352,9 @@ const InspectionPanel = (() => {
         {
           type: T.WATEREXTRACTOR,
           name: 'Water Extractor',
-          desc: '4×4. $35,000, 25 kW draw, $10/s upkeep. Placed on a lake water body. Pumps water through Pipes to a Coal Power Generator or Hydro Generator. Unlocks once a Coal Power Generator is placed.',
+          desc: '4×4. $35,000, 25 kW draw, $10/s upkeep. Placed on a lake water body. Pumps water through Pipes to a Coal Power Generator or Hydro Generator.',
           cost: 0,
-          getProgress() { return { current: EntityRegistry.getByType(T.COALGENERATOR).size > 0 ? 1 : 0, target: 1, unit: 'Coal Generator placed' }; },
+          getProgress: () => Progression.goalProgress(T.WATEREXTRACTOR),
         },
         {
           type: T.DAM,
@@ -834,9 +835,9 @@ const InspectionPanel = (() => {
         {
           type: T.PIPE,
           name: 'Pipe',
-          desc: 'Carries water and other liquids between buildings. Unlocks once a Coal Power Generator is placed.',
+          desc: 'Carries water and other liquids between buildings.',
           cost: 0,
-          getProgress() { return { current: EntityRegistry.getByType(T.COALGENERATOR).size > 0 ? 1 : 0, target: 1, unit: 'Coal Generator placed' }; },
+          getProgress: () => Progression.goalProgress(T.PIPE),
         },
         {
           type: T.UNDERGNDPIPE,

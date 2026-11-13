@@ -156,6 +156,13 @@ const Progression = (() => {
   // panel and the clock read goalProgress()/requirementText(). New or changed
   // requirements should be written this way.
   const _n = v => Math.floor(v).toLocaleString('en-US');
+  // Water Extractors on power and over water (hydro_system sets _waterRate
+  // only then). Gate for the Coal Power Generator and Pipe.
+  const waterExtractorsPumping = () => {
+    let n = 0;
+    for (const e of EntityRegistry.getByType(T.WATEREXTRACTOR)) if (e.powered && e._waterRate > 0) n++;
+    return n;
+  };
   const _goalFrac = d => d.goals.reduce((s, g) => s + Math.min(1, (g.get() || 0) / g.target), 0) / d.goals.length;
   function _deriveFromGoals(d) {
     const met = () => !d.requires || d.requires.met();
@@ -988,8 +995,11 @@ const Progression = (() => {
       id:    T.COALGENERATOR,
       tier:  2,
       label: 'Coal Power Generator',
-      check: () => CoalSystem.getTotalMined() >= 2000,
-      hint:  'Mine 2,000t of coal first',
+      // Water first: the generator unlocks (with Pipes) once a Water
+      // Extractor is placed and pumping, so its water is ready to pipe in.
+      goals: [
+        { verb: 'Run', what: 'Water Extractor pumping water', target: 1, get: waterExtractorsPumping },
+      ],
     },
     {
       id:    T.SOLIDSTORAGE,
@@ -1017,8 +1027,11 @@ const Progression = (() => {
       id:    T.WATEREXTRACTOR,
       tier:  2,
       label: 'Water Extractor',
-      check: () => EntityRegistry.getByType(T.COALGENERATOR).size > 0,
-      hint:  'Place a Coal Power Generator first',
+      // The first step of the coal chain: it takes the 2,000t gate the Coal
+      // Power Generator used to have, and running one unlocks the generator.
+      goals: [
+        { verb: 'Mine', what: 't of coal', target: 2000, get: () => CoalSystem.getTotalMined() },
+      ],
     },
     {
       id:    T.PROTECTOR,
@@ -1062,8 +1075,10 @@ const Progression = (() => {
       id:    T.PIPE,
       tier:  2,
       label: 'Pipe',
-      check: () => EntityRegistry.getByType(T.COALGENERATOR).size > 0,
-      hint:  'Place a Coal Power Generator first',
+      // Unlocks with the Coal Power Generator: the same gate, same tick.
+      goals: [
+        { verb: 'Run', what: 'Water Extractor pumping water', target: 1, get: waterExtractorsPumping },
+      ],
     },
     {
       id:    T.UNDERGNDPIPE,
@@ -1839,7 +1854,6 @@ const Progression = (() => {
         if (!Progression.isUnlocked(T.RESEARCH2)) return 0;
         return Math.min(1, (CoalSystem.getTotalMined?.() || 0) / OILSCAN_COAL_MINED);
       }
-      if (type === T.PIPE)            return EntityRegistry.getByType(T.COALGENERATOR).size > 0 ? 1 : 0;
       if (type === T.UNDERGNDPIPE)    return (Progression.isReady(T.OILSTORAGE) || Progression.isUnlocked(T.OILSTORAGE)) ? 1 : 0;
       if (type === T.DAM)             return EntityRegistry.getByType(T.RESEARCH3).size > 0 ? 1 : 0;
       if (type === T.HYDROTURBINE)    return (typeof ReservoirSystem !== 'undefined' && ReservoirSystem.hasDams()) ? 1 : 0;
@@ -2009,13 +2023,11 @@ const Progression = (() => {
       if (type === T.UNDERGNDCONVEYOR) return Math.min(1, CoalSystem.getTotalMined() / 500);
       if (type === T.CONVEYORSPLITTER) return Math.min(1, beltTileCount() / SPLITTER_BELT_TILES);
       if (type === T.HAULER)           return Math.min(1, beltTileCount() / HAULER_BELT_TILES);
-      if (type === T.COALGENERATOR)  return Math.min(1, CoalSystem.getTotalMined() / 2000);
       if (type === T.SOLIDSTORAGE)   return Math.min(1, CoalSystem.getTotalMined() / 500);
       if (type === T.FASTTRAVEL) {
         for (const e of EntityRegistry.getByType(T.COALGENERATOR)) if (e.powered && e._fuelled) return 1;
         return 0;
       }
-      if (type === T.WATEREXTRACTOR) return EntityRegistry.getByType(T.COALGENERATOR).size > 0 ? 1 : 0;
       if (type === T.POWERTOWER)        return Progression.checkPowerTowerReady() ? 1 : 0;
       return 0;
     },

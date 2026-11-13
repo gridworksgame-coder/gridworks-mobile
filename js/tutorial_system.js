@@ -714,10 +714,10 @@ const TutorialSystem = (() => {
       id: 'coal_belts',
       title: 'Moving Coal',
       trigger: () => Progression.isReady(T.CONVEYOR)
-        || (Progression.isUnlocked(T.CONVEYOR) && !Progression.isReady(T.COALGENERATOR) && !Progression.isUnlocked(T.COALGENERATOR)),
+        || (Progression.isUnlocked(T.CONVEYOR) && !Progression.isReady(T.WATEREXTRACTOR) && !Progression.isUnlocked(T.WATEREXTRACTOR)),
       steps: [
         {
-          text: "Your Coal Mine has dug its first 500t, and you can now unlock the Conveyor Belt, along with the Storage Container.\n\nConveyor Belts run solid materials between buildings: a belt from the mine into a Storage Container keeps it digging. The Underground Belt unlocks with it, for tunnelling a belt under anything in the way.\n\nThe Coal Power Generator unlocks once 2,000t of coal has been mined, so this is a good time to lay the belt out to where it will stand.",
+          text: "Your Coal Mine has dug its first 500t, and you can now unlock the Conveyor Belt, along with the Storage Container.\n\nConveyor Belts run solid materials between buildings: a belt from the mine into a Storage Container keeps it digging. The Underground Belt unlocks with it, for tunnelling a belt under anything in the way.\n\nThe Water Extractor unlocks once 2,000t of coal has been mined, and running one unlocks the Coal Power Generator, so this is a good time to lay the belt out to where it will stand.",
           manual: true,
           highlight: T.CONVEYOR,
         },
@@ -729,7 +729,7 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.COALGENERATOR) || Progression.isUnlocked(T.COALGENERATOR),
       steps: [
         {
-          text: "You can now unlock the Coal Power Generator, the heart of your first real production chain!\n\nIt needs coal from your Coal Mine, carried by Conveyor Belts, and water from a Water Extractor. Place the generator first: the Water Extractor and Pipes unlock as soon as one is down. Fully supplied, it puts 100 kW on your grid.\n\nA Coal Mine MK1 can feed nearly three generators at once.",
+          text: "You can now unlock the Coal Power Generator, the heart of your first real production chain!\n\nIt needs coal from your Coal Mine, carried by Conveyor Belts, and water from a Water Extractor. Your Water Extractor is already pumping: Pipes unlock with the generator, so pipe its water across. Fully supplied, it puts 100 kW on your grid.\n\nA Coal Mine MK1 can feed nearly three generators at once.",
           manual: true,
           highlight: T.COALGENERATOR,
         },
@@ -744,15 +744,15 @@ const TutorialSystem = (() => {
       id: 'coal_water',
       title: 'Water Supply',
       trigger: () => Progression.isReady(T.WATEREXTRACTOR)
-        || (Progression.isUnlocked(T.WATEREXTRACTOR) && !Progression.isReady(T.SOLIDSTORAGE) && !Progression.isUnlocked(T.SOLIDSTORAGE)),
+        || (Progression.isUnlocked(T.WATEREXTRACTOR) && !Progression.isReady(T.COALGENERATOR) && !Progression.isUnlocked(T.COALGENERATOR)),
       steps: [
         {
-          text: "Your Coal Power Generator is placed, and it needs water. You can now unlock the Water Extractor.\n\nRequires power. Place it on a lake or river to draw water.\n\nPress R to rotate where the pipe output is facing.",
+          text: "Your Coal Mine has dug 2,000t, and you can now unlock the Water Extractor: the water supply for the Coal Power Generator.\n\nRequires power. Place it on a lake or river to draw water.\n\nPress R to rotate where the pipe output is facing.\n\nOnce it is placed and pumping, the Coal Power Generator and Pipes unlock.",
           manual: true,
           highlight: T.WATEREXTRACTOR,
         },
         {
-          text: "Pipes unlock with it.\n\nRun pipes from a building that outputs liquids like the Water Extractor into a liquid input.\n\nEach generator drinks 10 units/s and an extractor only puts out 25, so one extractor keeps two generators running. Build another extractor for the third.",
+          text: "Pipes unlock with the Coal Power Generator.\n\nRun pipes from a building that outputs liquids like the Water Extractor into a liquid input.\n\nEach generator drinks 10 units/s and an extractor only puts out 25, so one extractor keeps two generators running. Build another extractor for the third.",
           manual: true,
           highlight: T.PIPE,
         },
