@@ -27,11 +27,11 @@ const ConstructionAudio = (() => {
     return out;
   }
 
-  // The crew's own generator: smallengine, pitched down a little so it
-  // reads as a bigger diesel than the Biofuel Generator's.
+  // The crew's own generator: the Fuel Generator's steady diesel, kept low
+  // and close. (smallengine pitched down read as a helicopter rotor.)
   const Generator = makeSeamlessLoopAudio({
-    src: 'audio/sfx/smallengine.mp3', rate: 0.82, radius: 14,
-    level: z => 0.02 + z * 0.08,
+    src: 'audio/sfx/diesel-power-generator-33638.mp3', radius: 12,
+    level: z => 0.015 + z * 0.06,
     sources: () => _sites().filter(e => !e._sitePowered && !e._lightningDamaged),
   });
 
