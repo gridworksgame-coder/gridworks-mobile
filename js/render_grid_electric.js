@@ -66,6 +66,9 @@ function _wireSkipsNeighbour(n) {
   // running beside one mustn't sprout stubs into it — unless the belt was
   // laid over a wire (_underWire), which power_network.js does conduct.
   if (type === T.CONVEYOR && !n._underWire) return true;
+  // Storage (Liquid Storage Tank, Storage Container, Gas Holder) is a passive
+  // vessel with no power draw, so a wire beside one mustn't look plugged in.
+  if (type === T.OILSTORAGE || type === T.SOLIDSTORAGE || type === T.GASSTORAGE) return true;
   if (!_wireParkSet) {
     _wireParkSet = new Set(typeof PARK_TYPES !== 'undefined' ? PARK_TYPES : []);
     if (typeof POWERED_PARK_TYPES !== 'undefined') for (const t of POWERED_PARK_TYPES) _wireParkSet.delete(t);

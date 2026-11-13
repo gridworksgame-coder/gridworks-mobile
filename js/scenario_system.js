@@ -706,7 +706,22 @@ const ScenarioSystem = (() => {
     if (!run.guideDone && !TutorialSystem.isSkipped()) TutorialSystem.startSequence(_guide(def), run.guideAt);
   }
 
-  function resume(id) {
+  // A linked save folder whose permission lapsed (browser restarted) can only
+  // be unlocked from a click, and both ways in below reload the page: after
+  // the reload there is no click left to spend, so the resumed file could not
+  // be read ("Save failed to load") and a fresh run's file could not be
+  // written. Spend this click on it first, as CONTINUE does.
+  async function _folderAccess() {
+    try {
+      if (!SaveSystem.folderNeedsPermission()) return true;
+      if (await SaveSystem.folderRequestAccess()) return true;
+    } catch (_e) {}
+    try { showToast('Save folder access is needed to play: click again and allow it', '#ff8040', '#180800', '#602010'); } catch (_e) {}
+    return false;
+  }
+
+  async function resume(id) {
+    if (!(await _folderAccess())) return;
     const slot = slotsFor(id)[0];
     if (!slot) return launch(id);
     try { sessionStorage.setItem('autostart_loadslot', slot.id); sessionStorage.setItem('menu_return', '1'); } catch (_e) { return; }
@@ -720,6 +735,7 @@ const ScenarioSystem = (() => {
   // one is saved on the way out.
   async function launch(id) {
     if (!byId(id)) return;
+    if (!(await _folderAccess())) return;
     if (run) { try { SaveSystem.save(); } catch (_e) {} }
     try { await Promise.all(slotsFor(id).map(s => SaveSystem.deleteSlot(s.id))); } catch (_e) {}
     try {

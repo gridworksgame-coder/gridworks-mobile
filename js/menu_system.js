@@ -2055,7 +2055,12 @@ const MenuSystem = (() => {
       const _pendingLoad = sessionStorage.getItem('autostart_loadslot');
       if (_pendingLoad) {
         sessionStorage.removeItem('autostart_loadslot');
-        readAndStartLoad(_pendingLoad);
+        // A load that fails drops back to the main menu, so GAME MODES must
+        // still be wired: menuReady() only ran on the paths below, which left
+        // the button dead after a failed scenario resume.
+        Promise.resolve(readAndStartLoad(_pendingLoad)).finally(() => {
+          if (!gameStarted && typeof ScenarioSystem !== 'undefined') ScenarioSystem.menuReady();
+        });
         return;
       }
       // GAME OVER's "Load a save" reloads for a clean boot, then lands here:
