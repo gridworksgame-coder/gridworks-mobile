@@ -1130,7 +1130,7 @@ const Progression = (() => {
       label: 'Substation MK2',
       requires: { label: 'Research MK2', met: () => Progression.isUnlocked(T.RESEARCH2) },
       goals: [
-        { verb: 'Reach', what: 'kW consumption', target: 800, get: () => PowerNetwork.stats.totalConsumed },
+        { verb: 'Generate', what: 'kW total', target: 800, get: () => PowerNetwork.stats.totalGenerated },
       ],
     },
     {
