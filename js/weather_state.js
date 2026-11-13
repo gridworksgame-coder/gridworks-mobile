@@ -1502,14 +1502,17 @@ const BuildingSnow = (() => {
    Two layers over the finished scene, both scaled by how much sun there
    is, so the map cools visibly at dusk and the effect is gone by night:
      • a warm wash, which is what reads at any zoom;
-     • heat shimmer: soft bright bands that rise slowly up the screen and
-       waver as they go. A real refraction pass would mean re-sampling the
+     • heat shimmer: short, soft bright ribbons scattered over the ground,
+       each rising a little and wavering before it fades, then turning up
+       somewhere else. A real refraction pass would mean re-sampling the
        frame; these cost a few dozen line segments.
    Like frost, intensity eases in and out rather than snapping. start() and
    stop() are the names WeatherEventSystem's visual table calls. */
-// Shimmer tuning, all in world units. The values match what the bands looked
-// like at zoom 1 on a 1920x1080 screen; they are not tied to the view size.
-const SHIMMER_PERIOD = 1080;          // world px a band travels per trip
+// Shimmer tuning, all in world units, so the haze sits on the ground and
+// zooming magnifies it like the terrain; nothing is fitted to the view size.
+const SHIMMER_CELL_W = 400;           // world px: one ribbon per lattice cell
+const SHIMMER_CELL_H = 200;
+const SHIMMER_RISE   = 150;           // world px a ribbon climbs over its life
 const SHIMMER_K1     = 9 / 1920;      // wave frequency, long swell
 const SHIMMER_K2     = 23 / 1920;     // wave frequency, fine ripple
 
@@ -1550,54 +1553,66 @@ const HeatSystem = (() => {
       ctx.fillStyle = g;
       ctx.fillRect(left, top, w, h);
 
-      // Shimmer. Everything here is in world units, the same as the ground
-      // under it: band spacing, wavelength, amplitude and stroke width are
-      // fixed world distances, so zooming magnifies the haze like it
-      // magnifies the terrain. Nothing is re-fitted to the view size, so
-      // nothing slides or stretches when the zoom changes. The view only
-      // decides which copies of each band are on screen. Drawn at every
-      // quality level: a few wide strokes, below high it runs fewer bands.
+      // Shimmer: short ribbons, one per cell of a world-space lattice. Each
+      // cell hashes its own length, sway, pace and life; a ribbon fades in,
+      // climbs SHIMMER_RISE and fades out, and every new life re-rolls where
+      // in the cell it appears and how long it is. So the haze comes in
+      // broken, staggered wisps rather than rows. All sizes are world units
+      // and the lattice is fixed to the ground, so nothing slides or
+      // stretches when the view pans or zooms. Zoomed out, or below high
+      // quality, a stable hashed share of cells sits out so the count of
+      // strokes stays about flat.
       const lv = typeof GfxQuality !== 'undefined' ? GfxQuality.level() : 2;
       {
-        const bands = lv >= 2 ? 8 : 5;
-        const P = SHIMMER_PERIOD;                       // world px per band trip
-        const M = 60;                                   // margin for amplitude and stroke width
-        const step = Math.max(24, w / 120);             // vertex spacing, world px
-        const s0 = Math.floor(left / step) - 1, s1 = Math.ceil((left + w) / step) + 1;
+        const CW = SHIMMER_CELL_W, CH = SHIMMER_CELL_H;
+        const keep = Math.min(1, zoom * zoom / 0.36) * (lv >= 2 ? 1 : 0.6);
+        const M = 60 + SHIMMER_RISE;                     // margin: amplitude, stroke width, the climb
+        const c0 = Math.floor((left - CW) / CW), c1 = Math.ceil((left + w) / CW);
+        const r0 = Math.floor((top - M) / CH),   r1 = Math.ceil((top + h + M) / CH);
+        const hash = (a, b, s) => { const x = Math.sin(a * 127.1 + b * 311.7 + s * 74.7) * 43758.5453; return x - Math.floor(x); };
+        const step = 24;                                 // vertex spacing, world px
         ctx.globalCompositeOperation = 'lighter';
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        for (let i = 0; i < bands; i++) {
-          // Each band climbs at its own pace and fades in and out over its
-          // trip, so none of them pops at the top or the bottom. `p` is how
-          // far through that trip the band is, driven by time only.
-          const speed = 0.012 + (i % 3) * 0.004;
-          const p = ((i / bands + t * speed) % 1 + 1) % 1;
-          const a = k * Math.sin(p * Math.PI);
+        for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+          if (hash(c, r, 1) > keep) continue;
+          // Where this ribbon is through its life, and which life it's on.
+          const speed = 0.035 + hash(c, r, 2) * 0.05;
+          const life = t * speed + hash(c, r, 3) * 7;
+          const n = Math.floor(life), p = life - n;
+          const a = k * Math.sin(p * Math.PI) * (0.55 + 0.45 * hash(c, r, 4));
           if (a < 0.002) continue;
-          const amp = 5 + (i % 4) * 2;
-          const bodyStyle  = `rgba(255,236,190,${(0.020 * a).toFixed(3)})`;
-          const coreStyle  = `rgba(255,248,224,${(0.022 * a).toFixed(3)})`;
-          const base = -p * P;
-          // Copies of this band sit every P world px. Draw each one that
-          // overlaps the view, plus a margin so the edges of the waves are
-          // never clipped off early.
-          const kStart = Math.floor((top - M - base) / P), kEnd = Math.ceil((top + h + M - base) / P);
-          for (let kk = kStart; kk <= kEnd; kk++) {
-            const y0 = base + kk * P;
-            ctx.beginPath();
-            for (let s = s0; s <= s1; s++) {
-              // Vertices sit on a world-space lattice, so the curve is a
-              // function of world x alone and panning or zooming never
-              // resamples it.
-              const x = s * step;
-              const y = y0 + (Math.sin(x * SHIMMER_K1 + t * 1.7 + i * 2.1) + Math.sin(x * SHIMMER_K2 - t * 2.6 + i) * 0.45) * amp;
-              if (s === s0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.strokeStyle = bodyStyle;
-            ctx.lineWidth = 46; ctx.stroke();            // wide, soft body
-            ctx.strokeStyle = coreStyle;
-            ctx.lineWidth = 20; ctx.stroke();            // a little brighter through the middle
+          // This life's placement: rolled afresh each time it comes round.
+          const hx = hash(c + n * 13, r, 5), hy = hash(c, r + n * 7, 6), hl = hash(c - n, r + n, 8);
+          const len = 140 + hl * 300;
+          const xA = c * CW + hx * (CW - 60) - len * 0.3, xB = xA + len;
+          const y0 = r * CH + hy * CH - p * SHIMMER_RISE;
+          const amp = 3 + hash(c, r, 9) * 7, ph = hash(c, r, 10) * 6.28;
+          ctx.beginPath();
+          const s0 = Math.floor(xA / step), s1 = Math.ceil(xB / step);
+          for (let s = s0; s <= s1; s++) {
+            // Vertices on a world-space lattice: the curve is a function of
+            // world x alone, so panning or zooming never resamples it.
+            const x = s * step;
+            const y = y0 + (Math.sin(x * SHIMMER_K1 + t * 1.7 + ph) + Math.sin(x * SHIMMER_K2 - t * 2.6 + ph * 1.3) * 0.45) * amp;
+            if (s === s0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
+          // Taper both ends, so a ribbon thins into the air rather than stops.
+          const x0 = s0 * step, x1 = s1 * step;
+          const body = ctx.createLinearGradient(x0, 0, x1, 0);
+          const ab = (0.060 * a).toFixed(3), ac = (0.056 * a).toFixed(3);
+          body.addColorStop(0, 'rgba(255,236,190,0)');
+          body.addColorStop(0.3, `rgba(255,236,190,${ab})`);
+          body.addColorStop(0.7, `rgba(255,236,190,${ab})`);
+          body.addColorStop(1, 'rgba(255,236,190,0)');
+          ctx.strokeStyle = body;
+          ctx.lineWidth = 40; ctx.stroke();              // wide, soft body
+          const core = ctx.createLinearGradient(x0, 0, x1, 0);
+          core.addColorStop(0, 'rgba(255,248,224,0)');
+          core.addColorStop(0.35, `rgba(255,248,224,${ac})`);
+          core.addColorStop(0.65, `rgba(255,248,224,${ac})`);
+          core.addColorStop(1, 'rgba(255,248,224,0)');
+          ctx.strokeStyle = core;
+          ctx.lineWidth = 16; ctx.stroke();              // a little brighter through the middle
         }
       }
       ctx.restore();
