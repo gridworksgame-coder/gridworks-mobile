@@ -802,12 +802,10 @@ const InspectionPanel = (() => {
         {
           type: T.PROTECTOR2,
           name: 'Surge Protector MK2',
-          desc: '2×2. Each one adds 2.1 MW to the whole network’s wire capacity, with no limit, and cuts storm faults toward 12%. Stacks with MK1. Requires 800 kW consumed + Research MK2.',
+          desc: '2×2. Each one adds 2.1 MW to the whole network’s wire capacity, with no limit, and cuts storm faults toward 12%. Stacks with MK1.',
           cost: 0,
-          getProgress() {
-            if (!Progression.isUnlocked(T.RESEARCH2)) return { current: 0, target: 1, unit: 'Research MK2 needed' };
-            return { current: Math.floor(PowerNetwork.stats.totalConsumed), target: 800, unit: 'W consumed' };
-          },
+          // Requirement and progress come from its goals in progression.js.
+          getProgress: () => Progression.goalProgress(T.PROTECTOR2),
         },
         {
           type: T.PROTECTOR3,
@@ -972,12 +970,10 @@ const InspectionPanel = (() => {
         {
           type: T.SUBSTATION2,
           name: 'Substation MK2',
-          desc: '3×3 storage node. 450 kWh capacity, 450 kW max discharge. Unlocks at 600 kW consumption (Research MK2 required).',
+          desc: '3×3 storage node. 450 kWh capacity, 450 kW max discharge.',
           cost: 0,
-          getProgress() {
-            if (!Progression.isUnlocked(T.RESEARCH2)) return { current: 0, target: 1, unit: 'Research MK2 needed' };
-            return { current: Math.floor(PowerNetwork.stats.totalConsumed), target: 600, unit: 'W consumed' };
-          },
+          // Requirement and progress come from its goals in progression.js.
+          getProgress: () => Progression.goalProgress(T.SUBSTATION2),
         },
         {
           type: T.SUBSTATION3,

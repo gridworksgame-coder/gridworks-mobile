@@ -1048,8 +1048,10 @@ const Progression = (() => {
       id:    T.PROTECTOR2,
       tier:  2,
       label: 'Surge Protector MK2',
-      check: () => PowerNetwork.stats.totalConsumed >= 800 && Progression.isUnlocked(T.RESEARCH2),
-      hint:  'Reach 800 kW consumption and unlock Research MK2',
+      requires: { label: 'Research MK2', met: () => Progression.isUnlocked(T.RESEARCH2) },
+      goals: [
+        { verb: 'Reach', what: 'kW consumption', target: 600, get: () => PowerNetwork.stats.totalConsumed },
+      ],
     },
     {
       id:    T.PROTECTOR3,
@@ -1126,8 +1128,10 @@ const Progression = (() => {
       id:    T.SUBSTATION2,
       tier:  2,
       label: 'Substation MK2',
-      check: () => PowerNetwork.stats.totalConsumed >= 600 && Progression.isUnlocked(T.RESEARCH2),
-      hint:  'Reach 600 kW consumption and unlock Research MK2',
+      requires: { label: 'Research MK2', met: () => Progression.isUnlocked(T.RESEARCH2) },
+      goals: [
+        { verb: 'Reach', what: 'kW consumption', target: 800, get: () => PowerNetwork.stats.totalConsumed },
+      ],
     },
     {
       id:    T.SUBSTATION3,
@@ -1784,7 +1788,6 @@ const Progression = (() => {
                                    ? Math.min(1, PowerNetwork.stats.totalConsumed / 2000) : 0;
       if (type === T.BEACON)     return Math.min(1, PowerNetwork.stats.totalGenerated / 150);
       if (type === T.SUBSTATION) return Math.min(1, PowerNetwork.stats.totalGenerated / 200);
-      if (type === T.SUBSTATION2) return Math.min(1, PowerNetwork.stats.totalConsumed / 600);
       if (type === T.SUBSTATION3) return Progression.isUnlocked(T.RESEARCH3) ? Math.min(1, PowerNetwork.stats.totalGenerated / 3500) : 0;
       if (type === T.SUBSTATION4) return EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? Math.min(1, PowerNetwork.stats.totalGenerated / 10000) : 0;
       if (type === T.SUBSTATION5) return (EntityRegistry.getByType(T.MK5RESEARCH).size > 0 ? 0.5 : 0) + (hasFusionGenerated() ? 0.5 : 0);
@@ -1992,7 +1995,6 @@ const Progression = (() => {
         return Math.min(1, ((typeof HulkingFusionReactorSystem !== 'undefined') ? HulkingFusionReactorSystem.getTotalPelletsBurned() : 0) / FUSION_GOALS.burned);
       }
       if (type === T.PROTECTOR)  return PowerNetwork.redlineProgress();
-      if (type === T.PROTECTOR2) return Math.min(1, PowerNetwork.stats.totalConsumed / 800);
       if (type === T.PROTECTOR3) return EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? Math.min(1, PowerNetwork.stats.totalConsumed / 5000) : 0;
       if (type === T.LIGHTNINGROD3) {
         if (EntityRegistry.getByType(T.MK4RESEARCH).size === 0) return 0;
