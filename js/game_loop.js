@@ -560,6 +560,7 @@ const GameLoop = (() => {
     MhdRingAudio.tick();
     UraniumDepositAudio.tick();
     MachineAudio.tick();
+    ConstructionAudio.tick();
     TruckAudio.tick();
     DroneAudio.tick();
     StadiumAudio.tick();
