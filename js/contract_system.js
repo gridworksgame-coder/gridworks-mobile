@@ -3496,24 +3496,28 @@ const ContractSystem = (() => {
     if (left <= 0) { banner = null; return; }
     const a = Math.min(1, left / 700) * Math.min(1, (4200 - left) / 400);
 
+    // Mobile: the CONTRACT COMPLETE card is drawn 40% smaller so it covers
+    // less of the small screen; every other banner keeps the full size.
+    const k = window.GW_MOBILE && banner.title === 'CONTRACT COMPLETE' ? 0.6 : 1;
+    const top = ch * 0.34 + 48 * (1 - k), bh = 96 * k;
     ctx.save();
     ctx.globalAlpha = a;
     ctx.fillStyle = 'rgba(2,6,12,0.82)';
-    ctx.fillRect(0, ch * 0.34, cw, 96);
+    ctx.fillRect(0, top, cw, bh);
     ctx.strokeStyle = 'rgba(90,168,255,0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, ch * 0.34);          ctx.lineTo(cw, ch * 0.34);
-    ctx.moveTo(0, ch * 0.34 + 96);     ctx.lineTo(cw, ch * 0.34 + 96);
+    ctx.moveTo(0, top);          ctx.lineTo(cw, top);
+    ctx.moveTo(0, top + bh);     ctx.lineTo(cw, top + bh);
     ctx.stroke();
 
     ctx.textAlign = 'center';
     ctx.fillStyle = '#8ec8ff';
-    ctx.font = '26px monospace';
-    ctx.fillText(banner.title, cw / 2, ch * 0.34 + 45);
+    ctx.font = `${Math.round(26 * k)}px monospace`;
+    ctx.fillText(banner.title, cw / 2, top + 45 * k);
     ctx.fillStyle = '#5a7a92';
-    ctx.font = '12px monospace';
-    ctx.fillText(banner.sub, cw / 2, ch * 0.34 + 70);
+    ctx.font = `${Math.round(12 * k)}px monospace`;
+    ctx.fillText(banner.sub, cw / 2, top + 70 * k);
     ctx.restore();
   }
 
