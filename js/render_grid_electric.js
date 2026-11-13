@@ -72,13 +72,15 @@ function _wireSkipsNeighbour(n) {
     if (typeof POWERED_PARK_TYPES !== 'undefined') for (const t of POWERED_PARK_TYPES) _wireParkSet.delete(t);
     // Anything else that neither draws power nor feeds the grid, so a wire
     // beside one mustn't look plugged in: storage vessels, the mechanical
-    // hydro parts, reactors (steam to the turbines, not watts; they run
-    // unpowered), and the undeveloped ground resources. Grid parts with no
+    // hydro parts and the undeveloped ground resources. Grid parts with no
     // draw of their own (poles, substations, protectors, switches, batteries,
-    // lightning rods) and generators whose output isn't in their def (solar,
-    // wind) are deliberately NOT here: wires really do plug into those.
+    // lightning rods), generators whose output isn't in their def (solar,
+    // wind) and the nuclear reactors are deliberately NOT here: wires really
+    // do plug into those. A reactor raises steam unpowered, but it only moves
+    // its spent fuel out while it has power (NuclearSystem), and shows
+    // UNPOWERED without it.
     for (const t of [T.OILSTORAGE, T.SOLIDSTORAGE, T.GASSTORAGE, T.SHAFT, T.DAM,
-                     T.NUCLEARREACTOR, T.ADVREACTOR, T.FISHINGPOLE, T.HAULER,
+                     T.FISHINGPOLE, T.HAULER,
                      T.AQUIFER, T.GEODEPOSIT, T.COALDEPOSIT, T.OILDEPOSIT, T.URANIUMDEPOSIT,
                      T.SULFURDEPOSIT, T.LITHIUMDEPOSIT, T.RAREEARTHDEPOSIT, T.HELIUMDEPOSIT]) {
       if (t !== undefined) _wireParkSet.add(t);
