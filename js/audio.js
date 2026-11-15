@@ -1636,7 +1636,6 @@ const MusicSystem = (() => {
     { src: 'audio/music/Been A Minute grid.mp3', vol: 0.30 },
     { src: 'audio/music/Beginners Mind.mp3',     vol: 0.186 },
     { src: 'audio/music/Door Closed.mp3',        vol: 0.237 },
-    { src: 'audio/music/Pulchritude.mp3',        vol: 0.42 },
     { src: 'audio/music/Seldom Sound.mp3',       vol: 0.251 },
     { src: 'audio/music/Wondering.mp3',          vol: 0.272 },
     { src: 'audio/music/Need Another.mp3',       vol: 0.178 },
@@ -1651,6 +1650,8 @@ const MusicSystem = (() => {
     { src: 'audio/music/They Shine.mp3',         vol: 0.176 },
     { src: 'audio/music/Cool Down the Road.mp3', vol: 0.225 },
     { src: 'audio/music/Sleepless.mp3',          vol: 0.210 },
+    { src: 'audio/music/Falling as Water Does.mp3', vol: 0.367 },
+    { src: 'audio/music/Lurking.mp3',            vol: 0.263 },
     // Not in the rotation, on purpose: Electron.mp3 scores the apocalypse
     // (apocalypse_system.js) and Rope to the Sky.mp3 is Operation Hyperion's
     // victory song (national_project.js) — each is saved for its moment.
