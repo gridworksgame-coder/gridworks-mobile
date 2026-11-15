@@ -1716,6 +1716,14 @@
   /* Waiting cards fold down to their title bar (tutorial_system.js). */
   .tut-card.tut-foldable .tut-title { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
   .tut-card.tut-foldable .tut-title:hover { filter: brightness(1.25); }
+  /* "Time Paused" tag on the title bar of a card that stops the clock. */
+  .tut-card.tut-time-paused .tut-title { display: flex; align-items: center; gap: 10px; }
+  .tut-paused { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
+    font: 700 9.35px 'JetBrains Mono', monospace; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #ffd27a; background: rgba(255,190,80,0.12); border: 1px solid rgba(255,190,80,0.45); border-radius: 3px; }
+  .tut-paused::before { content: ''; width: 2px; height: 8px; background: currentColor; box-shadow: 4px 0 0 currentColor; margin-right: 4px; }
+  .tut-paused.off { display: none; }
+  .tut-card.tut-time-paused .tut-fold-n { margin-left: 0; }
   .tut-fold-n { margin-left: auto; font: 600 9.35px 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: var(--text-dim); }
   .tut-fold-chev { font-size: 12.75px; line-height: 1; color: var(--text-dim); transform: rotate(180deg); transition: transform 0.15s ease; }
   .tut-card.tut-folded .tut-fold-chev { transform: none; }
@@ -6264,6 +6272,9 @@ const StudioIntro = (() => {
     <div class="pause-section">
       <div class="pause-section-label">Power Company Name</div>
       <input type="text" id="cn-company-input" class="cn-input" maxlength="25" placeholder="e.g. Gridworks Power Co." autocomplete="off">
+    </div>
+    <div class="pause-section">
+      <button type="button" class="menu-btn" id="cn-random-btn" style="width:100%;">Random Names</button>
     </div>
     <div class="pause-section">
       <div class="pause-section-label">City Flag</div>

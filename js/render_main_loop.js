@@ -1552,6 +1552,9 @@ RenderSystem.render = function (t, inputState) {
         const _zoom = Camera.zoom;
 
         const ZOOM_SETTLE_MS = 160;
+        // How far (as a zoom ratio, ~1.2x) a still-moving zoom may get from
+        // the cached bitmap's own before it is rebuilt mid-zoom (below).
+        const BG_ZOOM_REFRESH_LOG = Math.log(1.2);
         if (_lastLiveZoom === null) _lastLiveZoom = _zoom;
         if (_zoom !== _lastLiveZoom) { _zoomSettleAt = performance.now() + ZOOM_SETTLE_MS; _lastLiveZoom = _zoom; }
         const _zoomSettled = performance.now() >= _zoomSettleAt;
@@ -1665,10 +1668,27 @@ RenderSystem.render = function (t, inputState) {
           // than a laptop could finish a rebuild, so none ever finished.
           // A job that completes one keyframe behind is swapped in and the
           // very next frame's staleness check starts the next one.
-          if (!_bgJob || _bgJob.zoom !== _zoom ||
+          // Nor is zoom, while it is still moving: a darkness step during a
+          // long scripted zoom (the intro's dawn drift in to City Hall) used
+          // to restart the job every frame because the zoom had ticked
+          // again, so it burned its budget each frame and never finished
+          // (the drift ran at ~26fps on a desktop). A job that lands a
+          // little behind the live zoom is still swapped in and stretched
+          // the short way; once the zoom settles, a stale one is restarted.
+          if (!_bgJob || (_bgJob.zoom !== _zoom && _zoomSettled) ||
               _bgJob.zoneVer !== _zoneVer || _bgJob.W !== W || _bgJob.H !== H) {
             bgJobStart(_zoom, _dark, _zoneVer, W, H);
           }
+        } else if (!_didScroll && !_bgJob && !_zoomSettled &&
+                   Math.abs(Math.log(_zoom / _bgZoom)) > BG_ZOOM_REFRESH_LOG) {
+          // A zoom that keeps moving never settles, so the bitmap on screen
+          // would be the one from where it started, stretched further every
+          // frame (the intro's drift: a 0.42x bitmap blown up to 1x, soft
+          // and shimmering under City Hall). Once the live zoom is a good
+          // way off it, rebuild at the current zoom in the background; it
+          // swaps in a few frames later and the stretch starts over from
+          // there. One job at a time, never restarted mid-zoom.
+          bgJobStart(_zoom, _dark, _zoneVer, W, H);
         }
 
         // While a full-screen gap is showing (fast zoom-out outrunning the
@@ -1748,11 +1768,16 @@ RenderSystem.render = function (t, inputState) {
           // the stale bitmap to approximate the new scale. One scaled
           // drawImage call instead of a full re-render; briefly a little
           // soft/imprecise, which is imperceptible during a fast zoom.
+          // Placed at its exact sub-pixel position and size. Rounding these
+          // (as the 1:1 blit above rightly does) moved the ground by up to a
+          // pixel against the buildings drawn over it, differently every
+          // frame of a zoom, which read as City Hall shaking on the ground
+          // through the intro's drift.
           const _scale = _zoom / _bgZoom;
-          const _destX = Math.round((_bgWorldLeft - Camera.x) * _zoom * _rs);
-          const _destY = Math.round((_bgWorldTop  - Camera.y) * _zoom * _rs);
-          const _destW = Math.round(bgCache.width  * _scale);
-          const _destH = Math.round(bgCache.height * _scale);
+          const _destX = (_bgWorldLeft - Camera.x) * _zoom * _rs;
+          const _destY = (_bgWorldTop  - Camera.y) * _zoom * _rs;
+          const _destW = bgCache.width  * _scale;
+          const _destH = bgCache.height * _scale;
           // If the stretched preview won't fully cover the canvas (fast
           // zoom-out flick — see _stretchGap above), the exposed area is
           // otherwise left transparent by the clearRect at the top of this
@@ -1779,11 +1804,15 @@ RenderSystem.render = function (t, inputState) {
             _bgFadeRelease();   // hand the snapshot's buffer back until next fade
           } else {
             ctx.globalAlpha = _fadeAlpha;
+            // Snapped to whole pixels only when it is a 1:1 copy (as the
+            // blit under it is); stretched, it goes at its exact position
+            // like the stretched blit, or the two slide against each other.
             const _fScale = _zoom / _bgFadeZoom;
-            const _fDestX = Math.round((_bgFadeLeft - Camera.x) * _zoom * _rs);
-            const _fDestY = Math.round((_bgFadeTop  - Camera.y) * _zoom * _rs);
-            const _fDestW = Math.round(bgFade.width  * _fScale);
-            const _fDestH = Math.round(bgFade.height * _fScale);
+            const _fSnap = _fScale === 1 ? Math.round : (v => v);
+            const _fDestX = _fSnap((_bgFadeLeft - Camera.x) * _zoom * _rs);
+            const _fDestY = _fSnap((_bgFadeTop  - Camera.y) * _zoom * _rs);
+            const _fDestW = _fSnap(bgFade.width  * _fScale);
+            const _fDestH = _fSnap(bgFade.height * _fScale);
             ctx.drawImage(bgFade, 0, 0, bgFade.width, bgFade.height, _fDestX, _fDestY, _fDestW, _fDestH);
             ctx.globalAlpha = 1;
           }

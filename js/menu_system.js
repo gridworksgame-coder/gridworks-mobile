@@ -1449,6 +1449,40 @@ const MenuSystem = (() => {
     cnAnim = requestAnimationFrame(animateHallPreviews);
   }
 
+  // Random city and company names, so the game can be started without a
+  // keyboard (controller, Steam Deck). Filled in automatically when a
+  // controller is the active input; the Random Names button rerolls.
+  const CN_PRE  = ['New', 'Port', 'North', 'South', 'East', 'West', 'Fort', 'Lake', 'Mount', 'Glen',
+                   'Red', 'Iron', 'Cedar', 'Silver', 'Copper', 'Stone', 'Maple', 'Fair', 'Bright', 'Clear'];
+  const CN_ROOT = ['haven', 'field', 'brook', 'ridge', 'ford', 'wood', 'dale', 'port', 'water', 'gate',
+                   'stead', 'mont', 'crest', 'vale', 'bury', 'ton', 'well', 'shore', 'hollow', 'spring'];
+  // Endings that also stand as a word, for two-word names ("Port Haven").
+  const CN_WORD = new Set(['haven', 'field', 'brook', 'ridge', 'ford', 'wood', 'dale', 'water',
+                           'gate', 'crest', 'vale', 'shore', 'hollow', 'spring']);
+  const CN_CO   = ['Power Co.', 'Light & Power', 'Electric', 'Energy', 'Grid Co.', 'Power & Light',
+                   'Utilities', 'Current Co.'];
+  const _pick = a => a[Math.floor(Math.random() * a.length)];
+  function randomCityName() {
+    const pre = _pick(CN_PRE), root = _pick(CN_ROOT);
+    if (Math.random() < 0.5 || !CN_WORD.has(root)) return pre + root;   // Cedarbrook
+    return `${pre} ${root[0].toUpperCase()}${root.slice(1)}`;               // Port Haven
+  }
+  function randomCompanyName(city) {
+    const base = Math.random() < 0.6 ? city : randomCityName();
+    for (let i = 0; i < 8; i++) {
+      const name = `${base} ${_pick(CN_CO)}`;
+      if (name.length <= 25) return name;
+    }
+    return `${base.split(' ')[0]} Power Co.`.slice(0, 25);
+  }
+  function fillRandomNames() {
+    const [cityEl, companyEl] = _cnFields();
+    cityEl.value = randomCityName();
+    companyEl.value = randomCompanyName(cityEl.value);
+    for (const el of _cnFields()) el.classList.remove('invalid');
+    refreshCityNamingValid();
+  }
+
   function showCityNamingModal() {
     const modal = document.getElementById('citynaming-modal');
     document.getElementById('cn-city-input').value = '';
@@ -1462,7 +1496,10 @@ const MenuSystem = (() => {
     resetSetupPickers();
     modal.classList.add('visible');
     if (!cnAnim) cnAnim = requestAnimationFrame(animateHallPreviews);
-    document.getElementById('cn-city-input').focus();
+    // With a controller, start with random names so Start Game works without
+    // typing; a keyboard player gets the empty field to type in.
+    if (typeof GamepadInput !== 'undefined' && GamepadInput.active) fillRandomNames();
+    else document.getElementById('cn-city-input').focus();
   }
 
   function hideCityNamingModal() {
@@ -1538,14 +1575,14 @@ const MenuSystem = (() => {
     });
     document.getElementById('menu-btn-newgame').addEventListener('click', async () => {
       SFX.click();
-      // Choose where this world's saves will live before anything else. This
-      // click is the user gesture showDirectoryPicker() requires, and asking
-      // here means the autosave/quick-save file exists from the very first
-      // tick instead of piling into browser storage until the player happens
-      // to open SAVE GAME. Asked on EVERY new game, not just when no folder
-      // is connected yet, so each world's destination is a deliberate choice;
-      // cancelling the picker simply keeps whatever was already set.
-      if (SaveSystem.folderSupported()) {
+      // Browser only, and only until a save folder exists: this click is the
+      // user gesture showDirectoryPicker() requires, and asking here means the
+      // autosave file exists from the very first tick instead of piling into
+      // browser storage. Once a folder is set (and always in the desktop
+      // build, which has a default Documents\My Games folder) new games just
+      // save there, like any other PC game. Pause > Save > Change Folder…
+      // still moves it.
+      if (SaveSystem.folderSupported() && !SaveSystem.folderActive()) {
         const ok = await SaveSystem.folderConnect();
         if (ok) showToast(`Saves for this world will go to "${SaveSystem.folderName()}" ✓`, '#50e890', '#001a08', '#003018');
       }
@@ -1559,6 +1596,7 @@ const MenuSystem = (() => {
       SFX.click(); hideCityNamingModal();
     });
     for (const el of _cnFields()) el.addEventListener('input', () => refreshCityNamingValid());
+    document.getElementById('cn-random-btn')?.addEventListener('click', () => { SFX.click(); fillRandomNames(); });
     document.getElementById('cn-city-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); document.getElementById('cn-company-input').focus(); }
     });

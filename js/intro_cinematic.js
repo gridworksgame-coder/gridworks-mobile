@@ -776,6 +776,7 @@ const IntroCinematic = (() => {
       phase = 'later';
       oldCity = null; sparks = []; ash = [];
       try { ghost = OldCity.traces(); } catch (_e) { ghost = null; }
+      _ghostBitmap();   // baked now, under the black, not on the drift's first frame
       _camLook(null);
       tearT = 0;
       OldCity.reset();
@@ -1068,6 +1069,83 @@ const IntroCinematic = (() => {
     step();
   }
 
+  // The old city's traces, drawn once into a bitmap in world space and then
+  // just placed and scaled every frame. Stroking every street and footing
+  // with dash patterns each frame cost ~15ms on a desktop at the drift's
+  // wide opening shot, about half the frame. Baked at gk = 1; the fade is
+  // the globalAlpha it is drawn with. Resolution follows the overlay's own
+  // (the traces are gone by 0.92x zoom), capped at 4096 px a side.
+  let _ghostBmp = null, _ghostFor = null;
+  function _ghostBitmap() {
+    if (_ghostFor === ghost) return _ghostBmp;
+    _ghostFor = ghost; _ghostBmp = null;
+    if (!ghost) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const ext = (x, y, w, h) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + w); y1 = Math.max(y1, y + h); };
+    for (const p of ghost.plots || []) ext(p.x, p.y, p.w, p.h);
+    for (const rd of ghost.roads || []) ext(rd.x, rd.y, rd.w, rd.h);
+    for (const R of ghost.reactors || []) ext(R.c - 10, R.r - 10, 20, 20);
+    if (!isFinite(x0)) return null;
+    x0 = (x0 - 2) * TILE; y0 = (y0 - 2) * TILE; x1 = (x1 + 2) * TILE; y1 = (y1 + 2) * TILE;
+    const dpr = fx && window.innerWidth ? fx.width / window.innerWidth : (window.devicePixelRatio || 1);
+    const s = Math.min(0.92 * dpr, 4096 / (x1 - x0), 4096 / (y1 - y0));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.ceil((x1 - x0) * s)); c.height = Math.max(1, Math.ceil((y1 - y0) * s));
+    const g = c.getContext('2d');
+    const sx = wx => (wx - x0) * s, sy = wy => (wy - y0) * s, T = TILE * s;
+    const W = c.width, H = c.height;
+    g.lineCap = 'butt';
+    // Foundations first, so the streets lie over their edges.
+    for (const p of ghost.plots || []) {
+      const x = sx(p.x * TILE), y = sy(p.y * TILE), w = p.w * T, h = p.h * T;
+      if (x > W || y > H || x + w < 0 || y + h < 0) continue;
+      const i = 0.16 * T;
+      g.fillStyle = `rgba(14,20,10,0.16)`; g.fillRect(x + i, y + i, w - i * 2, h - i * 2);
+      g.strokeStyle = `rgba(214,208,184,0.26)`; g.lineWidth = Math.max(1, T * 0.2);
+      // Walls stand in stretches; the breaks differ plot to plot.
+      g.setLineDash([T * 1.9, T * 0.5, T * 0.8, T * 0.35, T * 2.6, T * 0.7]);
+      g.lineDashOffset = (p.x * 3 + p.y * 5) * T * 0.37;
+      g.strokeRect(x + i, y + i, w - i * 2, h - i * 2);
+    }
+    // The roadbed: thin soil over hardcore, so the grass on it is pale.
+    // Unbroken, which is what lets the grid read as a grid, and filled as
+    // one shape so crossings are no brighter than the streets.
+    g.beginPath();
+    for (const rd of ghost.roads) g.rect(sx(rd.x * TILE), sy(rd.y * TILE), rd.w * T, rd.h * T);
+    g.fillStyle = `rgba(198,190,150,0.17)`; g.fill();
+    for (const rd of ghost.roads) {
+      const rx = sx(rd.x * TILE), ry = sy(rd.y * TILE), rw = rd.w * T, rh = rd.h * T;
+      if (rx > W || ry > H || rx + rw < 0 || ry + rh < 0) continue;
+      const wide = rd.horiz ? rh : rw;
+      const line = () => {
+        g.beginPath();
+        if (rd.horiz) { g.moveTo(rx, ry + rh / 2); g.lineTo(rx + rw, ry + rh / 2); }
+        else { g.moveTo(rx + rw / 2, ry); g.lineTo(rx + rw / 2, ry + rh); }
+        g.stroke();
+      };
+      g.lineDashOffset = (rd.x * 7 + rd.y * 13) * T;
+      // Asphalt that has not been swallowed yet, in slabs.
+      g.strokeStyle = `rgba(52,56,54,0.42)`; g.lineWidth = wide * 0.7;
+      g.setLineDash([T * 2.6, T * 3.2, T * 1.3, T * 4.6, T * 3.8, T * 2.4]);
+      line();
+      // …and the paint still on it.
+      g.strokeStyle = `rgba(240,226,170,0.5)`; g.lineWidth = Math.max(1, T * 0.12);
+      g.setLineDash([T * 0.55, T * 0.75, T * 0.55, T * 0.75, T * 0.55, T * 3.8, T * 0.55, T * 5.2, T * 0.55, T * 0.75, T * 0.55, T * 2.6]);
+      line();
+    }
+    g.setLineDash([]); g.lineDashOffset = 0;
+    // The reactor sites: a dark hollow ringed with thicker growth.
+    for (const R of ghost.reactors) {
+      const x = sx(R.c * TILE), y = sy(R.r * TILE);
+      if (x < -12 * T || x > W + 12 * T || y < -12 * T || y > H + 12 * T) continue;
+      _circle(g, x, y, 7 * T, `rgba(8,10,6,0.34)`);
+      g.strokeStyle = `rgba(150,196,120,0.2)`; g.lineWidth = 1.4 * T;
+      g.beginPath(); g.arc(x, y, 8.6 * T, 0, 6.2832); g.stroke();
+    }
+    _ghostBmp = { c, x0, y0, s };
+    return _ghostBmp;
+  }
+
   function _drawDawn(g, W, H) {
     const k = dawnK * (phase === 'out' ? 0.4 : 1);
     if (k <= 0.01) return;
@@ -1081,59 +1159,17 @@ const IntroCinematic = (() => {
     // time the camera is down at City Hall.
     const gk = k * clamp01((0.92 - z) / 0.3);
     if (ghost && gk > 0.01) {
-      g.save();
-      // Not across City Hall's own grounds.
-      const hp = 4 * T, hs = _hallScreen();
-      g.beginPath(); g.rect(0, 0, W, H); g.rect(hs.x - hp, hs.y - hp, hs.w + hp * 2, hs.h + hp * 2); g.clip('evenodd');
-      g.lineCap = 'butt';
-      // Foundations first, so the streets lie over their edges.
-      for (const p of ghost.plots || []) {
-        const x = _sx(p.x * TILE), y = _sy(p.y * TILE), w = p.w * T, h = p.h * T;
-        if (x > W || y > H || x + w < 0 || y + h < 0) continue;
-        const i = 0.16 * T;
-        g.fillStyle = `rgba(14,20,10,${0.16 * gk})`; g.fillRect(x + i, y + i, w - i * 2, h - i * 2);
-        g.strokeStyle = `rgba(214,208,184,${0.26 * gk})`; g.lineWidth = Math.max(1, T * 0.2);
-        // Walls stand in stretches; the breaks differ plot to plot.
-        g.setLineDash([T * 1.9, T * 0.5, T * 0.8, T * 0.35, T * 2.6, T * 0.7]);
-        g.lineDashOffset = (p.x * 3 + p.y * 5) * T * 0.37;
-        g.strokeRect(x + i, y + i, w - i * 2, h - i * 2);
+      const gb = _ghostBitmap();
+      if (gb) {
+        g.save();
+        // Not across City Hall's own grounds.
+        const hp = 4 * T, hs = _hallScreen();
+        g.beginPath(); g.rect(0, 0, W, H); g.rect(hs.x - hp, hs.y - hp, hs.w + hp * 2, hs.h + hp * 2); g.clip('evenodd');
+        g.globalAlpha = gk;
+        const sc = z / gb.s;
+        g.drawImage(gb.c, _sx(gb.x0), _sy(gb.y0), gb.c.width * sc, gb.c.height * sc);
+        g.restore();
       }
-      // The roadbed: thin soil over hardcore, so the grass on it is pale.
-      // Unbroken, which is what lets the grid read as a grid, and filled as
-      // one shape so crossings are no brighter than the streets.
-      g.beginPath();
-      for (const rd of ghost.roads) g.rect(_sx(rd.x * TILE), _sy(rd.y * TILE), rd.w * T, rd.h * T);
-      g.fillStyle = `rgba(198,190,150,${0.17 * gk})`; g.fill();
-      for (const rd of ghost.roads) {
-        const rx = _sx(rd.x * TILE), ry = _sy(rd.y * TILE), rw = rd.w * T, rh = rd.h * T;
-        if (rx > W || ry > H || rx + rw < 0 || ry + rh < 0) continue;
-        const wide = rd.horiz ? rh : rw;
-        const line = () => {
-          g.beginPath();
-          if (rd.horiz) { g.moveTo(rx, ry + rh / 2); g.lineTo(rx + rw, ry + rh / 2); }
-          else { g.moveTo(rx + rw / 2, ry); g.lineTo(rx + rw / 2, ry + rh); }
-          g.stroke();
-        };
-        g.lineDashOffset = (rd.x * 7 + rd.y * 13) * T;
-        // Asphalt that has not been swallowed yet, in slabs.
-        g.strokeStyle = `rgba(52,56,54,${0.42 * gk})`; g.lineWidth = wide * 0.7;
-        g.setLineDash([T * 2.6, T * 3.2, T * 1.3, T * 4.6, T * 3.8, T * 2.4]);
-        line();
-        // …and the paint still on it.
-        g.strokeStyle = `rgba(240,226,170,${0.5 * gk})`; g.lineWidth = Math.max(1, T * 0.12);
-        g.setLineDash([T * 0.55, T * 0.75, T * 0.55, T * 0.75, T * 0.55, T * 3.8, T * 0.55, T * 5.2, T * 0.55, T * 0.75, T * 0.55, T * 2.6]);
-        line();
-      }
-      g.setLineDash([]); g.lineDashOffset = 0;
-      // The reactor sites: a dark hollow ringed with thicker growth.
-      for (const R of ghost.reactors) {
-        const x = _sx(R.c * TILE), y = _sy(R.r * TILE);
-        if (x < -12 * T || x > W + 12 * T || y < -12 * T || y > H + 12 * T) continue;
-        _circle(g, x, y, 7 * T, `rgba(8,10,6,${0.34 * gk})`);
-        g.strokeStyle = `rgba(150,196,120,${0.2 * gk})`; g.lineWidth = 1.4 * T;
-        g.beginPath(); g.arc(x, y, 8.6 * T, 0, 6.2832); g.stroke();
-      }
-      g.restore();
     }
 
     // Ground mist, anchored to the land so it slides past as the camera moves.

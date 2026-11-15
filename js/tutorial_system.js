@@ -1749,6 +1749,17 @@ const TutorialSystem = (() => {
     return txt.length >= READ_PAUSE_CHARS;
   }
 
+  // Keeps a card's "Time Paused" tag honest: shown only while the clock
+  // really is stopped. Checked a few times a second while a tag is up.
+  let _pausedTagTimer = 0;
+  function _syncPausedTag() {
+    const tag = document.querySelector('#tutorial-card .tut-paused');
+    if (!tag) { clearInterval(_pausedTagTimer); _pausedTagTimer = 0; return; }
+    const stopped = typeof DevMode === 'undefined' || DevMode.timeScale === 0;
+    tag.classList.toggle('off', !stopped);
+    if (!_pausedTagTimer) _pausedTagTimer = setInterval(_syncPausedTag, 250);
+  }
+
   function _renderStepCard(seq, step, forced) {
     const host = document.getElementById('tutorial-card');
     if (!host) return;
@@ -1785,6 +1796,20 @@ const TutorialSystem = (() => {
     title.className = 'tut-title';
     title.textContent = seq.title;
     card.appendChild(title);
+
+    // A card that stops the clock says so on its title bar, so a still city
+    // reads as paused rather than broken. It follows the real clock, not just
+    // the card's rule: unpausing by hand from the playback bar hides it (see
+    // _syncPausedTag).
+    if (shouldPauseTime()) {
+      const tag = document.createElement('span');
+      tag.className = 'tut-paused';
+      tag.textContent = 'Time Paused';
+      tag.title = 'The game clock is stopped while this card is open';
+      title.appendChild(tag);
+      card.classList.add('tut-time-paused');
+      setTimeout(_syncPausedTag, 0);   // once the card is on screen and the pause has applied
+    }
 
     // A card that is waiting on the player (it has a check and no button to
     // press) can be folded down to its title bar and opened again, so it can

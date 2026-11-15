@@ -1453,6 +1453,12 @@ const FishingSystem = (() => {
 
   // Per-frame fish behaviour during the minigame — moves the zone and sets
   // fightPull for the arrow (see the fight styles note under TRAITS).
+  // How lively the target zone is, on top of each fight style's own numbers:
+  // ZONE_MOVE scales how far it travels, ZONE_TEMPO how often / how fast it
+  // moves. Raised from 1 / 1 (2026-11-15): the zone sat still enough that
+  // fishing felt too easy. Its size is unchanged (DIFFICULTY_PRESETS).
+  const ZONE_MOVE  = 1.35;
+  const ZONE_TEMPO = 1.2;
   function _fightTick(dt) {
     const style = (TRAITS[currentFish.icon] || {}).fight || 'calm';
     const d = currentFish.difficulty;
@@ -1460,11 +1466,11 @@ const FishingSystem = (() => {
     const half = zoneWidth / 2, lo = 0.04 + half, hi = 0.96 - half;
     let ease = 2;
     if (style === 'calm') {
-      zoneTarget = zoneBase + Math.sin(fightClock * (0.5 + 0.1 * d)) * (0.06 + 0.03 * d);
+      zoneTarget = zoneBase + Math.sin(fightClock * (0.5 + 0.1 * d) * ZONE_TEMPO) * (0.06 + 0.03 * d) * ZONE_MOVE;
     } else if (style === 'thrasher') {
       if (fightClock >= fightNext) {
-        zoneTarget = zoneCenter + (Math.random() * 2 - 1) * (0.04 + 0.025 * d);
-        fightNext = fightClock + 1.3 - 0.12 * d + Math.random() * 0.4;
+        zoneTarget = zoneCenter + (Math.random() * 2 - 1) * (0.04 + 0.025 * d) * ZONE_MOVE;
+        fightNext = fightClock + (1.3 - 0.12 * d + Math.random() * 0.4) / ZONE_TEMPO;
       }
       ease = 5;
     } else if (style === 'darter') {
@@ -1472,17 +1478,17 @@ const FishingSystem = (() => {
         fightWarn -= dt;
         if (fightWarn <= 0) {
           // Harder fish dart farther: a short hop at d1, about half the track by d5.
-          const reach = 0.1 + 0.06 * d;
+          const reach = (0.1 + 0.06 * d) * ZONE_MOVE;
           const dir = zoneCenter - reach < lo ? 1 : zoneCenter + reach > hi ? -1 : (Math.random() < 0.5 ? -1 : 1);
           zoneTarget = zoneCenter + dir * reach * (0.6 + Math.random() * 0.4);
-          fightNext = fightClock + 4.5 - 0.4 * d + Math.random() * 1.5;
+          fightNext = fightClock + (4.5 - 0.4 * d + Math.random() * 1.5) / ZONE_TEMPO;
         }
       } else if (fightClock >= fightNext) {
         fightWarn = 0.8 - 0.08 * d;
       }
       ease = 6;
     } else if (style === 'heavy') {
-      zoneTarget = zoneBase + Math.sin(fightClock * 0.35) * (0.12 + 0.035 * d);
+      zoneTarget = zoneBase + Math.sin(fightClock * 0.35 * ZONE_TEMPO) * (0.12 + 0.035 * d) * ZONE_MOVE;
       ease = 1.2;
       _runCycle(dt, 0.2 + 0.06 * d, 1.2, 4.5 - 0.3 * d);
     } else if (style === 'runner') {
@@ -1491,7 +1497,7 @@ const FishingSystem = (() => {
       if (fightRun > 0) zoneBase -= dt * (0.1 + 0.03 * d);
       else zoneBase += (0.5 - zoneBase) * dt * 0.3;
       zoneBase = Math.max(lo, Math.min(hi, zoneBase));
-      zoneTarget = zoneBase + Math.sin(fightClock * 0.7) * (0.04 + 0.02 * d);
+      zoneTarget = zoneBase + Math.sin(fightClock * 0.7 * ZONE_TEMPO) * (0.04 + 0.02 * d) * ZONE_MOVE;
       ease = 3;
     } else {   // dead
       ease = 0;
