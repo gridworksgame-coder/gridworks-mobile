@@ -22,7 +22,7 @@
      • what is under the camera — trees, water, open grass and each zone:
        residential (dogs, chimes, mowers, doves), commercial (pigeons,
        sparrows, a car horn), industrial (crows, gulls, clanks, beepers),
-       the government district (a bell on the quarter-day hours);
+       the government district (City Hall's bell at 9:00 and 18:00);
      • the zoom — fewer and quieter calls from high up.
    The flocks and animals actually on screen (BirdFlocks, Wildlife) call
    from where they are: geese honk as they pass over, ducks quack, a fox
@@ -739,10 +739,12 @@ const OutdoorAmbience = (() => {
         break;   // one new call a tick at most
       }
 
-      // City Hall's bell on the quarter-day hours, heard near the district.
+      // City Hall's bell twice a day, at the start and end of the working day
+      // (9:00 and 18:00), heard near the district. It was every quarter-day
+      // (9, 12, 15, 18), which came round often enough to grate.
       const hr = Math.floor(s.hour);
       if (hr !== lastBellHour) {
-        if (lastBellHour >= 0 && s.govNear && [9, 12, 15, 18].includes(hr)) {
+        if (lastBellHour >= 0 && s.govNear && [9, 18].includes(hr)) {
           const pool = s.pts.government;
           _play('bell', pool.length ? { ...pick(pool) } : _where([], true), hr % 12 || 12);
         }
