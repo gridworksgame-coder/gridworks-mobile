@@ -55,7 +55,7 @@
 /* ── Type: Inter everywhere, numbers line up ─────────────────────────── */
 /* The intro's black-screen terminal text (.gi-term) keeps its mono font. */
 body,
-body *:not(canvas):not(svg):not(svg *):not(.menu-logo-title):not(.menu-logo-title *):not(.gw-emblem):not(.gw-emblem *):not(.menu-btn):not(.menu-btn *):not(.gi-term):not(.gi-term *) {
+body *:not(canvas):not(svg):not(svg *):not(.menu-logo-title):not(.menu-logo-title *):not(.menu-logo-sub):not(.menu-logo-sub *):not(.gw-emblem):not(.gw-emblem *):not(.menu-btn):not(.menu-btn *):not(.gi-term):not(.gi-term *) {
   font-family: var(--font) !important;
 }
 body { font-feature-settings: 'cv11', 'ss01'; -webkit-font-smoothing: antialiased; }

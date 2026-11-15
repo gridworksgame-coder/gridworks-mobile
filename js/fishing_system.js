@@ -808,6 +808,22 @@ const FishingSystem = (() => {
     ctx.beginPath(); ctx.roundRect(trackX, trackY, trackW, trackH, 6); ctx.stroke();
     ctx.fillStyle = 'rgba(10,20,20,0.5)'; ctx.fill();
 
+    // Escape meter: the track glows red as escapeT builds (out of the zone),
+    // deeper and pulsing faster near ESCAPE_TIME, and fades as it drains.
+    const esc = Math.min(1, escapeT / ESCAPE_TIME);
+    if (esc > 0.01) {
+      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / (260 - 190 * esc));
+      ctx.save();
+      ctx.shadowColor = `rgba(255,40,30,${(0.95 * esc).toFixed(3)})`;
+      ctx.shadowBlur = 4 + 22 * esc * pulse;
+      ctx.strokeStyle = `rgba(255,${Math.round(130 - 100 * esc)},${Math.round(100 - 80 * esc)},${(0.3 + 0.7 * esc).toFixed(3)})`;
+      ctx.lineWidth = 2 + 2.5 * esc;
+      ctx.beginPath(); ctx.roundRect(trackX, trackY, trackW, trackH, 6); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = `rgba(255,30,20,${(0.32 * esc * pulse).toFixed(3)})`; ctx.fill();
+      ctx.restore();
+    }
+
     // Target zone
     const zx = trackX + zoneStart * trackW;
     const zw = zoneWidth * trackW;
@@ -1413,6 +1429,7 @@ const FishingSystem = (() => {
     _setPhase('minigame');
     arrowPos = 0.5;
     arrowVel = 0;
+    escapeT = 0;
     progress = 0;
     holding  = false;
     // Decided now, not on success — its difficulty tier shapes the
@@ -1463,6 +1480,12 @@ const FishingSystem = (() => {
   // 0.8 (2026-11-15): 20% smaller across the board, with the livelier movement
   // above fishing still felt too easy.  Read when a fight starts (_startMinigame).
   const ZONE_SIZE  = 0.8;
+  // Out of the zone for ESCAPE_TIME seconds in total and the fish gets away.
+  // escapeT counts up while the arrow is outside and back down at the same
+  // rate inside, so getting back in calms it second for second rather than
+  // resetting it. The track glows red with it (_drawMinigame).
+  const ESCAPE_TIME = 5;
+  let escapeT = 0;
   function _fightTick(dt) {
     const style = (TRAITS[currentFish.icon] || {}).fight || 'calm';
     const d = currentFish.difficulty;
@@ -1817,6 +1840,8 @@ const FishingSystem = (() => {
       if (arrowPos >= 1) { arrowPos = 1; arrowVel = 0; _resolve(false); return; }
 
       const inZone = arrowPos >= zoneStart && arrowPos <= zoneStart + zoneWidth;
+      escapeT = Math.max(0, escapeT + (inZone ? -frameDt : frameDt));
+      if (escapeT >= ESCAPE_TIME) { _resolve(false); return; }
       progress += (inZone ? 1 : -0.5) * frameDt / CATCH_TIME_REQUIRED;
       progress = Math.max(0, Math.min(1, progress));
       if (progress >= 1) { _resolve(true); return; }
