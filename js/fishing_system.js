@@ -1426,7 +1426,7 @@ const FishingSystem = (() => {
     const preset = DIFFICULTY_PRESETS[currentFish.difficulty] || DIFFICULTY_PRESETS[3];
     currentDriftMult = preset.driftMult;
     const [wMin, wMax] = preset.zoneWidth;
-    zoneWidth = wMin + Math.random() * (wMax - wMin);
+    zoneWidth = (wMin + Math.random() * (wMax - wMin)) * ZONE_SIZE;
     zoneStart = 0.08 + Math.random() * (0.92 - zoneWidth);
     zoneCenter = zoneTarget = zoneBase = zoneStart + zoneWidth / 2;
     fightClock = 0; fightWarn = 0; fightRun = 0; fightPull = 0;
@@ -1459,6 +1459,10 @@ const FishingSystem = (() => {
   // fishing felt too easy. Its size is unchanged (DIFFICULTY_PRESETS).
   const ZONE_MOVE  = 1.35;
   const ZONE_TEMPO = 1.2;
+  // Every target zone's width, on top of the tier's range in DIFFICULTY_PRESETS.
+  // 0.8 (2026-11-15): 20% smaller across the board, with the livelier movement
+  // above fishing still felt too easy.  Read when a fight starts (_startMinigame).
+  const ZONE_SIZE  = 0.8;
   function _fightTick(dt) {
     const style = (TRAITS[currentFish.icon] || {}).fight || 'calm';
     const d = currentFish.difficulty;
