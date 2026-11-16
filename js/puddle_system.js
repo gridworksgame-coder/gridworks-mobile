@@ -32,8 +32,9 @@
    from the lie of the land (terrain_system.js: hollows and valley floors
    first; streets a little lower, the drains being overwhelmed). As the
    flood rises the water creeps out of the lowest ground as one smooth
-   waterline, joins up into sheets that lap round the buildings standing
-   in them, and drains back the same way. Flood water is silty and brown,
+   waterline, joins up into sheets that wash round the plots of the
+   buildings in its way, swells the lakes and rivers it reaches, and
+   drains back the same way. Flood water is silty and brown,
    moves (its ripples run faster), and carries a line of foam and scum
    along its shore.
 
@@ -67,6 +68,12 @@ const PuddleSystem = (() => {
   // its rank among the town's land (see tileLow), so at the flood's height
   // FLOOD_LVL of the open ground and streets is under water.
   const FLOOD_LVL = 0.3;
+  // The flood comes up over about three in-game hours and goes down over
+  // about five (an in-game hour is 50 sim seconds). It only goes down once
+  // the rain eases: a rainstorm still going when the Spring Floods event
+  // ends holds the water where it is, a lighter rain lets it drain slowly.
+  const FLOOD_UP   = 1 / 150;
+  const FLOOD_DOWN = 1 / 250;
   const ROAD_LOW  = 0.05;   // streets rank this much lower: the drains are overwhelmed
   let soak = 0;
   // How full the puddles are, map-wide: `water` eases after the soak (so
@@ -505,13 +512,14 @@ const PuddleSystem = (() => {
 
     // The map-wide water level eases after the soak, never jumps; the damp
     // stain follows it up at once and back down at half the pace, so it
-    // outlasts the water and then fades on its own. The flood rises and
-    // drains on the same clock.
+    // outlasts the water and then fades on its own. The flood keeps its own
+    // slower pace (FLOOD_UP, FLOOD_DOWN).
     if (dt > 0) {
       const dry = DRY * (snowing ? 3 : 1) * dt;
       water = water < wetness ? Math.min(wetness, water + FILL * dt) : Math.max(wetness, water - dry);
       stain = Math.max(water, stain - dry * 0.5);
-      floodK = flood ? Math.min(1, floodK + FILL * dt) : Math.max(0, floodK - dry);
+      if (flood) floodK = Math.min(1, floodK + FLOOD_UP * dt);
+      else if (!(raining && level >= 0.7)) floodK = Math.max(0, floodK - FLOOD_DOWN * dt * (raining ? 0.4 : 1) * (snowing ? 2 : 1));
     }
     if (stain < 0.005 && floodK <= 0) { FC.ok = false; return; }
 
@@ -564,6 +572,9 @@ const PuddleSystem = (() => {
     if (!vis.length && !fc) return;
 
     const smooth = w => w * w * (3 - 2 * w);
+    // The flood fades in as it starts to spread and out as the last of it
+    // drains, rather than appearing or vanishing at full strength.
+    const fade = smooth(Math.min(1, floodK * 3));
     // Where the flood's cached canvases land on screen (device pixels).
     // Only the wet part of them, inside the area they cover.
     let lay = null;
@@ -609,7 +620,7 @@ const PuddleSystem = (() => {
     if (fc) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalCompositeOperation = 'multiply';
-      ctx.globalAlpha = Math.min(1, floodK * 1.5);
+      ctx.globalAlpha = fade;
       lay(ctx, fc.mul, fc.mw, fc.mh);
     }
 
@@ -638,7 +649,7 @@ const PuddleSystem = (() => {
       wg.globalCompositeOperation = 'source-over';
       wg.clearRect(bx0, by0, bw, bh);
       // The flood's sheets, as baked (their shallows already thinned).
-      if (fc) { wg.globalAlpha = pl.floodA; lay(wg, fc.body, fc.bw, fc.bh); }
+      if (fc) { wg.globalAlpha = pl.floodA * fade; lay(wg, fc.body, fc.bw, fc.bh); }
       // The puddles, as baked.
       if (nw) {
         wg.globalAlpha = 1;
@@ -673,7 +684,7 @@ const PuddleSystem = (() => {
       // The flood's waterline, as baked: its lip and the foam riding it.
       wg.globalCompositeOperation = 'source-over';
       if (fc) {
-        wg.globalAlpha = Math.min(1, floodK * 1.4);
+        wg.globalAlpha = fade;
         lay(wg, fc.shore, fc.bw, fc.bh);
       }
       wg.globalCompositeOperation = 'source-over';
@@ -724,7 +735,7 @@ const PuddleSystem = (() => {
       // On the flood, a drop on some of its tiles in view, more in harder
       // rain; none when zoomed out too far to make them out.
       if (fc && z * TILE >= 20) {
-        const share = 0.15 + 0.3 * level, a = Math.min(1, floodK * 1.5);
+        const share = 0.15 + 0.3 * level, a = fade;
         for (const it of fc.tiles) {
           if (it.h > share || it.x < vx0 || it.x > vx1 || it.y < vy0 || it.y > vy1) continue;
           drops(it.x, it.y, it.size * 0.8, 1, 0, 1, it.h * 997, 1, a);
@@ -743,8 +754,8 @@ const PuddleSystem = (() => {
   // between them on a smooth (Catmull-Rom) surface, so the shore is one
   // continuous waterline that follows the lie of the land, bending rather
   // than kinking at each tile. It creeps out of the hollows as the water
-  // rises and back as it drains, and buildings stand in it (they are drawn
-  // over the ground, the water under them hidden).
+  // rises and back as it drains, curving round the plots of buildings and
+  // swelling the lakes and rivers it meets.
   //
   // It only changes when the water does, so it is worked out once, pixel by
   // pixel at a quarter of the screen's resolution, for the view and a
@@ -760,7 +771,7 @@ const PuddleSystem = (() => {
   // Each pixel knows how far it is from the waterline (the field over its
   // slope) and which way the shore faces (the slope's direction), which is
   // all those need.
-  const LVL_STEP = 0.004;   // flood level steps between rebuilds
+  const LVL_STEP = 0.002;   // flood level steps between rebuilds (the shore moves a few pixels each)
   const DEEP = 0.03;        // how far over the shore's level the deep water starts
   const MASK = 4;           // screen pixels per baked pixel
   const FC = { ok: false, n: 0, lvl: -1, dark: -1, zd: 1, at: 0, x0: 0, y0: 0, x1: 0, y1: 0, wx0: 0, wy0: 0, wx1: 0, wy1: 0,
@@ -785,6 +796,13 @@ const PuddleSystem = (() => {
     out[o + 2] = 0.5 * (-3 * t3 + 4 * t2 + t);
     out[o + 3] = 0.5 * (t3 - t2);
   }
+  // What the flood runs over and round: water stands over open ground,
+  // streets and the thin or natural things on it (wires, pipes, poles,
+  // lamps, trees), and rises into lakes and rivers (drawn over it, so they
+  // swell); it stays off everything built on a plot, so the shore curves
+  // round a house's yard instead of showing through it in a square.
+  let THROUGH = null;
+  if (typeof T !== 'undefined') THROUGH = new Set([T.WIRE, T.PIPE, T.UNDERGNDPIPE, T.CONVEYOR, T.SHAFT, T.POLE, T.LAMP, T.CAMERA, T.TREE, T.BUSH].filter(Boolean));
   let _F = null, _G = null, _V = null, _cT = null, _cW = null, _rT = null, _rW = null;
 
   function buildFlood(lvl, dark, zd, vx0, vy0, vx1, vy1, now, pl) {
@@ -809,10 +827,12 @@ const PuddleSystem = (() => {
     let wet = 0, wc0 = c1, wc1 = c0, wr0 = r1, wr1 = r0;
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
       let v = lvl - tileLow(c, r);
-      if (v > -ROAD_LOW - 0.01) {
+      const e = GridManager.getEntity(c, r);
+      if (e && e.type === T.WATER) v = lvl;             // a lake or river: the lowest ground there is
+      else if (v > -ROAD_LOW - 0.01) {
         v += 0.008 * (vnoise(c * 0.9, r * 0.9, 31) - 0.5);
-        const e = GridManager.getEntity(c, r);
         if (e && e.type === T.ROAD) v += ROAD_LOW;
+        else if (e && !THROUGH.has(e.type)) v = Math.min(v, -0.04);
         if (v > 0 && govTile(c, r)) v = -0.05;
       }
       if (c === 0 || r === 0 || c === COLS - 1 || r === ROWS - 1) v = Math.min(v, -0.05);
@@ -1002,6 +1022,7 @@ const PuddleSystem = (() => {
     devSoak: v => { soak = water = stain = Math.max(0, Math.min(1, v)); },
     // Dev: raise the flood at once (0..1); it still drains if no flood is on.
     devFlood: v => { floodK = Math.max(0, Math.min(1, v)); },
+    flood: () => floodK,           // how far up the flood is, 0..1
     // Dev A/B: false draws the puddles' multiply pass straight onto the ground again.
     get layered() { return layered; }, set layered(v) { layered = !!v; },
     soak: () => soak,
