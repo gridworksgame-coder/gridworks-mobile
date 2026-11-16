@@ -4586,6 +4586,10 @@ function renderMHDDeceleratorRing(e, px, py, t) {
 }
 
 function renderNuclearReactor(e, px, py, t) {
+    if (RenderSplit.wholePass(e, () => renderNuclearReactor(e, px, py, t))) return;
+    // Static/animated split (SplitPhase in render_core.js; spec after this
+    // function): Sp is the baked masonry, Ap the parts drawn live on top.
+    const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
     // Containment dome with a pulsing Cherenkov ring, polar crane and
     // aviation light, a red-and-white ventilation stack, the auxiliary
     // building carrying the ROD / STEAM / COOL wall ports, a steam generator
@@ -4629,6 +4633,7 @@ function renderNuclearReactor(e, px, py, t) {
 
     // ── Primary loop pipework (under the buildings) ──
     const wallIn = auxX + auxW;
+    if (Sp) {
     [[aRod, !!e._hasRods, accent], [aSteam, gen, 'rgba(240,250,255,0.95)']].forEach(([a, on, col]) => {
       _wfPipe([[px + 12*S, a.y], [auxX, a.y]], S, t, on, col);
       _wfPipe([[wallIn, a.y], [domeEdge(a.y) + 4*S, a.y]], S, t, on, col);
@@ -4682,6 +4687,13 @@ function renderNuclearReactor(e, px, py, t) {
       const a = q*Math.PI/12;
       ctx.beginPath(); ctx.moveTo(dcx + Math.cos(a)*dr*0.2, dcy + Math.sin(a)*dr*0.2); ctx.lineTo(dcx + Math.cos(a)*dr*0.97, dcy + Math.sin(a)*dr*0.97); ctx.stroke();
     }
+    }   // Sp: pipework, apron, auxiliary building, stack, dome
+    // Live from here to the aviation lights: the slewing polar crane, the
+    // Cherenkov ring, and everything drawn over the crane's sweep.
+    if (Ap) {
+    // The stroke state the baked pipework above leaves behind, which the
+    // ring's outline is rasterised with.
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     // polar crane bridge, slewing slowly while running
     ctx.save(); ctx.translate(dcx, dcy); ctx.rotate(gen ? t*0.08 : 0.6);
     ctx.fillStyle = 'rgba(210,160,30,0.55)'; ctx.fillRect(-dr*0.8, -3*S, dr*1.6, 6*S);
@@ -4722,24 +4734,35 @@ function renderNuclearReactor(e, px, py, t) {
       ctx.beginPath(); ctx.arc(lx, ly, 2.5*S, 0, Math.PI*2); ctx.fill();
       if (av) { ctx.fillStyle = 'rgba(255,60,40,0.25)'; ctx.beginPath(); ctx.arc(lx, ly, 8*S, 0, Math.PI*2); ctx.fill(); }
     });
+    }   // Ap
 
     // ── Steam generator hall ──
+    if (Sp) {
     _wfShadow(sgX, sgY, sgW, sgH, S, 3*S);
     ctx.fillStyle = '#4a5250'; ctx.strokeStyle = '#1e2422'; ctx.lineWidth = 1.5*S;
     ctx.beginPath(); ctx.roundRect(sgX, sgY, sgW, sgH, 3*S); ctx.fill(); ctx.stroke();
+    }
     const sgN = sgH > sgW*1.3 ? 3 : 2;
     for (let i = 0; i < sgN; i++) {
       const cx2 = sgX + sgW*0.5, cy2 = sgY + sgH*(i + 0.5)/sgN, cr = Math.min(sgW*0.32, sgH/sgN*0.38);
+      // Each steam generator's core glow and steam: live. Nothing drawn
+      // after them reaches back over the hall.
+      if (Sp) {
       const cgr = ctx.createRadialGradient(cx2 - cr*0.35, cy2 - cr*0.35, 1, cx2, cy2, cr);
       cgr.addColorStop(0, '#d8dcd4'); cgr.addColorStop(0.6, '#8a908a'); cgr.addColorStop(1, '#3a403c');
       ctx.fillStyle = cgr; ctx.beginPath(); ctx.arc(cx2, cy2, cr, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle = '#2a302c'; ctx.lineWidth = S; ctx.stroke();
       ctx.fillStyle = '#3a403c'; ctx.beginPath(); ctx.arc(cx2, cy2, cr*0.35, 0, Math.PI*2); ctx.fill();
+      }
+      if (Ap) {
       if (gen) { ctx.fillStyle = `rgba(255,150,80,${0.35 + 0.2*Math.sin(t*2 + i)})`; ctx.beginPath(); ctx.arc(cx2, cy2, cr*0.25, 0, Math.PI*2); ctx.fill(); }
       _wfSmoke(cx2 + cr*0.6, cy2 - cr*0.6, S*0.8, t + i*0.7, '240,244,240', gen, 0.55);
+      }
     }
 
     // ── Control building + readout ──
+    const px2 = plX + 6*S, py2 = plY + 6*S, pw2 = plW - 12*S, ph2 = plH - 12*S;   // the pool's water
+    if (Sp) {
     if (cbH > 12*S) {
       _wfShadow(cbX, cbY, cbW, cbH, S, 3*S);
       ctx.fillStyle = '#5a6058'; ctx.strokeStyle = '#22261f'; ctx.lineWidth = 1.5*S;
@@ -4775,7 +4798,6 @@ function renderNuclearReactor(e, px, py, t) {
     _wfShadow(plX, plY, plW, plH, S, 3*S);
     ctx.fillStyle = '#7a7e74'; ctx.strokeStyle = '#2a2c28'; ctx.lineWidth = 1.5*S;
     ctx.beginPath(); ctx.roundRect(plX, plY, plW, plH, 3*S); ctx.fill(); ctx.stroke();
-    const px2 = plX + 6*S, py2 = plY + 6*S, pw2 = plW - 12*S, ph2 = plH - 12*S;
     const glow = gen ? 0.8 + 0.2*Math.sin(t*1.3) : (rodPct > 0 ? 0.45 : 0.25);
     const pg = ctx.createRadialGradient(px2 + pw2/2, py2 + ph2/2, 2, px2 + pw2/2, py2 + ph2/2, pw2*0.6);
     pg.addColorStop(0, `rgba(130,210,255,${glow})`); pg.addColorStop(0.6, `rgba(40,110,230,${glow*0.9})`); pg.addColorStop(1, '#0a1a3a');
@@ -4785,6 +4807,10 @@ function renderNuclearReactor(e, px, py, t) {
     for (let r = 0; r < cellsY; r++) for (let c = 0; c < cellsX; c++) {
       ctx.strokeRect(px2 + 4*S + (pw2 - 8*S)*c/cellsX, py2 + 3*S + (ph2 - 6*S)*r/cellsY, (pw2 - 8*S)/cellsX - 1.5*S, (ph2 - 6*S)/cellsY - 1.5*S);
     }
+    }   // Sp: control building, waste bay, the pool and its fuel racks
+    // Live: the light sweeping the pool, its rim, and the bridge crane
+    // travelling over it. (The pool's slow glow breathing is baked.)
+    if (Ap) {
     if (gen) {
       ctx.fillStyle = 'rgba(180,230,255,0.25)';
       for (let q = 0; q < 3; q++) { const p = (t*0.3 + q/3) % 1; ctx.fillRect(px2 + p*pw2, py2, 2*S, ph2); }
@@ -4795,19 +4821,42 @@ function renderNuclearReactor(e, px, py, t) {
     ctx.fillStyle = '#d8a820'; ctx.strokeStyle = '#4a3a10';
     ctx.fillRect(brx, plY - 2*S, 7*S, plH + 4*S); ctx.strokeRect(brx, plY - 2*S, 7*S, plH + 4*S);
     ctx.fillStyle = '#3a3a34'; ctx.fillRect(brx - 1*S, plY + plH*0.45, 9*S, 6*S);
+    }
 
     // ── Ports ──
+    if (Sp) {
     _portBelt(aRod,   S, t, { belt: '#90ff60', label: 'ROD IN',    on: !!e._hasRods, out: false });
     _portPipe(aSteam, S, t, { fluid: '#e8f4ff', label: 'STEAM OUT', on: gen, out: true, flow: gen });
     _portPipe(aCool,  S, t, { fluid: '#5ac8ff', label: 'COOL IN',   on: !!e._cooled, out: false, flow: !!e._cooled });
     _portBelt(aWaste, S, t, { belt: '#d0e040', label: 'SPENT FUEL OUT', on: !!e._wasteOut, out: true });
 
     _wfPlate('NUCLEAR REACTOR', px + W*0.47, py + H*0.04, S, accent, gen);
-    _wfLamp(px + W - 7*S, py + 7*S, S, t, gen ? accent : '#ff4040', true);
+    }
+    if (Ap) _wfLamp(px + W - 7*S, py + 7*S, S, t, gen ? accent : '#ff4040', true);
     // No wire-network highlight: the reactor makes steam, not grid power —
     // only its Steam Turbines light up when their wire network is hovered.
     ctx.restore();
   }
+
+/* Static/animated split for the MK1 reactor, zoomed out (SPLIT_FAR_ZOOM).
+   Live: the polar crane slewing over the dome with the Cherenkov ring, the
+   hatch, hub and trefoil drawn over its sweep; the aviation lights; each
+   steam generator's core glow and steam; the light sweeping the fuel pool,
+   its rim and the bridge crane over it; the status lamp. Baked and frozen:
+   the pipework and port flow dashes and the pool's slow glow breathing, a
+   pixel or two across at that zoom. The readout text and fuel-rod and waste
+   levels refresh on the 4s backstop. Closer in, or with the core heating
+   (its glow spreads over the whole site), it is baked whole. */
+RenderSplit.register(T.NUCLEARREACTOR, {
+  whole(e) { return Camera.zoom > SPLIT_FAR_ZOOM || (e._coreHeat || 0) > 0.02; },
+  key(e) {
+    const def = EntityDefs[e.type] || EntityDefs[T.NUCLEARREACTOR];
+    const rod = Math.min(1, (e._rodBuffer || 0) / (def.rodCapacity || 50));
+    const waste = Math.min(1, (e._spentFuel || 0) / (def.spentFuelCapacity || 100));
+    return (e._generating ? 'g' : '-') + (e._hasRods ? 'r' : '-') + (e._cooled ? 'c' : '-') + (e._wasteOut ? 'w' : '-')
+      + (rod > 0 ? 1 : 0) + (rod < 0.2 ? 1 : 0) + Math.round(waste * 3) + (waste > 0.8 ? 1 : 0);
+  },
+});
 
 function renderAdvancedReactor(e, px, py, t) {
     // ADVANCED (MOX) REACTOR — deliberately not the MK1 on a teal palette.
@@ -5390,6 +5439,7 @@ function renderAdvancedReactor(e, px, py, t) {
   }
 
 function renderCoolingTower(e, px, py, t) {
+    if (RenderSplit.wholePass(e, () => renderCoolingTower(e, px, py, t))) return;
     // Natural-draft hyperboloid: a gently waisted concrete shell (true
     // hyperbola, not the old squared curve), ribbed and weathered, standing
     // on raked air-intake legs over a rippling basin, with a billowing plume,
@@ -5405,6 +5455,9 @@ function renderCoolingTower(e, px, py, t) {
     const act = !!e._active && !!e._hotConnected && !!e._coolConnected && on && !e._pumpTripped;
     const S   = TILE / 40;
     const accent = '#60c0e0';
+    // Static/animated split (spec after this function): Sp the baked tower,
+    // Ap the rim lights and status lamp. Its plume is CoolingTowerPlume's.
+    const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
     ctx.save();
 
     const cst   = CoolingTowerSystem.getStubs(e);
@@ -5431,6 +5484,7 @@ function renderCoolingTower(e, px, py, t) {
     const phW = 18*S*pk, phH = 16*S*pk;
     const hpX = px + 16*S, hpY = aHot.y - phH/2;
     const cpX = px + W - 16*S - phW, cpY = aCool.y - phH/2;
+    if (Sp) {
     _wfPipe([[px + 12*S, aHot.y], [hpX, aHot.y]], S, t, act, 'rgba(70,140,225,0.95)');
     _wfPipe([[hpX + phW*0.5, hpY + phH], [hpX + phW*0.5, footY - 2*S], [cx - baseHW*0.75, footY - 2*S]], S, t, act, 'rgba(70,140,225,0.95)');
     _wfPipe([[cx + baseHW*0.75, footY + 3*S], [cpX + phW*0.5, footY + 3*S], [cpX + phW*0.5, cpY + phH]], S, t, act, 'rgba(90,200,255,0.95)');
@@ -5500,19 +5554,22 @@ function renderCoolingTower(e, px, py, t) {
     ctx.strokeStyle = 'rgba(200,60,40,0.7)'; ctx.lineWidth = 0.8*S; ctx.setLineDash([2*S, 3*S]);
     ctx.beginPath(); ctx.ellipse(cx, topY, topHW + 2.5*S, tRY + 2.5*S, 0, 0, Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
 
+    }   // Sp
+
     // ── Plume ──
     // Not drawn here: see renderCoolingTowerPlumes below, which paints every
     // tower's steam after the whole scene.
 
     // ── Rim aviation lights ──
     const blink = Math.sin(t*3) > 0.2;
-    [-1, 1].forEach(sd => {
+    if (Ap) [-1, 1].forEach(sd => {
       const lx = cx + sd*topHW*0.96, ly = topY + 1*S;
       ctx.fillStyle = blink ? '#ff3020' : '#501810'; ctx.beginPath(); ctx.arc(lx, ly, 2.2*S, 0, Math.PI*2); ctx.fill();
       if (blink) { ctx.fillStyle = 'rgba(255,60,40,0.25)'; ctx.beginPath(); ctx.arc(lx, ly, 7*S, 0, Math.PI*2); ctx.fill(); }
     });
 
     // ── Pump houses ──
+    if (Sp) {
     [[hpX, hpY, !!e._hotConnected, '#4a90e0'], [cpX, cpY, !!e._coolConnected, '#5ac8ff']].forEach(([x, y, lit, col], i) => {
       _wfShadow(x, y, phW, phH, S, 2*S);
       ctx.fillStyle = '#5a6268'; ctx.strokeStyle = '#1a2024'; ctx.lineWidth = S;
@@ -5532,9 +5589,25 @@ function renderCoolingTower(e, px, py, t) {
     const temp = e._waterTempOut;
     if (e._pumpTripped) _wfPlate(`PUMPS TRIPPED${e.powered ? `: ${Math.ceil(e._pumpRestart || 0)}s` : ''}`, cx, py + H*0.965, S, '#ff5030', true);
     else _wfPlate(temp != null ? `COOLING  ${Math.round(temp)}°C` : 'COOLING TOWER', cx, py + H*0.965, S, accent, act);
-    _wfLamp(px + W - 7*S, py + 7*S, S, t, accent, on);
+    }   // Sp
+    if (Ap) _wfLamp(px + W - 7*S, py + 7*S, S, t, accent, on);
     ctx.restore();
   }
+
+/* Static/animated split for the MK1 cooling tower, zoomed out
+   (SPLIT_FAR_ZOOM). Its plume, the big motion, is drawn after the scene by
+   CoolingTowerPlume whatever the cache does. In the sprite, the rim lights
+   and the status lamp are live; the basin ripples, pipe flow and pump fans
+   are a pixel or so across there and are baked. Closer in, or with the
+   pumps tripped (their alarm flashes), it is baked whole. */
+RenderSplit.register(T.COOLINGTOWER, {
+  whole(e) { return Camera.zoom > SPLIT_FAR_ZOOM || !!e._pumpTripped; },
+  key(e) {
+    const act = !!e._active && !!e._hotConnected && !!e._coolConnected && e.powered && !e._pumpTripped;
+    // (The temperature readout refreshes on the cache's 4s backstop.)
+    return (act ? 'a' : '-') + (e.powered ? 'p' : '-') + (e._hotConnected ? 'h' : '-') + (e._coolConnected ? 'c' : '-');
+  },
+});
 
 // ── Cooling tower steam ─────────────────────────────────────────────────
 // Every MK1 tower's plume, painted once the whole scene is down (called from
@@ -6284,6 +6357,7 @@ function renderCryoCoolingTower(e, px, py, t) {
   }
 
 function renderSteamTurbine(e, px, py, t) {
+    if (RenderSplit.wholePass(e, () => renderSteamTurbine(e, px, py, t))) return;
     // Turbine hall seen from above, on a checker-plate deck ringed by a
     // handrail. Along the shaft: the stop valve, a tapered HP casing and two
     // double-flow LP casings (barrels with conical ends, bolted split
@@ -6304,6 +6378,9 @@ function renderSteamTurbine(e, px, py, t) {
     const connected = !!e._steamConnected;
     const S = TILE / 40;
     const accent = '#40e0ff';
+    // Static/animated split (spec after this function): Sp the baked hall,
+    // Ap the gland-steam wisps, status lamp and network highlight on top.
+    const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
     ctx.save();
 
     // Rotor inertia: ~2.5 s to spin up or coast down.
@@ -6340,6 +6417,7 @@ function renderSteamTurbine(e, px, py, t) {
     };
 
     // ── Deck: checker plate, handrail, hazard edge ──
+    if (Sp) {
     _wfShadow(dkX, dkY, dkW, dkH, S, 4*S);
     ctx.fillStyle = '#4e575c'; ctx.strokeStyle = '#1e2428'; ctx.lineWidth = 1.5*S;
     ctx.beginPath(); ctx.roundRect(dkX, dkY, dkW, dkH, 4*S); ctx.fill(); ctx.stroke();
@@ -6678,17 +6756,36 @@ function renderSteamTurbine(e, px, py, t) {
       ctx.fillText(`${Math.round(3000*spin)} RPM`, panX + panW/2, panY + panH*0.7);
       ctx.textBaseline = 'alphabetic';
     }
+    }   // Sp
 
     // gland-seal steam wisps off the LP casings while running
-    casings.filter(c => c.lp).forEach((c, i) => _wfSmoke(px + W*(c.x0 + c.x1)/2 + 6*S, axisY - U*c.hh - 2*S, S*0.5, t + i, '240,250,255', gen, 0.3));
+    if (Ap) casings.filter(c => c.lp).forEach((c, i) => _wfSmoke(px + W*(c.x0 + c.x1)/2 + 6*S, axisY - U*c.hh - 2*S, S*0.5, t + i, '240,250,255', gen, 0.3));
 
+    if (Sp) {
     _portPipe(aIn, S, t, { fluid: '#40e0ff', label: 'STEAM IN', on: connected, out: false, flow: gen });
 
     _wfPlate('STEAM TURBINE', px + W*0.44, py + H*0.05, S, accent, gen);
+    }
+    if (Ap) {
     _wfLamp(px + W - 7*S, py + 7*S, S, t, hasPower ? accent : '#ff4040', true);
     drawNetworkHighlight(e, px, py, t);
+    }
     ctx.restore();
   }
+
+/* Static/animated split for the steam turbine, zoomed out (SPLIT_FAR_ZOOM):
+   the hall is baked; the gland-steam wisps off the LP casings, the status
+   lamp and the network highlight are drawn live over it. Its other motion
+   (shaft and flow dashes, the casing and air-gap glow, fans, the RPM dial)
+   is a pixel or two across there and is baked at the rotor's speed, re-baked
+   in steps as it spins up or coasts down. Closer in it is baked whole. */
+RenderSplit.register(T.STEAMTURBINE, {
+  whole() { return Camera.zoom > SPLIT_FAR_ZOOM; },
+  key(e) {
+    return (e._generating ? 'g' : '-') + (e._hasPower ? 'p' : '-') + (e._steamConnected ? 'c' : '-')
+      + Math.round((e._spin || 0) * 4);
+  },
+});
 
 
 function renderOilDeposit(e, px, py, t) {

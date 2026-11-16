@@ -1342,6 +1342,7 @@ function renderCarbonCapture(e, px, py, t) {
 }
 
 function renderCoalGenerator(e, px, py, t) {
+    if (RenderSplit.wholePass(e, () => renderCoalGenerator(e, px, py, t))) return;
     // Coal-fired power station: a brick boiler house under a slate roof with
     // a louvred ridge vent, its tall arched windows lit by the furnace
     // (brighter with the throttle, flaring red while the boiler is critical);
@@ -1376,6 +1377,10 @@ function renderCoalGenerator(e, px, py, t) {
     };
     const vgrad = (y0, y1, stops) => { const g = ctx.createLinearGradient(0, y0, 0, y1); stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c)); return g; };
     const hgrad = (x0, x1, stops) => { const g = ctx.createLinearGradient(x0, 0, x1, 0); stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c)); return g; };
+    // Static/animated split (spec after this function): Sp the baked plant,
+    // Ap the chimney's smoke and glow, its aviation light and the network
+    // highlight.
+    const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
     ctx.save();
 
     const coalY  = py + h - TH;
@@ -1388,6 +1393,9 @@ function renderCoalGenerator(e, px, py, t) {
     const asX = px + w*0.73, asY = py + h*0.715, asW = w*0.15, asH = h*0.065;
 
     // ── Pipework (under the buildings) ──
+    const chX = px + w*0.15, chTop = py + 3*S, chBase = bhY + 2*S;
+    const cbw = 12*S, ctw = 7.5*S;
+    if (Sp) {
     _wfPipe([[waterX, py + h - 12*S], [waterX, py + h*0.79], [bhX + bhW*0.72, py + h*0.79], [bhX + bhW*0.72, bhY + bhH]], S, t, !!e._hasWater && e.powered, 'rgba(90,190,255,0.95)');
     _wfPipe([[bhX + bhW, thY + thH*0.40], [thX + 4*S, thY + thH*0.40]], S, t, on, 'rgba(240,240,235,0.95)');
     _wfPipe([[bhX + bhW, thY + thH*0.66], [thX + 4*S, thY + thH*0.66]], S, t, on, 'rgba(240,240,235,0.85)');
@@ -1429,8 +1437,6 @@ function renderCoalGenerator(e, px, py, t) {
     }
 
     // ── Chimney (in front of the gantry, behind the boiler house) ──
-    const chX = px + w*0.15, chTop = py + 3*S, chBase = bhY + 2*S;
-    const cbw = 12*S, ctw = 7.5*S;
     const chPath = (ox, oy) => { ctx.beginPath(); ctx.moveTo(chX - cbw + ox, chBase + oy); ctx.lineTo(chX + cbw + ox, chBase + oy); ctx.lineTo(chX + ctw + ox, chTop + oy); ctx.lineTo(chX - ctw + ox, chTop + oy); ctx.closePath(); };
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; chPath(6*S, 6*S); ctx.fill();
     ctx.fillStyle = hgrad(chX - cbw, chX + cbw, ['#bcb8b0', '#ece8e0', '#d4d0c8', '#76726a']);
@@ -1451,13 +1457,18 @@ function renderCoalGenerator(e, px, py, t) {
       ctx.beginPath(); for (let k = 0; k <= 4; k++) { const x = chX - galW + k*galW/2; ctx.moveTo(x, galY - 2.5*S); ctx.lineTo(x, galY); } ctx.stroke();
     }
     ctx.fillStyle = '#1a1612'; ctx.beginPath(); ctx.ellipse(chX, chTop, ctw + 1*S, 2.2*S, 0, 0, TAU); ctx.fill();
+    }   // Sp
     // aviation light
     const avOn = Math.sin(t * 3) > 0.3;
+    if (Ap) {
     ctx.fillStyle = avOn ? '#ff3020' : '#5a1810';
     ctx.beginPath(); ctx.arc(chX + ctw - 0.5*S, chTop - 1.5*S, 1.4*S, 0, TAU); ctx.fill();
     if (avOn && detail) { ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(chX + ctw - 0.5*S, chTop - 1.5*S, 3.5*S, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    }
 
     // ── Boiler house ──
+    const rfY = bhY - 8*S;
+    if (Sp) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(bhX + 5*S, bhY + 6*S, bhW, bhH);
     ctx.fillStyle = hgrad(bhX, bhX + bhW, ['#a4583c', '#8a4630', '#663222']);
     ctx.fillRect(bhX, bhY, bhW, bhH);
@@ -1525,7 +1536,6 @@ function renderCoalGenerator(e, px, py, t) {
       if (critical) { ctx.strokeStyle = blink ? '#ff3020' : '#701008'; ctx.lineWidth = 1.2*S; ctx.beginPath(); ctx.arc(gX, gY, gR + 1.8*S, 0, TAU); ctx.stroke(); }
     }
     // slate roof with a louvred ridge vent
-    const rfY = bhY - 8*S;
     ctx.fillStyle = vgrad(rfY, bhY, ['#5a5f68', '#3a3e46', '#2a2d33']);
     ctx.beginPath(); ctx.moveTo(bhX - 3*S, bhY); ctx.lineTo(bhX + 2*S, rfY); ctx.lineTo(bhX + bhW - 2*S, rfY); ctx.lineTo(bhX + bhW + 3*S, bhY); ctx.closePath(); ctx.fill();
     if (detail) {
@@ -1565,9 +1575,11 @@ function renderCoalGenerator(e, px, py, t) {
       ctx.fillStyle = empty && blink ? '#a03020' : '#c8d0d6'; ctx.fillRect(sgX, sgY, sgW, sgH);
       ctx.fillStyle = '#141414'; ctx.fillRect(sgX, sgY + sgH*(1 - hopFill), sgW, sgH*hopFill);
     }
+    }   // Sp
 
     // ── Chimney top: smoke follows the throttle ──
-    if (on && e._scrubber) {
+    if (!Ap) { /* baked pass: the smoke is drawn live */ }
+    else if (on && e._scrubber) {
       // Scrubbed: flue gas has been washed, so the chimney breathes out a
       // white water-vapour plume instead of soot.
       ctx.fillStyle = `rgba(255,170,90,${0.12 + 0.08*Math.sin(t*6)})`; ctx.beginPath(); ctx.ellipse(chX, chTop, ctw - 2*S, 1.5*S, 0, 0, TAU); ctx.fill();
@@ -1584,6 +1596,7 @@ function renderCoalGenerator(e, px, py, t) {
         ctx.beginPath(); ctx.arc(chX + Math.sin(i*2.1 + t)*3*S + p*18*S, chTop - 3*S - p*40*S, (4 + p*14)*size*S, 0, TAU); ctx.fill();
       }
     }
+    if (Sp) {
     if (critical || (!on && (e._cgTrip || 0) > 0)) {
       // Over-pressure (or a legacy safety trip): white steam jetting off the
       // safety valve on the boiler house roof
@@ -1825,10 +1838,33 @@ function renderCoalGenerator(e, px, py, t) {
       }
 
     }
+    }   // Sp
 
     ctx.restore();
-    drawNetworkHighlight(e, px, py, t);
+    if (Ap) drawNetworkHighlight(e, px, py, t);
   }
+
+/* Static/animated split for the coal generator, zoomed out (SPLIT_FAR_ZOOM,
+   where the sprite already drops its fine detail and furnace glow). Live:
+   the chimney's smoke (or scrubbed vapour) and the glow in its mouth, the
+   aviation light, and the network highlight. Baked: the furnace-lit windows'
+   flicker, the conveyor's coal, the turbine hall's pulses and the gauges,
+   a pixel or so across there. Closer in, or with the boiler critical or
+   tripped (alarms, the safety valve venting), it is baked whole. */
+RenderSplit.register(T.COALGENERATOR, {
+  whole(e) {
+    const on = e._fuelled && e._hasWater && e.powered;
+    return Camera.zoom > SPLIT_FAR_ZOOM || e._cgState === 'critical' || (!on && (e._cgTrip || 0) > 0);
+  },
+  key(e) {
+    const hop = Math.min(1, (e._hopperCoal || 0) / (30 * EntityDefs[T.COALGENERATOR].coalPerSecond));
+    const ash = Math.min(1, (e._ashWaste || 0) / 100);
+    return (e._fuelled ? 'f' : '-') + (e._hasWater ? 'w' : '-') + (e.powered ? 'p' : '-') + (e._waterShort ? 's' : '-')
+      + (e._scrubber ? 'S' : '-') + (e._coalInConnected ? 'c' : '-') + (e._waterInConnected ? 'i' : '-')
+      + (e._decommissioned ? 'd' : '-') + (e._cgThrottle || 'normal') + (e._cgState || '')
+      + Math.round(hop * 4) + (hop < 0.1 ? 'e' : '') + Math.round(ash * 8);
+  },
+});
 
 // ── Waste Processing Facilities ───────────────────────────────────────────
 // Shared helpers for the three facilities. Everything scales off S (1.0 at

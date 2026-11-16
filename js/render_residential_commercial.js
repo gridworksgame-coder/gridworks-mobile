@@ -237,6 +237,13 @@ function renderBiofuelGen(e, px, py, t) {
 
 function renderHouse(e, px, py, t) {
     const sub = e.commercialSubtype;
+    // Only family houses have a static/animated split (see below
+    // _renderFamilyHouse). A house that became something else after its
+    // bitmap was set up draws whole in the baked pass and nothing live.
+    if (SplitPhase.cur !== 'all' && !_isFamilyHouse(e)) {
+      if (SplitPhase.cur === 'static') SplitPhase.run('all', () => renderHouse(e, px, py, t));
+      return;
+    }
     if (sub === 'townhouse') { renderTownhouse(e, px, py, t); return; }
     if (sub === 'apartment') { renderApartment(e, px, py, t); return; }
     if (sub === 'birchwood') { renderBirchwoodApartments(e, px, py, t); return; }
@@ -386,7 +393,27 @@ function _homeDay(H, r, d) {
 // For sprites drawn straight in canvas pixels.
 const _PIXK = { X: v => v, Y: v => v, S: 1 };
 
-function homeDoor(K, e, t, o) {
+// The day's door events for one door, in game seconds: {at, r, out, kid,
+// bag, shop, dog}. _homeDay builds fresh arrays and objects for every
+// resident on every call, and homeDoor runs every frame for every home on
+// screen (every one, in the split tier: it is what the live pass draws the
+// residents from), so the day is worked out once and kept on the entity,
+// per door, until the day, the household or the clock's pace changes.
+function _homeDoorDay(e, key, H, people, dayN, day0, GH) {
+  const c = e._hdDays || (e._hdDays = {});
+  let d = c[key];
+  if (d && d.dayN === dayN && d.people === people && d.GH === GH) return d.evs;
+  const evs = [];
+  for (let r = 0; r < people; r++) {
+    for (const ev of _homeDay(H, r, dayN)) evs.push({ at: day0 + ev.h * GH, r, out: ev.out, kid: ev.kid, bag: ev.bag, shop: ev.shop, dog: ev.dog });
+  }
+  c[key] = { dayN, people, GH, evs };
+  return evs;
+}
+
+// drawOpen === false: work out the door and its residents without drawing
+// the open door (a split sprite's live pass: the door itself is baked).
+function homeDoor(K, e, t, o, drawOpen) {
   const { X, Y, S } = K;
   const x0 = o.x0, x1 = o.x1, y0 = o.y0, y1 = o.y1, dw = x1 - x0, dh = y1 - y0;
   const key = o.key || 0, lanes = o.lanes || 2, on = o.on !== false;
@@ -419,18 +446,16 @@ function homeDoor(K, e, t, o) {
   const people = pop ? Math.max(1, Math.min(18, Math.round(pop))) : (lanes <= 3 ? lanes : lanes * 2);
   let swing = 0;
   const trips = [];
-  for (let r = 0; r < people; r++) {
-    for (const ev of _homeDay(H, r, dayN)) {
-      const at = day0 + ev.h * GH;                             // when they're at the threshold
-      swing = Math.max(swing, doorSwing(el - at));
-      const s = ev.out ? el - at : at - el;                    // seconds of walk between them and the door
-      if (s >= 0 && s < walkT) trips.push({ l: r, out: ev.out, d: s * speed, kid: ev.kid, bag: ev.bag, shop: ev.shop, dog: ev.dog });
-    }
+  for (const ev of _homeDoorDay(e, key, H, people, dayN, day0, GH)) {
+    const at = ev.at;                                          // when they're at the threshold
+    swing = Math.max(swing, doorSwing(el - at));
+    const s = ev.out ? el - at : at - el;                      // seconds of walk between them and the door
+    if (s >= 0 && s < walkT) trips.push({ l: ev.r, out: ev.out, d: s * speed, kid: ev.kid, bag: ev.bag, shop: ev.shop, dog: ev.dog });
   }
 
   // A revolving door (o.revolving) turns on its own: only the residents.
   const open = !o.revolving && swing > 0.01;
-  if (open) {
+  if (open && drawOpen !== false) {
     // ── The hall behind the door ──
     const hall = _HOME_HALLS[o.tier] || _HOME_HALLS.mid;
     const wall = hall.wall[Math.floor(H(11) * hall.wall.length)];
@@ -551,7 +576,7 @@ function homeDoor(K, e, t, o) {
       ctx.globalAlpha = 1;
     }
   };
-  return { open, swing, walkers };
+  return { open, swing, walkers, n: trips.length };
 }
 
 // ── Single-family houses ─────────────────────────────────────────────
@@ -635,6 +660,23 @@ function _renderFamilyHouse(e, px, py, t, tier) {
     const evening = hr >= 17 && hr < 23;
     const night   = hr >= 23 || hr < 6;
     const day     = !evening && !night;
+
+    // Static/animated split (SplitPhase in render_core.js; the spec is
+    // registered below this function). Zoomed out and powered, the house is
+    // baked with its door in whatever state it is in, and only the residents
+    // walking to and from it and any flickering TV are drawn live
+    // (_familyHouseOver). Closer in, or with the power off, it bakes whole:
+    // see _familyHouseWhole.
+    const ph = SplitPhase.cur;
+    if (ph !== 'all') {
+      if (ph === 'static' && _familyHouseWhole(e)) { SplitPhase.run('all', () => _renderFamilyHouse(e, px, py, t, tier)); return; }
+      if (ph === 'over' && !_familyHouseWhole(e)) _familyHouseOver(e, px, py, t, s);
+      if (ph !== 'static') return;
+    }
+    const Sp = ph === 'static';   // baking the static layer: leave the live parts out
+    const tvLive = Sp ? [] : null;
+    let winHeld = false;          // this window has something drawn over it: keep it baked
+    if (Sp) e._hsDoor = null;
 
     // Seed from the family name plus the tile, so two Hendersons on
     // different streets still differ and a house keeps its look across saves.
@@ -724,6 +766,10 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       const lit = on && ((evening && hv > 0.3) || (night && hv > 0.86));
       const tv  = lit && evening && hv > 0.84;
       if (frame) R(x - 0.6, y - 0.6, w + 1.2, h + 1.2, frame);
+      // A flickering TV is the one window that visibly moves: its glass is
+      // drawn live. Zoomed out (the only time this runs) it has no glazing
+      // bars, reflection or glow over it, so nothing else here moves with it.
+      if (tv && Sp && !winHeld) { tvLive.push(x, y, w, h, hv); return lit; }
       ctx.fillStyle = lit
         ? (tv ? `rgba(130,175,255,${0.6 + 0.25*Math.sin(t*9 + hv*20)*Math.sin(t*3.1)})`
               : `rgba(255,208,130,${0.8 + 0.08*Math.sin(t*1.3 + hv*9)})`)
@@ -746,11 +792,14 @@ function _renderFamilyHouse(e, px, py, t, tier) {
     // (homeDoor, above); `frontDoor` is the call every style makes for it.
     let homeD = null;
     const frontDoor = (x0, y0, x1, y1, c, extra) => {
-      homeD = homeDoor({ X, Y, S: s }, e, t, Object.assign({
+      const o = Object.assign({
         x0, x1, y0, y1, hinge: rnd(19) > 0.5 ? 'L' : 'R', leaf: c, edge: trim, on, tier,
         path: [[(x0 + x1) / 2, y1], [(x0 + x1) / 2, 38.6]],
         lanes: tier === 'budget' || tier === 'luxury' ? 2 : 3,
-      }, extra || {}));
+      }, extra || {});
+      homeD = homeDoor({ X, Y, S: s }, e, t, o);
+      // The live pass walks the residents from the same door.
+      if (Sp) { e._hsDoor = o; e._hsSwing = _hsSwingQ(homeD.swing); }
       return homeD.open;
     };
     const doorway = (x, y, w, h, c) => {
@@ -935,7 +984,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       if (rnd(11) > 0.4) R(lx + 12, 16.3, 4, 2, pick(['#9a5a3a', '#6e7478'], 12));        // patch
       R(lx + 16, 9, 1.2, 8.2, '#4a4a4a'); R(lx + 15.5, 8.6, 2.2, 0.8, '#3a3a3a');         // stovepipe
       smoke(lx + 16.6, 8);
-      win(lx + 3, 21, 4.5, 4, 1, trim);
+      winHeld = rnd(13) > 0.5; win(lx + 3, 21, 4.5, 4, 1, trim); winHeld = false;
       if (rnd(13) > 0.5) ln(lx + 2.6, 21.5, lx + 7.9, 24.6, '#7a5a3a', 1.1);              // boarded pane
       doorway(lx + 12, 23, 4.5, GND - 23, door);
       R(lx + 11.5, GND, 5.5, 1.2, '#8a8a84');                                              // cinder-block step
@@ -1113,7 +1162,9 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       // bay window
       poly([[7, 23], [8.5, 21.6], [15.5, 21.6], [17, 23]], roofC);
       R(7.5, 23, 9, 6.5, trim);
+      winHeld = true;   // the panes' frames overlap each other
       win(8.2, 23.6, 2.2, 5.2, 5, trim, false); win(10.9, 23.6, 2.6, 5.2, 6, trim, false); win(14, 23.6, 2.2, 5.2, 7, trim, false);
+      winHeld = false;
       R(7.5, 29.5, 9, GND - 29.5, trim);
       doorway(23.5, 22.6, 4.2, GND - 22.6, door);
       ctx.fillStyle = on && !day ? 'rgba(255,210,130,0.85)' : (day ? '#6a88a4' : '#161c24');
@@ -1133,7 +1184,8 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       poly([[4, 21.5], [6, 19.4], [34, 19.4], [36, 21.5]], '#3a3c40');
       R(4, 21.5, 32, 0.8, '#f2eee4');
       [5, 12, 28, 35].forEach(x => R(x - 0.45, 22.3, 0.9, GND - 22.3, '#f2eee4'));
-      win(8.5, 23.5, 4.5, 5, 4, '#1a1a1c'); win(27, 23.5, 4.5, 5, 5, '#1a1a1c');
+      win(8.5, 23.5, 4.5, 5, 4, '#1a1a1c');
+      winHeld = rnd(33) > 0.5; win(27, 23.5, 4.5, 5, 5, '#1a1a1c'); winHeld = false;   // the porch swing hangs in front of it
       doorway(18, 23, 4, GND - 23.4, door);
       R(4, GND - 0.4, 32, 1.2, '#8a7a68');
       if (detail) { for (let x = 5; x < 35; x += 1.2) if (x < 17 || x > 23) ln(x, GND - 3, x, GND - 0.4, '#f2eee4', 0.25); ln(5, GND - 3, 17, GND - 3, '#f2eee4', 0.4); ln(23, GND - 3, 35, GND - 3, '#f2eee4', 0.4); }
@@ -1184,7 +1236,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       R(2, 13, 36, 0.6, '#d8dcde');
       if (on && !day) [8, 20, 32].forEach(x => { ctx.fillStyle = 'rgba(255,230,170,0.25)'; ctx.beginPath(); ctx.moveTo(X(x - 0.5), Y(15.1)); ctx.lineTo(X(x + 0.5), Y(15.1)); ctx.lineTo(X(x + 3), Y(GND)); ctx.lineTo(X(x - 3), Y(GND)); ctx.fill(); });
       brick(4, 15.1, 8, GND - 15.1, pick(['#9a9084', '#b8ae98', '#7a746a'], 37));   // stone wall
-      win(12, 15.6, 23, GND - 15.6, 1, '#1a1a1c', false);
+      winHeld = true; win(12, 15.6, 23, GND - 15.6, 1, '#1a1a1c', false); winHeld = false;   // the front door is in it
       if (detail) [17.75, 23.5, 29.25].forEach(x => ln(x, 15.6, x, GND, '#1a1a1c', 0.35));
       // a glazed front door in the glass wall
       if (frontDoor(18.1, 20, 21.9, GND, 'rgba(150,190,210,0.55)', { hinge: 'L', edge: '#1a1a1c', tier: 'glass' })) R(17.75, 20, 0.5, GND - 20, '#1a1a1c');
@@ -1198,10 +1250,12 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       R(6, 16, 28, GND - 16, wall === '#3a3e44' ? '#e8dcc8' : wall);
       poly([[4, 9], [20, 14.5], [36, 9], [36, 10.6], [20, 16.1], [4, 10.6]], '#2a2c30');   // V roof
       poly([[6, 10.9], [20, 15.9], [20, 17], [6, 17]], 'rgba(0,0,0,0.15)');
+      winHeld = true;   // the wall triangles are drawn over the clerestories
       win(7, 11.6, 11, 3.6, 1, '#1a1a1c', false);                                         // clerestory (clipped by roof line visually)
       poly([[6, 10.7], [18, 14.9], [6, 14.9]], wall === '#3a3e44' ? '#e8dcc8' : wall);
       win(22, 11.6, 11, 3.6, 2, '#1a1a1c', false);
       poly([[34, 10.7], [22, 14.9], [34, 14.9]], wall === '#3a3e44' ? '#e8dcc8' : wall);
+      winHeld = false;
       R(6, 16, 28, 1, '#1a1a1c');
       brick(6, 17, 9, GND - 17, '#7a746a');
       win(16, 18, 12, GND - 18, 3, '#1a1a1c', false);
@@ -1351,7 +1405,8 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       }
     }
 
-    if (homeD) homeD.walkers();
+    if (homeD && !Sp) homeD.walkers();
+    if (Sp) e._hsTv = tvLive;
 
     // Without power the house sits dark
     if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(X(1), Y(1), 38*s, 38*s); }
@@ -1371,6 +1426,72 @@ function _renderFamilyHouse(e, px, py, t, tier) {
 
     _drawHouseStatusDots(e, px, py);
   }
+
+/* Static/animated split for the single-family houses, which are most of the
+   buildings in a zoomed-out residential district (42 of 102 on screen in the
+   Endgame save's densest one). Zoomed out (Camera.zoom <= 0.45, where the
+   sprite drops its hatching, smoke, glows, glazing bars and yard props) what
+   still moves is: the residents walking to and from the front door, the door
+   swinging for them, and a flickering TV in the evening. The residents and
+   the TVs are drawn live; the door is baked in whatever state it is in and
+   re-baked as it swings (its state is in key()), a handful of bakes each
+   time someone comes or goes. Everything else is frozen at the bake: the
+   lamp-lit windows' slow breathing, the powered-edge pulse, tree sway, all
+   under a pixel at that zoom.
+
+   Closer in, too much of the sprite moves to split cleanly (smoke, swaying
+   trees and washing over the lot, glows over everything), and without power
+   the dark overlay goes over the residents; there it bakes the whole sprite
+   and is refreshed on the cache's interval like any unsplit building
+   (whole(), see BuildingSpriteCache). */
+function _familyHouseWhole(e) { return Camera.zoom > 0.45 || !e.powered; }
+
+// The door's swing, in the few steps the baked door is re-drawn at.
+function _hsSwingQ(sw) { return sw <= 0.01 ? 0 : sw < 0.5 ? 1 : 2; }
+
+// The live pass: what the static pass left out, from what it noted on the
+// entity (the TV windows, the front door's options).
+function _familyHouseOver(e, px, py, t, s) {
+  const X = (v) => px + v*s, Y = (v) => py + v*s;
+  const tv = e._hsTv;
+  for (let i = 0; tv && i < tv.length; i += 5) {
+    const x = tv[i], y = tv[i + 1], w = tv[i + 2], h = tv[i + 3], hv = tv[i + 4];
+    ctx.fillStyle = `rgba(130,175,255,${0.6 + 0.25*Math.sin(t*9 + hv*20)*Math.sin(t*3.1)})`;
+    ctx.fillRect(X(x), Y(y), w*s, h*s);
+  }
+  const o = e._hsDoor;
+  if (!o) return;
+  const hd = homeDoor({ X, Y, S: s }, e, t, o, false);
+  e._hsSwing = _hsSwingQ(hd.swing);
+  if (!hd.n) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(X(1), Y(1), 38*s, 38*s); ctx.clip();   // the lot, as the full sprite clips them
+  hd.walkers();
+  ctx.restore();
+}
+
+// House subtypes renderHouse sends to their own renderers; anything else is
+// a family house.
+const _HOUSE_OWN_SPRITE = new Set(['townhouse', 'apartment', 'birchwood', 'foundry', 'willowbank',
+  'pemberton', 'linden', 'rialto', 'condo', 'arcology', 'evergreen', 'prism', 'tidecrest', 'helix',
+  'verdance', 'celestine', 'lumiere', 'ashford', 'cedarpoint', 'school', 'companytown', 'skyscraper',
+  'coop', 'duplex', 'sheriff', 'cornerstore', 'retirement', 'bunkhouse', 'mansion', 'victorian',
+  'pavilion', 'glasshouse', 'vineyard']);
+function _isFamilyHouse(e) { return !_HOUSE_OWN_SPRITE.has(e.commercialSubtype); }
+
+RenderSplit.register(T.HOUSE, {
+  applies(e) { return _isFamilyHouse(e); },
+  whole: _familyHouseWhole,
+  key(e) {
+    const hr = DayNight.hour();
+    const rel = e.reliability ?? 100, sat = e.satisfaction ?? 80;
+    return (hr >= 17 && hr < 23 ? 'e' : hr >= 23 || hr < 6 ? 'n' : 'd')
+      + (DayNight.darkness() > 0.25 ? 'D' : '')               // the hall behind an open door is lit
+      + (e._hsSwing | 0)
+      + (rel < 100 || sat < 80 ? (rel < 50 ? 2 : rel < 80 ? 1 : 0) + '' + (sat < 50 ? 2 : sat < 75 ? 1 : 0) : '-')
+      + (e.houseWealthTier || '') + (e.commercialSubtype || '');
+  },
+});
 
 function renderTownhouse(e, px, py, t) {
     // Riverside Townhouses — a 6×3 terrace of four narrow three-storey homes

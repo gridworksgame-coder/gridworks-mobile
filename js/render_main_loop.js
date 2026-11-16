@@ -320,6 +320,15 @@ const BuildingSpriteCache = (() => {
   // "Smooth Building Animation" switch, which asks for the cheapest draw.
   function _splitLive(split) { return !!split && (useSplit() || (!!split.alwaysLive && GfxQuality.smoothBuildings())); }
 
+  // A split whose moving parts are being drawn live for this entity right
+  // now. Not when the tier isn't using splits, and not when the spec says it
+  // is baking the whole sprite at the moment (whole(e): a family house up
+  // close, where too much of it moves to split cleanly) — those bitmaps hold
+  // the whole sprite and are refreshed on the interval like any other.
+  function _splitting(en) {
+    return _splitLive(en.split) && !(en.split.whole && en.split.whole(en.e));
+  }
+
   // How stale a bitmap may get before it is re-baked. Asking for a shorter
   // interval than the cache can actually cycle through just starves the
   // buildings at the bottom of the screen, so this is derived from what the
@@ -579,7 +588,7 @@ const BuildingSpriteCache = (() => {
     const main = ctx;
     ctx = g;
     try {
-      if (_splitLive(en.split)) SplitPhase.run('static', () => renderEntityAt(e, x, y, t));
+      if (_splitting(en)) SplitPhase.run('static', () => renderEntityAt(e, x, y, t));
       else renderEntityAt(e, x, y, t);
     } finally { ctx = main; }
     // A first bake lands at a random point in the interval so a screenful of
@@ -610,7 +619,11 @@ const BuildingSpriteCache = (() => {
     for (const en of entries.values()) {
       if (en.seen !== now) continue;                  // not on screen this frame
       if (en.zoom !== _zoomNow) { _why.zoom++; _why.zoomNow = _zoomNow; _why.lastZoomEntry = en.zoom; _due.push(en); continue; }
-      if (en.split) {
+      // Only while the split is actually in use. In the frozen tier a split
+      // building's bitmap is the whole sprite, moving parts and all, and used
+      // to be refreshed only on a key change or the 4s backstop: every
+      // converted building stood still whenever the tier fell to frozen.
+      if (en.split && _splitting(en)) {
         // The baked layer of a split sprite holds nothing that moves, so it
         // only needs redrawing when the entity's own state changes what it
         // looks like. The long interval is a backstop against some piece of
@@ -620,6 +633,10 @@ const BuildingSpriteCache = (() => {
         else if (now - en.at > SPLIT_BACKSTOP_MS) { _why.backstop++; en.key = k; _due.push(en); }
         continue;
       }
+      // Holding the whole sprite: whenever it goes back to splitting, its
+      // bitmap has to be re-baked without the moving parts, whatever key()
+      // says by then.
+      if (en.split) en.key = null;
       if (now - en.at > (_panning ? Math.max(interval, PAN_REFRESH_MS) : interval)) { _why.interval++; _due.push(en); }
     }
     _why.frames++;
@@ -719,7 +736,7 @@ const BuildingSpriteCache = (() => {
 
     // ...and the moving parts, live on top. This is the whole point of the
     // split: a cached building that still animates at the frame rate.
-    if (_splitLive(en.split)) {
+    if (_splitting(en)) {
       const _ot0 = performance.now();
       SplitPhase.run('over', () => renderEntityAt(e, x, y, t));
       _splitMs += performance.now() - _ot0;

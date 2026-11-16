@@ -325,7 +325,25 @@ const RenderSplit = {
     const spec = this._byType.get(e.type);
     return spec && (!spec.applies || spec.applies(e)) ? spec : null;
   },
+  // A spec may say, with whole(e), that right now the entity is baked whole
+  // and nothing of it is drawn live: the plants and houses split only once
+  // zoomed out, where little of what moves on them can be seen and the few
+  // parts that can are the ones on top. BuildingSpriteCache then bakes the
+  // whole sprite and refreshes it on its interval like any unsplit
+  // building. For the renderer: call first thing, and return when it says
+  // the call is dealt with (drawn whole in the static pass, or nothing live).
+  wholePass(e, draw) {
+    const ph = SplitPhase.cur;
+    if (ph === 'all') return false;
+    const spec = this._byType.get(e.type);
+    if (!spec || !spec.whole || !spec.whole(e)) return false;
+    if (ph === 'static') SplitPhase.run('all', draw);
+    return true;
+  },
 };
+// Zoomed out past this a plant's split is in use (see wholePass): its
+// glows, gradients and fine detail are drawn plain there, or not at all.
+const SPLIT_FAR_ZOOM = 0.5;
 
 const RenderScale = {
   get()     { return RENDER_SCALE; },
