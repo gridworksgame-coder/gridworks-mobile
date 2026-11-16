@@ -128,6 +128,9 @@ const BeltCargo = (() => {
   const IDLE_STEP = 0.1;         // real seconds between updates while no item is on screen
   const WATCHED_STEP = 1 / 12;   // ...and while one is (see render(): drawn gliding between them)
   const FAR_STEP = 1 / 8;        // ...zoomed out to where an item is a dot of a few pixels
+  const PAN_STEP = 1 / 4;        // ...and there with the camera panning fast (see render())
+  const PAN_FAST_PX = 8;         // screen px a frame that counts as fast
+  let _camX = 0, _camY = 0, _panAt = -Infinity;
   const GLIDE_MAX = 0.25;        // tiles an item may travel between two updates (fast-forward updates more often)
   let _owed = 0, _owedReal = 0;
   let _updN = 0, _updAt = 0, _glideMs = 0, _frameN = 0;   // the latest update, and how long its glide lasts
@@ -1396,7 +1399,18 @@ const BeltCargo = (() => {
     // a tile between two updates: a longer glide would cut across the corners.
     _owed += realDt * scale;
     _owedReal += realDt;
-    const _step = watched ? Math.min(z > 0.4 ? WATCHED_STEP : FAR_STEP, GLIDE_MAX / (SPEED * Math.max(scale, 1e-6))) : IDLE_STEP;
+    // Zoomed out with the camera panning fast, four a second: an update is
+    // the dearest single thing in such a frame on a big map (10-20 ms), and
+    // an item is a dot a few pixels across going by at the pan's speed, so
+    // the longer glide between two of them (GLIDE_MAX does not apply: a cut
+    // corner there is a pixel or two) cannot be seen.
+    const camD = Math.max(Math.abs(Camera.x - _camX), Math.abs(Camera.y - _camY)) * z;
+    _camX = Camera.x; _camY = Camera.y;
+    if (camD > PAN_FAST_PX) _panAt = now;
+    const panning = z <= 0.4 && now - _panAt < 250;
+    const _step = !watched ? IDLE_STEP
+      : panning ? Math.min(PAN_STEP, 2 * GLIDE_MAX / (SPEED * Math.max(scale, 1e-6)))
+      : Math.min(z > 0.4 ? WATCHED_STEP : FAR_STEP, GLIDE_MAX / (SPEED * Math.max(scale, 1e-6)));
     if (_owedReal >= _step) {
       const sim = _owed;
       _owed = 0; _owedReal = 0;

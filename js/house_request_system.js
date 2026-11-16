@@ -1608,6 +1608,17 @@ const HouseRequestSystem = (() => {
   // itself also maximises spread (_pickSpread); this is the floor it has to
   // clear before the search starts relaxing.
   const NEW_ZONE_SEPARATION  = 40;
+  // When there is no room for every new-zone option NEW_ZONE_SEPARATION
+  // apart, the spacing steps down through these, and stops at the floor:
+  // two options closer than ZONE_MERGE_DIST edge to edge would build the
+  // same zone, so the floor (corner to corner) adds the footprint's width
+  // and height, which keeps them apart edge to edge whichever way they lie.
+  // Past the floor a slot is left empty rather than offering a spot beside
+  // another option.
+  const _newZoneSeps = (fw, fh) => {
+    const floor = ZONE_MERGE_DIST + fw + fh;
+    return [NEW_ZONE_SEPARATION, 30, 20, floor].filter(s => s >= floor);
+  };
   const GOV_BUFFER_ZA        = ZoneSystem.GOV_RING_MIN;
   const GOV_MAX_ZA           = ZoneSystem.GOV_RING_MAX;
 
@@ -2323,9 +2334,20 @@ const HouseRequestSystem = (() => {
         }
         if (pool.length) break;
       }
-      if (!pool.length) pool = yield* buildFreePool(NEW_ZONE_MIN_FLOOR, 0, GC_WIDEST, false, OPTION_SEPARATION, i, GOV_REACH[GOV_REACH.length - 1]);
+      // Backstops, with the spacing from the other options stepped down but
+      // never under the floor where two would build the same zone (see
+      // _newZoneSeps). These used to drop straight to OPTION_SEPARATION (6),
+      // which put new-zone options a few tiles from each other.
+      const _seps = _newZoneSeps(fw, fh).slice(1);
+      for (const sep of _seps) {
+        if (pool.length) break;
+        pool = yield* buildFreePool(NEW_ZONE_MIN_FLOOR, 0, GC_WIDEST, false, sep, i, GOV_REACH[GOV_REACH.length - 1]);
+      }
       // Map genuinely full: anything that at least starts its own zone.
-      if (!pool.length) pool = yield* buildFreePool(ZONE_MERGE_DIST + 1, 0, GC_WIDEST, false, OPTION_SEPARATION, i, GOV_REACH[GOV_REACH.length - 1]);
+      for (const sep of _seps) {
+        if (pool.length) break;
+        pool = yield* buildFreePool(ZONE_MERGE_DIST + 1, 0, GC_WIDEST, false, sep, i, GOV_REACH[GOV_REACH.length - 1]);
+      }
       console.log(`[anchor]   freeSlot=${i} pool=${pool.length}`);
       // Spread against every option placed so far — the anchored ones too.
       if (pool.length) locs[i] = _pickSpread(pool, locs);
@@ -2728,28 +2750,32 @@ const HouseRequestSystem = (() => {
     if (picks.length === 0 && nearPick) picks.push(nearPick);
 
     // Fill remaining slots as far from each other as the pool allows: each
-    // new pick is the best-spread of the candidates that clear MIN_SPREAD
+    // new pick is the best-spread of the candidates that clear the spacing
     // from everything picked so far (see _pickSpread). The pool already
     // excludes other-type zone buffers and the ring around City Hall.
-    while (picks.length < count) {
-      // `shuffled` is in random order, so the first SPREAD_SAMPLE that clear
-      // MIN_SPREAD are a fair sample of all that do; scoring every one of a
-      // whole map's worth of tiles per pick froze the game for over a second.
-      const ok = [];
-      for (const cand of shuffled) {
-        if (picks.includes(cand) || picks.some(p => Math.sqrt((p.col - cand.col)**2 + (p.row - cand.row)**2) < MIN_SPREAD)) continue;
-        ok.push(cand);
-        if (ok.length >= SPREAD_SAMPLE) break;
+    //
+    // The spacing steps down (_newZoneSeps) when the pool has no room for
+    // more at MIN_SPREAD, but never below the distance at which two options
+    // would build the same zone. A small early grid is the usual case: a
+    // commercial site has to be within 30 tiles of it, which leaves room for
+    // two options 40 apart, and the rest used to be filled with no spacing
+    // at all, three or four of them a few tiles apart. Past the floor the
+    // request offers fewer options instead.
+    for (const sep of _newZoneSeps(fw, fh)) {
+      while (picks.length < count) {
+        // `shuffled` is in random order, so the first SPREAD_SAMPLE that
+        // clear the spacing are a fair sample of all that do; scoring every
+        // one of a whole map's worth of tiles per pick froze the game for
+        // over a second.
+        const ok = [];
+        for (const cand of shuffled) {
+          if (picks.includes(cand) || picks.some(p => Math.sqrt((p.col - cand.col)**2 + (p.row - cand.row)**2) < sep)) continue;
+          ok.push(cand);
+          if (ok.length >= SPREAD_SAMPLE) break;
+        }
+        if (!ok.length) break;
+        picks.push(_pickSpread(ok, picks));
       }
-      if (!ok.length) break;
-      picks.push(_pickSpread(ok, picks));
-    }
-
-    // Fill remaining slots if needed
-    while (picks.length < count && picks.length < activePool.length) {
-      const next = shuffled.find(c => !picks.includes(c) && !_tooCloseToOtherZone(c.col, c.row, null, zoneKey));
-      if (next) picks.push(next);
-      else break;
     }
 
     return picks.slice(0, count);

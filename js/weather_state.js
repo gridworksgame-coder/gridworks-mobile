@@ -304,8 +304,10 @@ const FrostSystem = (() => {
   const TIER_TILES  = TIER_SUB.map(s => N / s);  // tiles a side per chunk: 64, 32, 16
   const STEPS       = 96;            // coverage is baked in this many steps (fine enough that the blend between two is no wider than an edge)
   const MAX_CHUNKS  = 72;            // baked chunks kept (more while more are on screen)
-  const BAKE_BUDGET_MS = 5;          // working out fields per frame, at least one chunk
-  const NEW_BUDGET_MS  = 14;         // ...and for chunks just come into view
+  const BAKE_BUDGET_MS = 5;          // working out fields per frame, at least a slice of one
+  const NEW_BUDGET_MS  = 8;          // ...and for chunks just come into view
+  const RING_BUDGET_MS = 3;          // ...and for the ring just off screen, baked ahead of a pan
+  const SLICE_MS       = 2.5;        // the least a field gets in a frame it is worked on
   const PAINT_BUDGET_MS = 8;         // painting steps from them (well under a millisecond each)
   const EDGE_ROUGH  = 0.05;          // how ragged a patch's edge is
   const EDGE_BAND   = 0.012;         // and how hard: about a sample wide, which the smoothed drawing antialiases
@@ -495,7 +497,14 @@ const FrostSystem = (() => {
       grid[o] = dqx; grid[o + 1] = dqy; grid[o + 2] = _noise(qx, qy, U * 7); grid[o + 3] = _noise(rx + 131, ry + 71, U * 3.2);
     }
     const g4 = [0, 0, 0, 0];
-    for (let j = 0; j < N + 2; j++) {
+    // The samples, a row at a time, and resumable: rows(until) works on from
+    // where it left off until the clock reaches `until`, and answers whether
+    // the field is finished. A whole chunk in one go was 12-20 ms, a stalled
+    // frame every time a pan brought new ground into view.
+    let j = 0;
+    const rows = (until) => {
+     for (; j < N + 2; j++) {
+      if ((j & 7) === 7 && performance.now() >= until) return false;
       const ty = (sy0 + j + 0.5) / S, ny = ty * U + patY;
       const gy = j / G, gj = Math.floor(gy), fy = gy - gj;
       for (let i = 0; i < N + 2; i++) {
@@ -529,8 +538,10 @@ const FrostSystem = (() => {
         L[k] = Math.round(Math.max(0, Math.min(1, 0.45 * drift + 0.2 * wind + 0.35 * grain)) * 255);
         P[k] = onPath ? 1 : 0;
       }
-    }
-    return fld;
+     }
+     return true;
+    };
+    return { fld, zoneVer, rows };
   }
 
   // Paint one chunk's snow for coverage step `step` into a layer's canvas,
@@ -778,9 +789,18 @@ const FrostSystem = (() => {
       // two steps are then painted from whatever field it has, every frame
       // they need it: that is cheap, so the whole view follows the cover
       // together.
-      const update = (ch, u, cx, cy) => {
-        if ((!ch.fld || ch.fld.zoneVer !== zoneVer) && (baked === 0 || performance.now() - t0 < (ch.fld ? BAKE_BUDGET_MS : NEW_BUDGET_MS))) {
-          ch.fld = _bakeField(u, cx, cy, zoneVer); baked++;
+      const update = (ch, u, cx, cy, budget) => {
+        if (!ch.fld || ch.fld.zoneVer !== zoneVer) {
+          const now = performance.now();
+          if (budget === undefined) budget = ch.fld ? BAKE_BUDGET_MS : NEW_BUDGET_MS;
+          if (baked === 0 || now - t0 < budget) {
+            // A field is worked out over as many frames as it takes (see
+            // _bakeField): to the end of this frame's budget, and a slice of
+            // it whatever the budget says, so it always gets somewhere.
+            if (!ch.job || ch.job.zoneVer !== zoneVer) ch.job = _bakeField(u, cx, cy, zoneVer);
+            baked++;
+            if (ch.job.rows(Math.max(t0 + budget, now + SLICE_MS))) { ch.fld = ch.job.fld; ch.job = null; }
+          }
         }
         if (!ch.fld) return;
         // As the cover crosses a step the old upper layer becomes the new
@@ -819,7 +839,7 @@ const FrostSystem = (() => {
           if (cx < 0 || cy < 0 || cx > mx || cy > my) continue;
           const key = tier + '|' + cx + ',' + cy, ch = _chunks.get(key);
           if (ch && ch.fld) continue;
-          update(chunk(tier, cx, cy), tier, cx, cy);
+          update(chunk(tier, cx, cy), tier, cx, cy, RING_BUDGET_MS);
           break ring;
         }
       }

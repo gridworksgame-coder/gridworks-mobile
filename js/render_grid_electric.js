@@ -114,6 +114,16 @@ const WireReach = (() => {
   const SOLID_ALPHA  = 200;         // skip shadows, glows and haze
   const REMEASURE_MS = 20000;
   const SIG_CHECK_MS = 250;
+  // Pacing of measurements, see reach(): this much measuring per window (a
+  // frame, near enough), at least one building; a stale one is looked at
+  // again after MEASURE_RETRY_MS.
+  const MEASURE_BUDGET_MS = 2.5, MEASURE_WINDOW_MS = 14, MEASURE_RETRY_MS = 60;
+  let _winAt = 0, _winSpent = 0;
+  // A pan faster than this (about 10 screen px a frame at 60fps: the keyboard
+  // tops out at 14, a truck being followed stays well under) puts measuring
+  // off until FAST_PAN_HOLD_MS after it eases.
+  const FAST_PAN_PX_MS = 0.6, FAST_PAN_HOLD_MS = 200;
+  let _camX = NaN, _camY = NaN, _camAt = 0, _fastUntil = 0;
   const MARGIN = 4;
   const _cache = new WeakMap();     // entity -> { sig, at, img, w, h, depths: Map }
   let _cv = null, _cx = null;
@@ -207,15 +217,36 @@ const WireReach = (() => {
     let c = _cache.get(n);
     if (frozen && !c) return NO_REACH;
     const now = performance.now();
+    // How fast the camera is panning, in screen px a millisecond, sampled
+    // whenever it has moved since the last join looked.
+    if (Camera.x !== _camX || Camera.y !== _camY) {
+      const d = Math.max(Math.abs(Camera.x - _camX), Math.abs(Camera.y - _camY)) * Camera.zoom;
+      if (d > FAST_PAN_PX_MS * Math.max(1, now - _camAt)) _fastUntil = now + FAST_PAN_HOLD_MS;
+      _camX = Camera.x; _camY = Camera.y; _camAt = now;
+    }
     // This runs for every wire-to-building join on screen, every frame. The
     // signature is a string build, so it is only re-checked every SIG_CHECK_MS
     // (a building that changes state has its cable catch up a moment later).
     if (!frozen && (!c || now - c.sigAt > SIG_CHECK_MS)) {
       const sig = _sig(n);
       if (!c || c.sig !== sig || now - c.at > REMEASURE_MS) {
-        const m = _measure(n);
-        c = { sig, at: now, sigAt: now, m, depths: new Map() };
-        _cache.set(n, c);
+        // Measuring is paced (MEASURE_BUDGET_MS a frame), and waits while
+        // the camera is panning fast (_fastUntil). A fast pan across a
+        // zoomed-out city meets dozens of buildings for the first time, and
+        // one measurement alone ran to 10ms (a shop, a factory): frame after
+        // frame of 10-20ms in the wire pass. Until its turn, a building
+        // measured before keeps the cable it has, and a new one's stops at
+        // the plot line.
+        if (now - _winAt > MEASURE_WINDOW_MS) { _winAt = now; _winSpent = 0; }
+        if (_winSpent >= MEASURE_BUDGET_MS || now < _fastUntil) {
+          if (!c) return NO_REACH;
+          c.sigAt = now - SIG_CHECK_MS + MEASURE_RETRY_MS;
+        } else {
+          const m = _measure(n);
+          c = { sig, at: now, sigAt: now, m, depths: new Map() };
+          _cache.set(n, c);
+          _winSpent += performance.now() - now;
+        }
       } else c.sigAt = now;
     }
     if (!c.m) return NO_REACH;

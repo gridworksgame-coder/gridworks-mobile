@@ -4623,6 +4623,9 @@ function _bgBandDraw(targetCtx, worldLeft, worldTop, zoom, dark, wx0, wy0, wx1, 
 // Cap on how far a single bgScrollTo() call will actually redraw — see the
 // clamp below for why.
 const BG_SCROLL_STEP_CAP_PX = 220;
+// An axis that has drifted less than this is left where it is (see below).
+// Half of BG_SCROLL_DRIFT_PX, so the axis that set the scroll off always moves.
+const BG_SCROLL_MIN_AXIS_PX = 48;
 
 // Pan upkeep: shift the displayed cache toward the camera's ideal anchor,
 // copying the overlap and rendering only the exposed strips. Uses the
@@ -4665,6 +4668,14 @@ function bgScrollTo() {
   // Integer-pixel shift of the old content within the cache
   let shiftX = Math.round((_bgWorldLeft - idealLeft) * cz);
   let shiftY = Math.round((_bgWorldTop  - idealTop)  * cz);
+  // One axis at a time, unless both have somewhere to go. A pan a few
+  // degrees off level used to re-anchor both, and the strip along the other
+  // edge, a few pixels deep but the cache's whole width, cost as much as a
+  // deep one (a strip is painted in whole tiles, plus one either side). Left
+  // alone, that axis's drift comes round once it is worth a strip of its own.
+  const minC = BG_SCROLL_MIN_AXIS_PX * RENDER_SCALE;
+  if (Math.abs(shiftX) < minC) shiftX = 0;
+  if (Math.abs(shiftY) < minC) shiftY = 0;
   if (shiftX === 0 && shiftY === 0) return;
   if (Math.abs(shiftX) > capC && Math.abs(shiftX) < marginC + capC)
     shiftX = Math.sign(shiftX) * capC;
@@ -4679,15 +4690,19 @@ function bgScrollTo() {
   bgScratchCtx.clearRect(0, 0, Wc, Hc);
   bgScratchCtx.drawImage(bgCache, shiftX, shiftY);
 
+  // The exposed strips are not painted here: they are queued, a band at a
+  // time, and bgPendingStep() paints them over the frames that follow (see
+  // _bgPending). In cache pixels, so every band edge lands on a whole pixel.
+  const band = Math.max(Math.round(BG_PENDING_BAND_PX * RENDER_SCALE), Math.ceil(6 * TILE * cz));
+  const queue = (x0, y0, x1, y1) => {
+    if (x1 - x0 >= y1 - y0) for (let x = x0; x < x1; x += band) _bgPending.push([newLeft + x / cz, newTop + y0 / cz, newLeft + Math.min(x1, x + band) / cz, newTop + y1 / cz]);
+    else                    for (let y = y0; y < y1; y += band) _bgPending.push([newLeft + x0 / cz, newTop + y / cz, newLeft + x1 / cz, newTop + Math.min(y1, y + band) / cz]);
+  };
   // Exposed vertical strip (full height)
   let sx0 = null, sx1 = null;
   if (shiftX < 0)      { sx0 = Math.max(0, Wc + shiftX); sx1 = Wc; }
   else if (shiftX > 0) { sx0 = 0; sx1 = Math.min(Wc, shiftX); }
-  if (sx0 !== null && sx1 > sx0) {
-    _bgBandDraw(bgScratchCtx, newLeft, newTop, zoom, _bgDark,
-      newLeft + sx0 / cz, newTop,
-      newLeft + sx1 / cz, newTop + Hc / cz);
-  }
+  if (sx0 !== null && sx1 > sx0) queue(sx0, 0, sx1, Hc);
   // Exposed horizontal strip — excluding the vertical strip's columns so
   // no pixel is composited twice
   if (shiftY !== 0) {
@@ -4695,17 +4710,77 @@ function bgScrollTo() {
     const sy1 = shiftY < 0 ? Hc : Math.min(Hc, shiftY);
     const rx0 = (sx0 !== null && shiftX > 0) ? sx1 : 0;
     const rx1 = (sx0 !== null && shiftX < 0) ? sx0 : Wc;
-    if (sy1 > sy0 && rx1 > rx0) {
-      _bgBandDraw(bgScratchCtx, newLeft, newTop, zoom, _bgDark,
-        newLeft + rx0 / cz, newTop + sy0 / cz,
-        newLeft + rx1 / cz, newTop + sy1 / cz);
-    }
+    if (sy1 > sy0 && rx1 > rx0) queue(rx0, sy0, rx1, sy1);
   }
 
   _bgSwap();
   _bgWorldLeft = newLeft;
   _bgWorldTop  = newTop;
+  // What was already waiting moved with the bitmap: keep the part of each
+  // rect still inside it. (The part that left is queued again, as part of an
+  // exposed strip, if the camera comes back.)
+  const wR = newLeft + Wc / cz, wB = newTop + Hc / cz, eps = 0.25 / cz;
+  let n = 0;
+  for (let i = 0; i < _bgPending.length; i++) {
+    const p = _bgPending[i];
+    if (p[0] < newLeft) p[0] = newLeft;
+    if (p[1] < newTop)  p[1] = newTop;
+    if (p[2] > wR) p[2] = wR;
+    if (p[3] > wB) p[3] = wB;
+    if (p[2] - p[0] > eps && p[3] - p[1] > eps) _bgPending[n++] = p;
+  }
+  _bgPending.length = n;
   PerfMonitor.record('BG strip scroll', performance.now() - _t0);
+}
+
+// ── Strips waiting to be painted ────────────────────────────────────
+// A pan exposes strips of the cache at its outer edge, BG_MARGIN screen px
+// off screen. Painting each one in full the moment it was exposed cost 5-25ms
+// (a strip is the cache's whole height or width: zone paving, verges, roads)
+// on every third frame of a fast pan, for ground the camera would not reach
+// for another dozen frames. So bgScrollTo() only queues them, as world-space
+// rects, and they are painted from here a few milliseconds a frame, nearest
+// the screen first. One the screen has reached is painted whatever the
+// budget, so nothing unpainted is ever shown.
+//
+// Everything that replaces the bitmap wholesale (a finished rebuild job, the
+// first frame's full redraw, a resize) empties the queue: bgPendingClear().
+const _bgPending = [];             // [wx0, wy0, wx1, wy1], world px
+const BG_PENDING_BUDGET_MS = 3;
+const BG_PENDING_BAND_PX   = 320;  // length of one queued band, CSS px (never under six tiles)
+const BG_PENDING_GUARD_PX  = 48;   // this close to the screen it is painted at once
+
+function bgPendingClear() { _bgPending.length = 0; }
+
+// Paint queued strips into the displayed cache for up to budgetMs (Infinity:
+// all of them). Call every frame, after any scroll and before the blit.
+// "The screen" is the live camera's: mid-zoom the bitmap is shown stretched
+// to a zoom it was not drawn at, and a zoom out brings its margin, and any
+// strips still waiting there, on screen. Those are painted at once, the
+// rest a few at a time as usual.
+function bgPendingStep(budgetMs) {
+  if (!_bgPending.length) return;
+  const t0 = performance.now();
+  const zoom = _bgZoom, lz = Camera.zoom, g = BG_PENDING_GUARD_PX / lz;
+  const vx0 = Camera.x - g, vy0 = Camera.y - g;
+  const vx1 = Camera.x + window.innerWidth / lz + g, vy1 = Camera.y + window.innerHeight / lz + g;
+  for (;;) {
+    // nearest the screen first
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < _bgPending.length; i++) {
+      const p = _bgPending[i];
+      const dx = Math.max(0, p[0] - vx1, vx0 - p[2]), dy = Math.max(0, p[1] - vy1, vy0 - p[3]);
+      const d = Math.max(dx, dy);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best < 0) break;
+    if (bestD > 0 && performance.now() - t0 >= budgetMs) break;
+    const p = _bgPending[best];
+    _bgPending[best] = _bgPending[_bgPending.length - 1];
+    _bgPending.length--;
+    _bgBandDraw(bgCtx, _bgWorldLeft, _bgWorldTop, zoom, _bgDark, p[0], p[1], p[2], p[3]);
+  }
+  PerfMonitor.record('BG strip paint', performance.now() - t0);
 }
 
 // Begin a time-sliced full rebuild targeting the current camera anchor.
@@ -4716,22 +4791,31 @@ function bgJobStart(zoom, dark, zoneVer, W, H) {
   bgScratchCtx.clearRect(0, 0, bgScratch.width, bgScratch.height);
   const rS = Math.max(0, Math.floor(worldTop / TILE) - 1);
   const rE = Math.min(ROWS, Math.ceil((worldTop + bgScratch.height / (zoom * RENDER_SCALE)) / TILE) + 1);
-  _bgJob = { worldLeft, worldTop, zoom, dark, zoneVer, W, H, rE, nextR: rS };
+  _bgJob = { worldLeft, worldTop, zoom, dark, zoneVer, W, H, rE, nextR: rS, nextX: 0 };
 }
 
 // Advance the rebuild within a time budget; swap in when complete.
+//
+// A band is cut across into pieces of BG_JOB_CHUNK_COLS tiles. A whole band
+// is the bitmap's full width, which zoomed out is 250-300 tiles: 6-10ms a
+// band, so a frame given 5ms spent twice that on the one band it started.
+// The cuts land on whole cache pixels, as the pan strips' do.
+const BG_JOB_CHUNK_COLS = 64;
 function bgJobStep(budgetMs) {
   if (!_bgJob) return;
   const t0 = performance.now();
   const j = _bgJob;
-  const wx0 = j.worldLeft;
-  const wx1 = j.worldLeft + bgScratch.width / (j.zoom * RENDER_SCALE);
+  const cz = j.zoom * RENDER_SCALE;
+  const Wc = bgScratch.width;
+  const chunk = Math.max(1, Math.round(BG_JOB_CHUNK_COLS * TILE * cz));
   while (j.nextR < j.rE && performance.now() - t0 < budgetMs) {
     const bandR0 = j.nextR;
     const bandR1 = Math.min(j.rE, bandR0 + BG_JOB_BAND_ROWS);
+    const x0 = j.nextX, x1 = Math.min(Wc, x0 + chunk);
     _bgBandDraw(bgScratchCtx, j.worldLeft, j.worldTop, j.zoom, j.dark,
-      wx0, bandR0 * TILE, wx1, bandR1 * TILE);
-    j.nextR = bandR1;
+      j.worldLeft + x0 / cz, bandR0 * TILE, j.worldLeft + x1 / cz, bandR1 * TILE);
+    if (x1 >= Wc) { j.nextX = 0; j.nextR = bandR1; }
+    else j.nextX = x1;
   }
   PerfMonitor.record('BG job chunk', performance.now() - t0);
   if (j.nextR >= j.rE) {
@@ -4740,13 +4824,113 @@ function bgJobStep(budgetMs) {
     // zone edit — keeps the short timed cross-fade.
     const darkOnly = _bgValid && j.dark !== _bgDark && j.zoom === _bgZoom &&
                      j.zoneVer === _bgZoneVer && j.W === _bgW && j.H === _bgH;
+    // The outgoing bitmap is kept on to blend from, and can be panned across
+    // while it is: finish the strips it is still waiting on near the screen
+    // first. (All of them, as this used to, could be tens of milliseconds
+    // after a fast pan, for ground out in the margin the fade is over long
+    // before the camera gets to.)
+    bgPendingStep(BG_PENDING_BUDGET_MS);
     if (darkOnly) _bgStartDarkLerp(_bgDark, j.dark);
     else _bgStartFade();
     _bgSwap();
+    bgPendingClear();
     _bgWorldLeft = j.worldLeft; _bgWorldTop = j.worldTop;
     _bgZoom = j.zoom; _bgDark = j.dark; _bgZoneVer = j.zoneVer;
     _bgW = j.W; _bgH = j.H;
     _bgValid = true;
     _bgJob = null;
+    _bgMemDueAt = performance.now() + BG_MEM_DELAY_MS;
   }
+}
+
+// ── Ground memory ───────────────────────────────────────────────────
+// A small picture of the whole map's ground, one pixel to every
+// BG_MEM_TILES x BG_MEM_TILES tiles, that every finished ground bitmap is
+// shrunk into (bgMemCapture). It is what a fast zoom out shows where the
+// ground bitmap, stretched while the zoom moves, no longer reaches the edge
+// of the screen (bgMemFillGap), for the few frames until the rebuild that
+// zoom started is done.
+//
+// That used to be a rebuild finished there and then, in one frame: 300ms
+// and more zoomed out on a 1080p screen (the bitmap is the screen plus
+// BG_MARGIN on every side, and far out that is tens of thousands of tiles),
+// and in a long zoom out it came round again every few notches. Before that
+// it was a flat green. This is the ground as it last looked from further
+// out, blurred: zones, roads and fields where they are.
+//
+// Ground never drawn yet (far from anywhere the camera has been) is the
+// flat green still. Out of date after a zone edit or as the light changes,
+// which for a placeholder at the edge of a moving picture does not show.
+const BG_MEM_TILES = 2;
+let _bgMem = null, _bgMemCtx = null;
+// A finished rebuild is shrunk into the memory a moment after it is swapped
+// in (bgMemTick, every frame), not in the frame it is: that one already
+// copies the outgoing bitmap for the cross-fade.
+const BG_MEM_DELAY_MS = 250;
+let _bgMemDueAt = 0;
+function bgMemTick() {
+  if (_bgMemDueAt && performance.now() >= _bgMemDueAt) { _bgMemDueAt = 0; bgMemCapture(); }
+}
+
+function bgMemCapture() {
+  if (!_bgValid || !bgCache.width) return;
+  if (!_bgMem) {
+    _bgMem = document.createElement('canvas');
+    _bgMem.width = Math.ceil(COLS / BG_MEM_TILES);
+    _bgMem.height = Math.ceil(ROWS / BG_MEM_TILES);
+    _bgMemCtx = _bgMem.getContext('2d');
+  }
+  const cz = _bgZoom * RENDER_SCALE;
+  const k = 1 / (TILE * BG_MEM_TILES);   // memory px per world px
+  // Only memory pixels the bitmap covers completely, so none is left half
+  // painted over the sky.
+  const mx0 = Math.max(0, Math.ceil(_bgWorldLeft * k));
+  const my0 = Math.max(0, Math.ceil(_bgWorldTop * k));
+  const mx1 = Math.min(_bgMem.width,  Math.floor((_bgWorldLeft + bgCache.width  / cz) * k));
+  const my1 = Math.min(_bgMem.height, Math.floor((_bgWorldTop  + bgCache.height / cz) * k));
+  if (mx1 <= mx0 || my1 <= my0) return;
+  const g = _bgMemCtx;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  // The bitmap is laid over the sky on screen (it is ~0.88 alpha): bake the
+  // sky in, as _bgStartFade does, so the memory is opaque.
+  g.fillStyle = DayNight.skyColor();
+  g.fillRect(mx0, my0, mx1 - mx0, my1 - my0);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'medium';
+  g.drawImage(bgCache,
+    (mx0 / k - _bgWorldLeft) * cz, (my0 / k - _bgWorldTop) * cz,
+    (mx1 - mx0) / k * cz, (my1 - my0) / k * cz,
+    mx0, my0, mx1 - mx0, my1 - my0);
+}
+
+// Fill the part of the screen the stretched ground bitmap leaves bare: the
+// flat green, then the memory over it. (cx0, cy0)-(cx1, cy1) is where the
+// bitmap lands, device px. Only on the map: past its edge is the country
+// round it (WorldBackdrop), which this must not cover.
+function bgMemFillGap(g, zoom, rs, DW, DH, cx0, cy0, cx1, cy1) {
+  const s = zoom * rs;
+  const mL = Math.max(0, -Camera.x * s), mT = Math.max(0, -Camera.y * s);
+  const mR = Math.min(DW, (COLS * TILE - Camera.x) * s), mB = Math.min(DH, (ROWS * TILE - Camera.y) * s);
+  if (mR <= mL || mB <= mT) return;
+  // The bitmap's rectangle, within that one: cut out of the fill.
+  const bL = Math.max(mL, cx0), bT = Math.max(mT, cy0), bR = Math.min(mR, cx1), bB = Math.min(mB, cy1);
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1;
+  g.globalCompositeOperation = 'source-over';
+  g.beginPath();
+  g.rect(mL, mT, mR - mL, mB - mT);
+  if (bR > bL && bB > bT) g.rect(bL, bT, bR - bL, bB - bT);
+  g.clip('evenodd');
+  g.fillStyle = '#2e501a';
+  g.fillRect(mL, mT, mR - mL, mB - mT);
+  if (_bgMem) {
+    const ms = TILE * BG_MEM_TILES * s;   // device px per memory px
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'low';
+    g.drawImage(_bgMem, -Camera.x * s, -Camera.y * s, _bgMem.width * ms, _bgMem.height * ms);
+  }
+  g.restore();
 }

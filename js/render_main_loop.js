@@ -392,17 +392,70 @@ const BuildingSpriteCache = (() => {
   // softness of a fractional blit is imperceptible but the hopping is not.
   let _viewMoving = false, _prevE = null, _prevF = null, _prevA = null;
 
+  // ── Panning ────────────────────────────────────────────────────────
+  // A pan across a city changes how many buildings are on screen from one
+  // second to the next, and the tier policy used to follow it: live over a
+  // quiet stretch, bitmaps over a built-up one, live again. Every trip back
+  // to bitmaps found none (live frames don't keep them, and a swap across
+  // the split tier clears them) and baked the whole screen in that one
+  // frame. Measured panning a zoomed-out city: the tier changed every second
+  // or so, up to 150 bakes landed in a single frame, and those frames ran
+  // 60-100ms against 11 for the ones around them.
+  //
+  // So while the view is panning (and for PAN_HOLD_MS after, which bridges
+  // the gaps in a drag) the tier only ever moves to 'frozen' and stays
+  // there, no live trial is run, and bitmaps are not re-baked just to
+  // advance their animation. What a moving camera loses is building
+  // animation at the frame rate, for as long as it is moving.
+  const PAN_HOLD_MS = 400;
+  let _panUntil = 0, _panning = false;
+  // While panning a bitmap is re-baked for its animation only once it is
+  // this stale (rather than every _interval): each re-bake is a bitmap
+  // redrawn and uploaded again for motion nobody can follow mid-pan.
+  const PAN_REFRESH_MS = 1200;
+  // First bakes in one frame, beyond which a building with no bitmap yet is
+  // drawn live for that frame instead and baked on a later one. Baking is
+  // the dearer of the two the first time (a new canvas each: measured
+  // ~0.55ms against ~0.14ms live at the far zoom), so a screenful that all
+  // needs bitmaps at once (leaving the live tier, a swap across the split
+  // tier) is spread over a few frames rather than paid for in one.
+  const FIRST_BAKE_BUDGET_MS = 5;
+  let _firstBakeMs = 0;
+  // How long an off-screen bitmap is kept. Sweeping at four seconds meant a
+  // pan out and back re-baked everything it had just drawn. Zoomed out
+  // (HI_CACHE_ZOOM and beyond) the bitmaps are a few dozen pixels across, so
+  // there they are kept longer, up to a count.
+  const KEEP_MS = 4000, KEEP_LONG_MS = 20000, KEEP_LONG_MAX = 1200;
+
+  // ── Zooming ────────────────────────────────────────────────────────
+  // A zoom is held to the same tier rules as a pan (see PAN_HOLD_MS): it
+  // changes how many buildings are on screen faster than any pan, and the
+  // tier used to follow it there too, live as the zoom came in and back to
+  // bitmaps as it went out, every one of them baked again that frame.
+  // And no bitmap is re-baked until the zoom has been still for
+  // ZOOM_SETTLE_MS (the ground and FixtureCache wait the same): one baked at
+  // a zoom the wheel is already leaving is thrown away a notch later, and
+  // each is a new size of bitmap for the GPU. They are drawn stretched until
+  // then (see draw()), as the ground is.
+  const ZOOM_SETTLE_MS = 160;
+  let _zoomMovedAt = -Infinity, _zoomSettled = true;
+
   function beginFrame(m) {
-    refreshes = 0; spentMs = 0; _splitSeen = 0; _splitMs = 0;
+    refreshes = 0; spentMs = 0; _splitSeen = 0; _splitMs = 0; _firstBakeMs = 0;
+    const now = performance.now();
     if (m) _zoomNow = m.a;
     if (m) {
       _viewMoving = _prevE !== null &&
         (Math.abs(m.e - _prevE) > 0.01 || Math.abs(m.f - _prevF) > 0.01 ||
          Math.abs(m.a - _prevA) > 1e-6);
+      if (_viewMoving) _panUntil = now + PAN_HOLD_MS;
+      if (_prevA !== null && Math.abs(m.a - _prevA) > 1e-6) _zoomMovedAt = now;
       _prevE = m.e; _prevF = m.f; _prevA = m.a;
     } else {
       _viewMoving = false; _prevE = _prevF = _prevA = null;
     }
+    _panning = now < _panUntil;
+    _zoomSettled = now - _zoomMovedAt >= ZOOM_SETTLE_MS;
   }
 
   // eligibleSeen: how many cache-eligible buildings this frame drew (either
@@ -445,7 +498,15 @@ const BuildingSpriteCache = (() => {
       // climbs at the plain budget and only drops once well past it — and
       // the cost it is being judged on is an overlay on top of a frozen
       // frame that already measured a couple of ms, not a whole frame.
-      if (_liveMsPer && estLive > 0 &&
+      if (_panning) {
+        // Panning (see PAN_HOLD_MS): stay on whatever is in use while it
+        // still fits, and when it doesn't go straight to bitmaps and stay
+        // there until the camera rests. Never up a tier, and never into the
+        // split tier, whose cost moves with the count as much as live's does.
+        if (_tier === 'live') { if (estLive > LIVE_BUDGET_MS) _tier = 'frozen'; }
+        else if (_tier === 'split') { if (estSplit > LIVE_BUDGET_MS * 1.25) _tier = 'frozen'; }
+      }
+      else if (_liveMsPer && estLive > 0 &&
           estLive <= LIVE_BUDGET_MS * (_tier === 'live' ? 1 : LIVE_RESUME)) _tier = 'live';
       else if (!_splitMsPer ||
                estSplit <= LIVE_BUDGET_MS * (_tier === 'split' ? 1.25 : 1)) _tier = 'split';
@@ -470,7 +531,7 @@ const BuildingSpriteCache = (() => {
       // within about a factor of two, and the cost of trying and being
       // wrong is one frame, while the cost of never trying is that live
       // animation is unreachable however far the player zooms in.
-      if (_tier !== 'live' && _visible > 0 &&
+      if (_tier !== 'live' && _visible > 0 && !_panning &&
           _visible * _bakeMsPer < LIVE_BUDGET_MS * 2 &&
           now - _lastTrial > TRIAL_GAP_MS) {
         _trial = true;
@@ -478,11 +539,18 @@ const BuildingSpriteCache = (() => {
       }
       PerfMonitor.record('Buildings live-drawn', _tier === 'live' ? _visible : 0);
     }
-    if (_cacheOff) { clear(); return; }
+    // With the cache off (high quality, zoomed in past HI_CACHE_ZOOM) the
+    // bitmaps are not drawn, but they are no longer thrown away the moment it
+    // goes off: the sweep below drops them KEEP_MS later, as for any not on
+    // screen. A zoom out past HI_CACHE_ZOOM and back used to cost a bake of
+    // every building on screen each way; this way a quick one finds them.
     if (now - lastSweep < 2000) return;
     lastSweep = now;
+    // In the live tier nothing is blitted, so nothing is worth keeping long;
+    // nor closer in, where a bitmap is hundreds of pixels across.
+    const keep = _tier === 'live' || Camera.zoom > HI_CACHE_ZOOM || entries.size > KEEP_LONG_MAX ? KEEP_MS : KEEP_LONG_MS;
     for (const [e, en] of entries) {
-      if (now - en.seen > 4000) { en.cv.width = en.cv.height = 0; entries.delete(e); }
+      if (now - en.seen > keep) { en.cv.width = en.cv.height = 0; entries.delete(e); }
     }
   }
 
@@ -536,8 +604,9 @@ const BuildingSpriteCache = (() => {
   // Why bitmaps came due, summed since the last stats() read (diagnostic only).
   const _why = { zoom: 0, key: 0, backstop: 0, interval: 0, frames: 0, zoomNow: 0, lastZoomEntry: 0 };
   function _refreshPass(now, budgetMs) {
-    const interval = _interval(budgetMs);
     _due.length = 0;
+    if (!_zoomSettled) return;   // see ZOOM_SETTLE_MS
+    const interval = _interval(budgetMs);
     for (const en of entries.values()) {
       if (en.seen !== now) continue;                  // not on screen this frame
       if (en.zoom !== _zoomNow) { _why.zoom++; _why.zoomNow = _zoomNow; _why.lastZoomEntry = en.zoom; _due.push(en); continue; }
@@ -551,7 +620,7 @@ const BuildingSpriteCache = (() => {
         else if (now - en.at > SPLIT_BACKSTOP_MS) { _why.backstop++; en.key = k; _due.push(en); }
         continue;
       }
-      if (now - en.at > interval) { _why.interval++; _due.push(en); }
+      if (now - en.at > (_panning ? Math.max(interval, PAN_REFRESH_MS) : interval)) { _why.interval++; _due.push(en); }
     }
     _why.frames++;
     if (!_due.length) return;
@@ -601,12 +670,20 @@ const BuildingSpriteCache = (() => {
     const zoom = m.a;
     let en = entries.get(e);
     if (!en) {
-      // No bitmap yet: bake it now, budget or no budget. That is what makes
-      // the frame this cache switches on cheaper than the frame before it
-      // rather than a hitch — one bake measured ~0.32ms against ~1.4ms to
-      // draw the same building live, since it goes into a small offscreen
-      // bitmap with blur muted and skips the main canvas's compositing.
-      // Deferring it would only pay the dearer price instead.
+      // No bitmap yet: bake it now. That is what makes the frame this cache
+      // switches on cheaper than the frame before it rather than a hitch —
+      // one bake measured ~0.32ms against ~1.4ms to draw the same building
+      // live close in, since it goes into a small offscreen bitmap with blur
+      // muted and skips the main canvas's compositing.
+      //
+      // Up to a point: once this frame has spent FIRST_BAKE_BUDGET_MS on
+      // first bakes, the rest are drawn live for the frame and baked on a
+      // later one. At the far zoom, where a whole district can need bitmaps
+      // in the same frame, a first bake is the dearer of the two.
+      if (_firstBakeMs > FIRST_BAKE_BUDGET_MS && !_pinned) {
+        renderEntityAt(e, x, y, t);
+        return;
+      }
       const cv = document.createElement('canvas');
       const split = RenderSplit.for(e);
       en = { cv, cx: cv.getContext('2d'), zoom: 0, scale: 1, at: 0, seen: 0,
@@ -615,7 +692,9 @@ const BuildingSpriteCache = (() => {
       entries.set(e, en);
       const t0 = performance.now();
       _bake(e, en, x, y, t, zoom, now, _interval(lv === 1 ? REFRESH_BUDGET_MED : REFRESH_BUDGET_HIGH));
-      _bakeMsPer += ((performance.now() - t0) - _bakeMsPer) * 0.1;
+      const bakeMs = performance.now() - t0;
+      _bakeMsPer += (bakeMs - _bakeMsPer) * 0.1;
+      _firstBakeMs += bakeMs;
     }
     // Where and when to redraw this building when its turn comes round.
     en.x = x; en.y = y; en.t = t;
@@ -784,8 +863,12 @@ const FixtureCache = (() => {
   function endFrame(now) {
     if (now - lastSweep < 2000) return;
     lastSweep = now;
+    // Zoomed out, kept a while off screen, so a pan out and back finds them
+    // (they are a few dozen pixels across there); four seconds closer in,
+    // where they are not, or once there are a lot.
+    const keep = Camera.zoom > 0.5 || entries.size > 3000 ? 4000 : 20000;
     for (const [e, en] of entries) {
-      if (now - en.seen > 4000) { en.cv.width = en.cv.height = 0; entries.delete(e); }
+      if (now - en.seen > keep) { en.cv.width = en.cv.height = 0; entries.delete(e); }
     }
   }
 
@@ -1571,10 +1654,9 @@ RenderSystem.render = function (t, inputState) {
         // settle) and the zoom is still changing every frame at this point,
         // so a time-sliced job here would just restart from scratch every
         // frame and never finish — worse than the hitch it replaces, and
-        // the actual bug behind the reported color pop-outs. Handle it the
-        // original way instead: one immediate synchronous redraw. Rare
-        // enough (only on hard zoom-out flicks) that the occasional hitch
-        // here is an acceptable trade for never showing a gap.
+        // the actual bug behind the reported color pop-outs. A job is run
+        // to completion instead, and the gap filled from the ground memory
+        // meanwhile (see below).
         let _stretchGap = false;
         if (_bgValid && !_zoomMatches) {
           const _previewScale = _zoom / _bgZoom;
@@ -1615,6 +1697,7 @@ RenderSystem.render = function (t, inputState) {
           // for one synchronous full render (one-off, not a gameplay hitch).
           const _bgT0 = performance.now();
           _bgJob = null;
+          bgPendingClear();
           _bgWorldLeft = Camera.x - BG_MARGIN / _zoom;
           _bgWorldTop  = Camera.y - BG_MARGIN / _zoom;
           bgCtx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1625,6 +1708,7 @@ RenderSystem.render = function (t, inputState) {
             _bgWorldTop  + bgCache.height / (_zoom * _rs));
           _bgZoom = _zoom; _bgDark = _dark; _bgZoneVer = _zoneVer; _bgW = W; _bgH = H;
           _bgValid = true;
+          bgMemCapture();
           PerfMonitor.record('BG cache redraw', performance.now() - _bgT0);
         } else if (_stretchGap) {
           // Overflow case — see note above. Used to pay for one immediate
@@ -1650,8 +1734,12 @@ RenderSystem.render = function (t, inputState) {
           // two stale by the time it swaps in) closes the gap quickly; the
           // next frame's still-open gap just starts another job against
           // the newer zoom. Only dark/zone/size changes — which don't
-          // fire every frame — still restart it immediately.
-          if (!_bgJob || _bgJob.zoneVer !== _zoneVer || _bgJob.W !== W || _bgJob.H !== H) {
+          // fire every frame — still restart it immediately; and once the
+          // zoom has settled, a job for some zoom it passed through on the
+          // way is restarted for the one it stopped at, as below (finishing
+          // it first only meant a second rebuild straight after).
+          if (!_bgJob || (_bgJob.zoom !== _zoom && _zoomSettled) ||
+              _bgJob.zoneVer !== _zoneVer || _bgJob.W !== W || _bgJob.H !== H) {
             bgJobStart(_zoom, _dark, _zoneVer, W, H);
           }
         } else if (!_didScroll && (_staleNonZoom || (!_zoomMatches && _zoomSettled))) {
@@ -1691,22 +1779,24 @@ RenderSystem.render = function (t, inputState) {
           bgJobStart(_zoom, _dark, _zoneVer, W, H);
         }
 
-        // While a full-screen gap is showing (fast zoom-out outrunning the
-        // stretched preview), finish the rebuild in this single frame
-        // instead of trickling it in over several — a short, rare hitch
-        // reads far better than multiple frames of flat gap-fill colour
-        // where the ground should be. Safe to pay the full cost here (the
-        // old failure mode was this retriggering every frame of the
-        // gesture — that's fixed above by no longer restarting the job on
-        // every zoom tick, so this now runs to completion once and holds.
-        //
-        // Not under the Advanced Reactor's sequence, though: its camera cuts
-        // and zooms across the map by design, and on a big city one finished
-        // rebuild was a multi-second frame (3s on the detonation itself).
-        // There the job gets a bigger slice a frame and the gap shows for the
-        // few frames it takes, mostly under the white-out and the grade.
+        // While a gap is showing (a fast zoom out outrunning the stretched
+        // preview), the rebuild gets twice its usual slice a frame, and the
+        // gap is filled from the ground memory (bgMemFillGap, below) until
+        // it is done. It used to be finished in this one frame instead: on a
+        // 1080p screen zoomed out that frame ran to 300-600ms, and a long
+        // zoom out met it again every few notches, which is what made
+        // scrolling out stutter. The Advanced Reactor's sequence, whose
+        // camera cuts and zooms across the map by design, gets a bigger
+        // slice still.
         const _apocBg = typeof ApocalypseSystem !== 'undefined' && ApocalypseSystem.isActive();
-        if (_bgJob) bgJobStep(_apocBg ? BG_JOB_BUDGET_MS * 4 : _stretchGap ? Infinity : BG_JOB_BUDGET_MS);
+        if (_bgJob) bgJobStep(_apocBg ? BG_JOB_BUDGET_MS * 4 : _stretchGap ? BG_JOB_BUDGET_MS * 2 : BG_JOB_BUDGET_MS);
+        // Strips a pan has exposed out in the margin, painted a few
+        // milliseconds a frame (bgPendingStep, render_core.js). Any the
+        // screen has reached are painted at once, which mid-zoom includes
+        // the ones a zoom out has brought on screen. (It used to paint every
+        // one of them in the first frame of any zoom.)
+        bgPendingStep(BG_PENDING_BUDGET_MS);
+        bgMemTick();
 
         ctx.save();
         Camera.resetTransform(ctx);
@@ -1779,15 +1869,13 @@ RenderSystem.render = function (t, inputState) {
           const _destW = bgCache.width  * _scale;
           const _destH = bgCache.height * _scale;
           // If the stretched preview won't fully cover the canvas (fast
-          // zoom-out flick — see _stretchGap above), the exposed area is
-          // otherwise left transparent by the clearRect at the top of this
-          // frame and shows through to the page background (near-black) —
-          // a black flash for the few frames until the deferred rebuild job
-          // (started above) catches up. Cheap flat fill first so the gap
-          // reads as ground colour instead.
+          // zoom-out flick — see _stretchGap above), the exposed area would
+          // show the sky until the rebuild job (started above) catches up.
+          // It is filled from the ground memory instead: the ground there as
+          // it last looked, blurred (render_core.js).
           if (_stretchGap) {
-            ctx.fillStyle = '#2e501a';
-            ctx.fillRect(0, 0, W, H);     // still CSS px — transform not yet reset
+            bgMemFillGap(ctx, _zoom, _rs, DW, DH, _destX, _destY,
+                         _destX + bgCache.width * _scale, _destY + bgCache.height * _scale);
           }
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           ctx.drawImage(bgCache, 0, 0, bgCache.width, bgCache.height, _destX, _destY, _destW, _destH);
