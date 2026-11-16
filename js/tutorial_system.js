@@ -371,7 +371,7 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isUnlocked(T.LAMP),
       steps: [
         {
-          text: "You've unlocked Street Lamp!\n\nJust like customers, your properties will sometimes request an amenity like a Street Lamp or Security Camera; keep an eye on your notifications.\n\nThe amenity must be placed within a few tiles of the building that requested it, and it'll boost satisfaction for everyone nearby.",
+          text: "You've unlocked Street Lamp!\n\nJust like customers, your properties will sometimes request an amenity like a Street Lamp or Security Camera; keep an eye on your notifications.\n\nThe amenity must be placed right next to the building that requested it (within 1 tile), and it'll boost satisfaction for everyone nearby.",
           manual: true,
           highlight: T.LAMP,
         },

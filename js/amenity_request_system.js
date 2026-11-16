@@ -41,7 +41,9 @@ const AmenityRequestSystem = (() => {
   const DRAIN_RATE     = 0.15; // satisfaction/s during penalty phase
   const FULFIL_BOOST   = 15;   // satisfaction on fulfillment
   const EXPIRY_HIT     = 5;    // one-time satisfaction penalty on expiry
-  const FULFIL_RADIUS  = 3;    // tiles from any footprint edge
+  // Tiles from the requesting property's footprint, counted square (a
+  // diagonal neighbour is 1 away too): 1 = the ring of tiles touching it.
+  const FULFIL_RADIUS  = 1;
   const MAX_ACTIVE     = 1;    // max 1 active amenity request at a time
   const MIN_GLOBAL_GAP = 444;  // minimum ~7.4 min between any two requests firing (46% slower)
   const GAP_SCALE_PER_CUSTOMER = 60; // each customer building beyond the first 5 stretches the global gap by this many seconds, so requests don't bunch up as the city grows
@@ -58,12 +60,14 @@ const AmenityRequestSystem = (() => {
   }
 
   function distToEntity(col, row, e) {
-    // Min distance from (col,row) to any tile of entity footprint
+    // Min distance from (col,row) to any tile of entity footprint, in whole
+    // tiles counted square (Chebyshev), so the area is the band of tiles
+    // around the footprint the request marker draws.
     const ew = e.width  || 1, eh = e.height || 1;
     let minD = Infinity;
     for (let dr = 0; dr < eh; dr++)
       for (let dc = 0; dc < ew; dc++)
-        minD = Math.min(minD, Math.sqrt((col - (e.col+dc))**2 + (row - (e.row+dr))**2));
+        minD = Math.min(minD, Math.max(Math.abs(col - (e.col+dc)), Math.abs(row - (e.row+dr))));
     return minD;
   }
 

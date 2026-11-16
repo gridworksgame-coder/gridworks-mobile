@@ -2854,7 +2854,7 @@ function _drawAmenityRequestMarkers(ctx, t) {
     // ── Where it can go: tiles within the fulfil radius ──────────────
     const pad = Rt * TILE + TILE * 0.5;
     ctx.beginPath();
-    ctx.roundRect(x0 - pad, y0 - pad, ew + pad * 2, eh + pad * 2, pad);
+    ctx.roundRect(x0 - pad, y0 - pad, ew + pad * 2, eh + pad * 2, Math.min(pad, TILE * 0.35));   // square band (distance is counted square)
     ctx.fillStyle = `rgba(${rgb},${0.06 + 0.04 * pulse})`;
     ctx.fill();
     ctx.setLineDash([8 * inv, 6 * inv]);
