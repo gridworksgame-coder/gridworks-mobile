@@ -808,20 +808,31 @@ const FishingSystem = (() => {
     ctx.beginPath(); ctx.roundRect(trackX, trackY, trackW, trackH, 6); ctx.stroke();
     ctx.fillStyle = 'rgba(10,20,20,0.5)'; ctx.fill();
 
-    // Escape meter: the track glows red as escapeT builds (out of the zone),
-    // deeper and pulsing faster near ESCAPE_TIME, and fades as it drains.
+    // Escape meter: the track glows red as escapeT builds (out of the zone)
+    // and breathes, fading smoothly in and out from almost dark to full,
+    // deeper and a little quicker as it nears ESCAPE_TIME. The breath's
+    // phase is accumulated (not read off the clock with a changing period),
+    // so it never jumps, and it starts from dark each time, so the red fades
+    // in rather than popping on.
     const esc = Math.min(1, escapeT / ESCAPE_TIME);
+    const nowMs = performance.now();
+    const gdt = Math.min(0.1, (nowMs - (_glowLast || nowMs)) / 1000);
+    _glowLast = nowMs;
     if (esc > 0.01) {
-      const pulse = 0.7 + 0.3 * Math.sin(performance.now() / (260 - 190 * esc));
+      _glowPhase += gdt * Math.PI * 2 * (0.55 + 0.75 * esc);   // ~0.55 → 1.3 breaths a second
+      const breath = 0.5 - 0.5 * Math.cos(_glowPhase);           // 0 → 1 → 0, eased at both ends
+      const lvl = esc * (0.15 + 0.85 * breath);
       ctx.save();
-      ctx.shadowColor = `rgba(255,40,30,${(0.95 * esc).toFixed(3)})`;
-      ctx.shadowBlur = 4 + 22 * esc * pulse;
-      ctx.strokeStyle = `rgba(255,${Math.round(130 - 100 * esc)},${Math.round(100 - 80 * esc)},${(0.3 + 0.7 * esc).toFixed(3)})`;
+      ctx.shadowColor = `rgba(255,40,30,${(0.95 * lvl).toFixed(3)})`;
+      ctx.shadowBlur = 4 + 24 * lvl;
+      ctx.strokeStyle = `rgba(255,${Math.round(130 - 100 * esc)},${Math.round(100 - 80 * esc)},${(0.2 + 0.8 * lvl).toFixed(3)})`;
       ctx.lineWidth = 2 + 2.5 * esc;
       ctx.beginPath(); ctx.roundRect(trackX, trackY, trackW, trackH, 6); ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = `rgba(255,30,20,${(0.32 * esc * pulse).toFixed(3)})`; ctx.fill();
+      ctx.fillStyle = `rgba(255,30,20,${(0.36 * lvl).toFixed(3)})`; ctx.fill();
       ctx.restore();
+    } else {
+      _glowPhase = 0;   // the next time it builds, it fades in from dark
     }
 
     // Target zone
@@ -1486,6 +1497,7 @@ const FishingSystem = (() => {
   // resetting it. The track glows red with it (_drawMinigame).
   const ESCAPE_TIME = 5;
   let escapeT = 0;
+  let _glowPhase = 0, _glowLast = 0;   // the red glow's breathing (_drawMinigame)
   function _fightTick(dt) {
     const style = (TRAITS[currentFish.icon] || {}).fight || 'calm';
     const d = currentFish.difficulty;
