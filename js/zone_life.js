@@ -33,6 +33,32 @@ const ZoneLife = (() => {
   // them are out at all.
   let _budget = 0, _density = 1;
 
+  // Residents out walking, matched to how many people actually live here.
+  // A residential zone's figures used to come from its sidewalk length alone
+  // (Z.peds per route tile, plus groups), so a big neighbourhood with a dozen
+  // residents showed forty people. Now the zone shows at most RESIDENT_OUT
+  // people per resident (houses' _population) at full activity: residents
+  // plus friends and visitors, so 12 residents shows up to about 23. Each figure
+  // and group slot is kept only within that share. The subset is stable
+  // (hashed per slot), so as the population grows more people appear without
+  // the ones already out flickering. Checked about once a second.
+  const RESIDENT_OUT = 1.9;
+  let _resShare = 1, _resAt = -1e9;
+  function _residentShare(rects, t) {
+    if (Math.abs(t - _resAt) < 1) return _resShare;
+    _resAt = t;
+    let pop = 0;
+    for (const e of EntityRegistry.getByType(T.HOUSE)) if (e.fromRequest) pop += e._population || 0;
+    const Z = ZONES.residential;
+    let tiles = 0;
+    for (const rect of rects) for (const run of _runsFor(_zoneGroundPlan('residential', rect))) tiles += run.b - run.a + 1;
+    // What the zone would show at full activity: walkers, plus groups of
+    // two or three on about one stretch in four.
+    const capacity = tiles * Z.peds + (tiles / 4) * Z.groups * 2.5;
+    _resShare = capacity > 0 ? Math.max(0, Math.min(1, (pop * RESIDENT_OUT) / capacity)) : 1;
+    return _resShare;
+  }
+
   function _hash(a, b) {
     let h = (a * 374761393 + b * 668265263) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -1700,6 +1726,7 @@ const ZoneLife = (() => {
       const activity = Z.activity(hr);
       const wx = _hardy(key) ? 0.5 + 0.5 * _wx : _wx;
       const pedAct = activity * wx;
+      const share = key === 'residential' ? _residentShare(rects, t) : 1;   // see RESIDENT_OUT
       _excludeLaterZones(zi, rects, vx0, vy0, vx1, vy1);
       for (const rect of rects) {
         if (_budget <= 0) break;
@@ -1742,6 +1769,7 @@ const ZoneLife = (() => {
               const n = Math.floor(tt / P), u = tt / P - n;
               const gk = gs * 977 + n;
               if (_hash(gk, 23) > Z.groups * activity * wx * wx) continue;
+              if (share < 1 && _hash(gs, 32) >= share) continue;
               const ga = Math.max(0, Math.min(1, u * P / 2.5, (1 - u) * P / 2.5));
               if (ga <= 0) continue;
               const s = (j + 0.2 + 0.6 * _hash(gk, 24)) / slots * D;
@@ -1760,6 +1788,7 @@ const ZoneLife = (() => {
           const pedMax = Math.floor(lenT * Z.peds + _hash(run.id, 7));
           for (let i = 0; i < pedMax; i++) {
             const pk = run.id * 53 + i;
+            if (share < 1 && _hash(pk, 31) >= share) continue;
             const kind = pickKind(Z.pedKinds, _hash(pk, 2));
             // Guards keep their rounds whatever the weather. Anyone near the
             // cut-off fades as it moves (weather turning, the hour changing).
