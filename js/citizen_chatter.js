@@ -1087,6 +1087,14 @@ const CitizenChatter = (() => {
     ctx.save();
     // Sizes 15% under the first cut (12 px text, 190 px wide).
     ctx.font = '600 10.2px Inter, Arial, sans-serif';
+    // Every text setting stated here, before measuring: whatever drew last
+    // (a banner, a label) may have left the alignment centred or spacing on,
+    // which drew the text off to one side of the bubble it was measured for.
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.direction = 'ltr';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+    if ('wordSpacing' in ctx) ctx.wordSpacing = '0px';
     const lines = _wrap(ctx, b.text, 162);
     const lh = 12.75, padX = 8.5, padY = 6;
     let tw = 0; for (const l of lines) tw = Math.max(tw, ctx.measureText(l).width);
@@ -1095,8 +1103,8 @@ const CitizenChatter = (() => {
     ctx.globalAlpha = alpha;
     // A little see-through, so the street shows faintly behind it; a lighter
     // shadow, as it now shows through the fill too.
-    ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
-    ctx.fillStyle = 'rgba(252,253,255,0.8)';
+    ctx.shadowColor = 'rgba(0,0,0,0.17)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 2;
+    ctx.fillStyle = 'rgba(252,253,255,0.68)';   // the bubble only; the text stays solid
     ctx.beginPath();
     ctx.roundRect(bx, by, bw, bh, 7.5);
     // Tail toward whoever is speaking.
