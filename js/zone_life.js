@@ -32,7 +32,8 @@ const ZoneLife = (() => {
   // level: how many figures may still be drawn this frame, and what share of
   // them are out at all.
   let _budget = 0, _density = 1;
-  // The people drawn last frame, { id, x, y, zone, standing }, in world px:
+  // The people drawn last frame, { id, x, y, zone, standing }, in world px
+  // (a standing group also has its kind, `group`, and `horiz`, its run's way):
   // a person is only a function of the clock, so this is how anything else
   // (CitizenChatter's speech bubbles) finds one and follows them. id is
   // stable for one walk along one run (or one group's stay).
@@ -1788,7 +1789,7 @@ const ZoneLife = (() => {
               if (_excl.length && _inExcl(gx, gy)) continue;
               _budget -= 3;
               _enq(2, gx, gy + 3, gkind, 0, run.horiz, gk, ga, Z);
-              if (_peopleNext.length < PEOPLE_MAX && ga > 0.9) _peopleNext.push({ id: 'g' + gk, x: gx, y: gy, zone: key, standing: true });
+              if (_peopleNext.length < PEOPLE_MAX && ga > 0.9) _peopleNext.push({ id: 'g' + gk, x: gx, y: gy, zone: key, standing: true, group: gkind, horiz: run.horiz });
             }
           }
 

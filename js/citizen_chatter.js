@@ -15,6 +15,9 @@
    outage, about to leave, smog on the doorstep, delighted with its
    service), then the day's weather, the season, the hour, the Hyperion
    project, or just life in that kind of zone.
+
+   Now and then two people out in the zone talk to each other instead: a
+   short exchange of two or three lines, taking turns (DIALOGUES).
    ═══════════════════════════════════════════════════════════════════ */
 const CitizenChatter = (() => {
   const KEY = 'gw_citizen_chatter';
@@ -899,6 +902,195 @@ const CitizenChatter = (() => {
     return (typeof EntityDefs !== 'undefined' && EntityDefs[e.type]?.label) || 'building';
   }
 
+  // ── Short dialogues ────────────────────────────────────────────────
+  // Now and then two people out in the zone talk to each other: a group
+  // standing chatting (or a works crew on their break) takes turns, or two
+  // people passing close by. Each exchange is two or three lines, said one
+  // after the other, alternating speakers. By zone, then situation (the same
+  // ones the single lines use); {city}, {co} and {name} as there.
+  const DIALOGUE_CHANCE = 0.35;      // of what's said, when there's a pair to say it
+  const DIALOGUE_PAIR = 3 * TILE;    // two walkers this close (world px) can talk
+  const DIALOGUES = {
+    residential: {
+      flavour: [
+        ["Morning! Off anywhere nice?", "Just the shops. Living the dream."],
+        ["How's the new baby?", "Loud. Very, very loud."],
+        ["Your hedge looks sharp.", "Took me all Sunday!"],
+        ["Heard about number twelve?", "No, what?", "New car. Electric, of course."],
+        ["Your dog was in my garden again.", "He likes you!", "He likes my roses."],
+        ["Bin day tomorrow?", "Thursday. It's always Thursday."],
+        ["Barbecue Saturday?", "Only if you're cooking."],
+        ["Kids behaving?", "Define behaving."],
+        ["You're up early.", "Never went to bed. Teething."],
+        ["Seen my cat?", "Ginger one? On your roof."],
+        ["Lovely day for it.", "For what?", "Anything, really."],
+        ["Book club Thursday?", "Did anyone read it?", "Not a soul."],
+        ["New bike?", "Birthday present. To myself."],
+        ["Borrow your ladder?", "You've still got my drill."],
+      ],
+      outage: [
+        ["Your lights out too?", "Whole street, I think.", "Brilliant."],
+        ["Got any candles spare?", "Only birthday ones.", "They'll do."],
+        ["Power's off again.", "Called {co}?", "On hold. Forty minutes."],
+        ["Freezer's defrosting.", "Ice cream party, then?"],
+        ["Wi-Fi's down.", "So we talk to each other now?", "Apparently."],
+      ],
+      smog: [
+        ["Can you smell that?", "The plant again.", "Every single day."],
+        ["Washing's grey again.", "Bring it in. Mine's ruined too."],
+        ["Kids playing out today?", "Not in this air."],
+      ],
+      happy: [
+        ["Lights never flicker anymore.", "Touch wood!"],
+        ["Bills went down this month.", "Mine too! Who do we thank?", "{co}, apparently."],
+        ["Love this street.", "Best in {city}. Don't tell anyone."],
+      ],
+      night: [
+        ["Bit late for a walk?", "Couldn't sleep.", "Me neither."],
+        ["Look at the stars tonight.", "Is that a planet?", "Or a plane."],
+      ],
+      weather: {
+        rain:  [["Forgot your umbrella?", "Didn't think I'd need it."], ["Wet enough for you?", "The ducks are loving it."]],
+        heat:  [["Hot enough for you?", "I'm actually melting."], ["Paddling pool's out.", "Room for one more?"]],
+        cold:  [["Freezing, isn't it?", "Pipes'll go if this keeps up."], ["Three coats?", "And I'm still cold."]],
+        snow:  [["Snowball fight later?", "You're on."], ["Shovelled your drive?", "Did yours too. By mistake."]],
+        storm: [["Hear that thunder?", "Shook the windows!"], ["Bins are blowing away!", "Grab yours, I'll grab mine!"]],
+        fog:   [["Can't see a thing.", "Hello? Who's there?", "It's me. Next door."]],
+      },
+      hyperion: [
+        ["Seen Hyperion on the news?", "The kids won't stop talking about it."],
+        ["Proud of that station.", "We all are."],
+      ],
+    },
+    commercial: {
+      flavour: [
+        ["Busy today?", "Run off our feet!"],
+        ["Got this a size up?", "Let me check the back."],
+        ["Card or cash?", "Card. Who has cash?"],
+        ["Coffee?", "Large. Rough morning."],
+        ["Is this on sale?", "Everything's on sale today!"],
+        ["Lunch?", "That new place on the corner?", "Go on, then."],
+        ["Window display looks great.", "Took me all night!"],
+        ["Want the receipt emailed?", "Paper, please.", "Old school. I like it."],
+        ["Got a minute for a survey?", "Not really.", "Fair enough."],
+        ["Just browsing.", "Take your time!"],
+      ],
+      outage: [
+        ["Till's dead.", "Card machine too.", "Cash only, then!"],
+        ["Freezers are off!", "Sell the ice cream. Quick."],
+        ["Lights are out!", "Candlelit shopping. Very fancy."],
+      ],
+      smog: [["Customers are coughing.", "Close the doors, then."]],
+      happy: [["Record week!", "Drinks are on me."]],
+      night: [["Closing up?", "Five more minutes.", "You said that an hour ago."]],
+      weather: {
+        rain:  [["Umbrellas are flying off the shelves.", "Put the price up!"]],
+        heat:  [["Out of ice cream!", "Already? It's ten a.m."]],
+        cold:  [["Hot chocolate, two please.", "Make it three, I'm frozen."]],
+        snow:  [["Nobody's out shopping.", "Except us. Lucky us."]],
+        storm: [["Our sign just blew down the street.", "I'll chase it."]],
+        fog:   [["Anyone out there?", "Just me. Are you open?"]],
+      },
+      hyperion: [["Selling Hyperion mugs now.", "Do they sell?", "Like hot cakes."]],
+    },
+    industrial: {
+      flavour: [
+        ["Tea break?", "Thought you'd never ask."],
+        ["Who's on nights?", "You are.", "Brilliant."],
+        ["Pass the spanner.", "Which one?", "The big one."],
+        ["Forklift's beeping again.", "It's always beeping."],
+        ["Boss is coming!", "Look busy!"],
+        ["Shift's over in ten.", "Longest ten minutes of my life."],
+        ["Hard hat.", "Right, yeah. Cheers."],
+        ["Order's due Friday.", "Friday?! We'll never make it.", "We always say that."],
+      ],
+      outage: [
+        ["Line's stopped.", "Power again?", "Power again."],
+        ["Machines are dead.", "Paid to stand around, then."],
+      ],
+      smog: [["Can't see the far gate.", "That's ours, that smoke."]],
+      happy: [["Not one stoppage all month.", "Steady power. Who knew?"]],
+      night: [["Night shift again?", "Third this week."]],
+      weather: {
+        rain:  [["Soaked through.", "Same. Tea?"]],
+        heat:  [["Like an oven in here.", "It IS an oven in here."]],
+        cold:  [["Gloves on, everyone.", "Can't feel my fingers anyway."]],
+        snow:  [["Trucks are stuck at the gate.", "Grab the grit."]],
+        storm: [["Crane's down for the storm.", "Good. I'm not going up there."]],
+        fog:   [["Watch the forklifts!", "Can't SEE the forklifts!"]],
+      },
+      hyperion: [["Our steel's in Hyperion.", "Tell the grandkids."]],
+    },
+    government: {
+      flavour: [
+        ["Signed the forms?", "In triplicate."],
+        ["Meeting at two?", "Moved to three.", "Of course it was."],
+        ["Seen the Mayor?", "In a meeting about meetings."],
+        ["Budget's due.", "Which one?", "All of them."],
+        ["Coffee machine's broken.", "This is a crisis."],
+        ["Lecture's cancelled!", "Best news all week."],
+        ["Got a pen?", "Council property. Sign for it."],
+      ],
+      outage: [
+        ["Servers are down.", "So's the power.", "So's my mood."],
+        ["Generator on?", "Trying!"],
+      ],
+      smog: [["More complaints about the air.", "Put them on the pile."]],
+      happy: [["Not one complaint about the power.", "Must be a first."]],
+      night: [["Working late?", "Council minutes. Again."]],
+      weather: {
+        rain:  [["Umbrella stand's full.", "Use the bin."]],
+        heat:  [["Is the AC on?", "It's on. It's losing."]],
+        cold:  [["Heating's broken.", "Coats on for the meeting, then."]],
+        snow:  [["Who's gritting the steps?", "That's your department."]],
+        storm: [["Close the windows!", "The minutes just blew away!"]],
+        fog:   [["Where's the town hall gone?", "Still there. Probably."]],
+      },
+      hyperion: [["Hyperion's put {city} on the map.", "Visitors are up threefold."]],
+    },
+    national: {
+      flavour: [
+        ["Minister wants a word.", "Which minister?", "All of them."],
+        ["Off the record?", "Always."],
+        ["Press are outside.", "Back door, then."],
+        ["Did the memo leak?", "Front page."],
+        ["Summit still on?", "Depends who you ask."],
+      ],
+      outage: [["The capital's dark!", "Get {co} on the phone. Now."]],
+      smog: [["The air's on the news.", "Minister's not pleased."]],
+      happy: [["Polls are up.", "Thank the grid."]],
+      night: [["Another all-nighter?", "Crisis meeting. Again."]],
+      weather: {
+        rain:  [["Press conference outside?", "In this rain? Inside."]],
+        heat:  [["Ties off?", "Minister says yes!"]],
+        cold:  [["The honour guard's frozen.", "Get them a flask."]],
+        snow:  [["Snowball fight?", "Not in front of the press."]],
+        storm: [["Flights grounded.", "Again."]],
+        fog:   [["Can't see the runway.", "Flights are holding."]],
+      },
+      hyperion: [["Hyperion's on every front page.", "Ours, finally."], ["Launch on schedule?", "To the second."]],
+    },
+  };
+  // After a strike, a fire or a blast nearby: res for homes, work for
+  // everywhere else (the national zone too).
+  const DIALOGUE_INCIDENT = {
+    strike: {
+      res:  [["Did lightning hit the {name}?", "Lit up the whole street!"], ["Hear that bang?", "That was the {name}. Struck."]],
+      work: [["Lightning got the {name}.", "Glad it wasn't us."], ["Was that the {name}?", "Struck. Crews are on the way."]],
+    },
+    fire: {
+      res:  [["Is that smoke from the {name}?", "Call the fire brigade!", "They're on their way."], ["Everyone out of the {name}?", "I think so. I hope so."]],
+      work: [["Fire at the {name}!", "Get everyone out the back!"], ["Is the {name} on fire?!", "Crews are on it."]],
+    },
+    blast: {
+      res:  [["Are you okay?", "I don't know.", "Me neither."], ["Heard from anyone at the {name}?", "Not yet. Nobody has."], ["Should we leave?", "Where would we even go?"]],
+      work: [["Is everyone safe?", "We're still counting."], ["Shut it all down.", "Already done."], ["Shut the shop?", "For today?", "For good, maybe."]],
+    },
+  };
+  // The weather events, as the dialogues group them.
+  const DIALOGUE_WX = { heatwave: 'heat', coldsnap: 'cold', icing: 'cold', snowfall: 'snow', blizzard: 'snow',
+                        rainstorm: 'rain', rainfall: 'rain', storm: 'storm', fog: 'fog' };
+
   // ── Who can speak ──────────────────────────────────────────────────
   const GOV_TYPES = ['TOWNHALL', 'CIVICCENTER', 'COURTHOUSE', 'EMS', 'HOSPITAL', 'UNIVERSITY', 'TRANSPORTHUB'];
   // The National Government Zone's landmarks: their own voice (LINES.national).
@@ -932,6 +1124,21 @@ const CitizenChatter = (() => {
       .replace(/\{name\}/g, name);
   }
 
+  // The worst incident within INCIDENT_RADIUS of e (then the nearest of
+  // those), or null.
+  function _nearIncident(e) {
+    let near = null, nd = INCIDENT_RADIUS * INCIDENT_RADIUS;
+    if (!_incidents.length) return null;
+    const cx = e.col + (e.width || 1) / 2, cy = e.row + (e.height || 1) / 2;
+    const rank = { blast: 3, fire: 2, strike: 1 };
+    for (const n of _incidents) {
+      if (n.e === e) continue;
+      const dx = n.e.col + (n.e.width || 1) / 2 - cx, dy = n.e.row + (n.e.height || 1) / 2 - cy, d = dx * dx + dy * dy;
+      if (d < INCIDENT_RADIUS * INCIDENT_RADIUS && (!near || rank[n.kind] > rank[near.kind] || (rank[n.kind] === rank[near.kind] && d < nd))) { near = n; nd = d; }
+    }
+    return near;
+  }
+
   // The situations a building could speak to right now, with weights. Its own
   // trouble outweighs everything else, so a dark street talks about the dark.
   function _situations(e, zone, asPerson) {
@@ -939,17 +1146,7 @@ const CitizenChatter = (() => {
     const add = (w, list, vars) => { if (list && list.length) out.push([w, list, vars]); };
     // Something terrible happened here or nearby: that's what they talk about.
     const own = null;   // a damaged or destroyed building never speaks itself (see _candidates)
-    let near = null, nd = INCIDENT_RADIUS * INCIDENT_RADIUS;
-    if (_incidents.length) {
-      const cx = e.col + (e.width || 1) / 2, cy = e.row + (e.height || 1) / 2;
-      for (const n of _incidents) {
-        if (n.e === e) continue;
-        const dx = n.e.col + (n.e.width || 1) / 2 - cx, dy = n.e.row + (n.e.height || 1) / 2 - cy, d = dx * dx + dy * dy;
-        // The worst thing nearby, then the nearest of those.
-        const rank = { blast: 3, fire: 2, strike: 1 };
-        if (d < INCIDENT_RADIUS * INCIDENT_RADIUS && (!near || rank[n.kind] > rank[near.kind] || (rank[n.kind] === rank[near.kind] && d < nd))) { near = n; nd = d; }
-      }
-    }
+    const near = _nearIncident(e);
     if (near) {
       const set = INCIDENT_LINES[near.kind];
       const pool = zone === 'residential' ? set.res : zone === 'national' ? (set.national || set.work) : set.work;
@@ -1032,6 +1229,94 @@ const CitizenChatter = (() => {
     return _fill(line, vars);
   }
 
+  // An exchange for two people on e's street, weighted like the single
+  // lines: trouble nearby first, then the weather, the hour, small talk.
+  function _chooseDialogue(e, zone) {
+    const D = DIALOGUES[zone];
+    if (!D) return null;
+    const sits = [];
+    const add = (w, list, vars) => { if (list && list.length) sits.push([w, list, vars]); };
+    const near = _nearIncident(e);
+    if (near) {
+      const set = DIALOGUE_INCIDENT[near.kind];
+      add(near.kind === 'blast' ? 16 : 10, zone === 'residential' ? set.res : set.work, { name: _nameOf(near.e) });
+    }
+    const dark = typeof OutageWatch !== 'undefined' && OutageWatch.isFlagged && OutageWatch.isFlagged(e);
+    if (dark || !e.powered) add(8, D.outage);
+    let smog = 0;
+    try { if (typeof PollutionSystem !== 'undefined') smog = PollutionSystem.exposureFor(e) || 0; } catch (_e) {}
+    if (smog > 25) add(4, D.smog);
+    if (!near && e.powered && !dark && (e.satisfaction ?? 0) >= 85) add(2, D.happy);
+    let ev = null;
+    try { ev = typeof WeatherEventSystem !== 'undefined' ? WeatherEventSystem.getActiveEvent() : null; } catch (_e) {}
+    if (ev && D.weather && DIALOGUE_WX[ev.type]) add(3.5, D.weather[DIALOGUE_WX[ev.type]]);
+    const h = typeof DayNight !== 'undefined' ? DayNight.hour() : 12;
+    if (h >= 22 || h < 5) add(1.4, D.night);
+    try {
+      if (!near && typeof NationalProject !== 'undefined') {
+        const v = NationalProject.visual();
+        if (v && (v.complete || v.final || v.exporting)) add(1.5, D.hyperion);
+      }
+    } catch (_e) {}
+    add(near ? 0.3 : 3, D.flavour);
+    let total = 0; for (const [w] of sits) total += w;
+    let r = Math.random() * total, list = sits[sits.length - 1][1], vars = sits[sits.length - 1][2];
+    for (const [w, l, v] of sits) { if ((r -= w) <= 0) { list = l; vars = v; break; } }
+    // Not one heard lately (known by its opening line).
+    let fresh = list.filter(x => !recent.includes(x[0]));
+    if (!fresh.length) {
+      for (const [, l, v] of sits) {
+        const f = l.filter(x => !recent.includes(x[0]));
+        if (f.length) { fresh = f; vars = v; break; }
+      }
+    }
+    if (!fresh.length) return null;   // all heard lately: a single line instead
+    const ex = pick(fresh);
+    recent.push(ex[0]); if (recent.length > RECENT_LINES) recent.shift();
+    return ex.map(s => _fill(s, vars));
+  }
+
+  // Two people on screen who could talk to each other, [a, b], or null: a
+  // group standing chatting (a = b: its members take turns), or two people
+  // of the same zone walking close by each other.
+  function _dialoguePair(folk) {
+    const pairs = [];
+    for (const p of folk) if (p.standing && (p.group === 'chat' || p.group === 'huddle')) pairs.push([p, p]);
+    const walkers = folk.filter(p => !p.standing);
+    for (let i = 0; i < walkers.length; i++) {
+      for (let j = i + 1; j < walkers.length; j++) {
+        const a = walkers[i], b = walkers[j];
+        if (a.zone === b.zone && Math.abs(a.x - b.x) < DIALOGUE_PAIR && Math.abs(a.y - b.y) < DIALOGUE_PAIR) pairs.push([a, b]);
+      }
+    }
+    return pairs.length ? pick(pairs) : null;
+  }
+
+  // Says an exchange between a and b: each line rises as the one before it
+  // fades, held long enough to read. False when there's nothing fresh to say.
+  function _startDialogue(a, b) {
+    const pz = _personZone(a);
+    const lines = _chooseDialogue(_proxyFor({ ...a, zone: pz }), pz);
+    if (!lines) return false;
+    let t = now();
+    lines.forEach((text, i) => {
+      const who = i % 2 ? b : a;
+      const read = Math.max(2.4, Math.min(3.6, 1.6 + text.length * 0.045));
+      const last = i === lines.length - 1;
+      const bub = { pid: who.id, zone: pz, x: who.x, y: who.y, standing: who.standing, text, born: t,
+                    life: last ? Math.max(3.2, read + 0.8) : read + 0.35 };
+      // A group: the bubble's tail on one member, then the other (ZoneLife
+      // stands a pair 3.6 px either side of the middle, along the route).
+      if (a === b) {
+        const off = (i % 2 ? 1 : -1) * 3.6;
+        if (who.horiz === false) bub.dy = off * 0.7; else bub.dx = off;
+      }
+      bubbles.push(bub);
+      t += read;
+    });
+    return true;
+  }
+
   // The part of the world on screen, well inside its edges, in world px.
   function _view() {
     const z = Camera.zoom, W = window.innerWidth, H = window.innerHeight;
@@ -1098,6 +1383,12 @@ const CitizenChatter = (() => {
   function _spawn() {
     const list = _candidates(), folk = _peopleOnScreen();
     if (!list.length && !folk.length) return;
+    // Sometimes two of them talk to each other (only with the screen clear:
+    // an exchange takes both places).
+    if (!bubbles.length && folk.length && Math.random() < DIALOGUE_CHANCE) {
+      const pair = _dialoguePair(folk);
+      if (pair && _startDialogue(pair[0], pair[1])) return;
+    }
     // About half of what's said comes from people out and about, when there
     // are any on screen.
     if (folk.length && (!list.length || Math.random() < 0.5)) {
@@ -1161,8 +1452,8 @@ const CitizenChatter = (() => {
     const e = b.e;
     // A building speaks from the middle of its top edge, a person from just
     // above their head (they are drawn about 9 px tall at zoom 1).
-    const ax = e ? (e.col + (e.width || 1) / 2) * TILE : b.x;
-    const ay = e ? e.row * TILE : b.y - 9;
+    const ax = e ? (e.col + (e.width || 1) / 2) * TILE : b.x + (b.dx || 0);
+    const ay = e ? e.row * TILE : b.y - 9 + (b.dy || 0);
     const sx = (ax - Camera.x) * z;
     const age = now() - b.born;
     const rise = Math.min(1, age / 0.5);
@@ -1220,7 +1511,7 @@ const CitizenChatter = (() => {
       const p = folk.find(q => q.id === b.pid);
       if (p) { b.x = p.x; b.y = p.y; }
       else if (!b.lostAt) b.lostAt = t;
-      if (t - b.born > LIFE || (b.lostAt && t - b.lostAt > 0.4)) bubbles.splice(i, 1);
+      if (t - b.born > (b.life || LIFE) || (b.lostAt && t - b.lostAt > 0.4)) bubbles.splice(i, 1);
     }
     const z = Camera.zoom;
     const zk = Math.max(0, Math.min(1, (z - CHAT_ZOOM) / (CHAT_ZOOM_FULL - CHAT_ZOOM)));
@@ -1236,9 +1527,10 @@ const CitizenChatter = (() => {
       if (bubbles.length < MAX_ON_SCREEN) _spawn();
       nextAt = t + GAP_MIN + Math.random() * (GAP_MAX - GAP_MIN);
     }
+    // (A dialogue's later lines wait their turn: born ahead, not drawn yet.)
     for (const b of bubbles) {
       const age = t - b.born;
-      const fade = Math.min(1, age / 0.35, (LIFE - age) / 0.6, b.lostAt ? 1 - (t - b.lostAt) / 0.4 : 1);
+      const fade = Math.min(1, age / 0.35, ((b.life || LIFE) - age) / 0.6, b.lostAt ? 1 - (t - b.lostAt) / 0.4 : 1);
       if (fade > 0) _draw(ctx, b, fade * zk);
     }
   }
@@ -1251,7 +1543,9 @@ const CitizenChatter = (() => {
 
   return { render, setEnabled, isEnabled: () => enabled, LINES,
     // Dev / tests: what is being said right now.
-    current: () => bubbles.map(b => ({ text: b.text, zone: b.zone, who: b.e ? 'building' : 'person' })),
+    current: () => bubbles.map(b => ({ text: b.text, zone: b.zone, who: b.e ? 'building' : 'person', in: +(b.born - now()).toFixed(1) })),
+    // Dev / tests: start an exchange between two people on screen now.
+    devDialogue: () => { const pr = _dialoguePair(_peopleOnScreen()); if (!pr) return null; bubbles.length = 0; return _startDialogue(pr[0], pr[1]); },
     news: () => _news.map(n => ({ kind: n.kind, type: n.e.type, building: n.doneAt === null })),
     // Dev / tests: what this building might say, and which news it would talk about.
     sample: (e, times = 1) => { const z = zoneOf(e); const out = []; for (let i = 0; i < times && z; i++) out.push(_chooseLine(e, z)); return { zone: z, news: _newsNear(e) ? _newsNear(e).kind : null, lines: out }; } };
