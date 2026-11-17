@@ -31,9 +31,6 @@ let _prevConveyorHighlighted = [];
 // building paints over a marker (same reason the fire/plume pass is
 // deferred). Reused between frames — never reallocated.
 let _outageMarked = [];
-// What the VIEW dropdown shows on the map (map_view.js). True when MapView
-// is missing, so a build without it draws everything.
-const _mv = id => typeof MapView === 'undefined' || MapView.show(id);
 
 // Marker over a building that has had no power for hours: a pulsing amber
 // dashed ring around its footprint and a struck-through plug badge in its
@@ -1651,8 +1648,7 @@ RenderSystem.render = function (t, inputState) {
         // ever compared with !==, so a composite key is fine.
         // ...and the season: the canopies painted into zone ground turn,
         // drop and regrow in a handful of steps (Seasons.foliageStep).
-        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep()
-          + (typeof MapView === 'undefined' || MapView.show('zones') ? '' : ':nozones');   // VIEW: zones hidden
+        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
         const _zoom = Camera.zoom;
 
         const ZOOM_SETTLE_MS = 160;
@@ -1933,7 +1929,7 @@ RenderSystem.render = function (t, inputState) {
       // 3b. Cold snap frost — subtle patchy ground whitening, drawn above
       // the ground/zone layer and below entities so buildings/wires read
       // clearly on top of it.
-      if (_mv('weather')) FrostSystem.render(ctx);
+      FrostSystem.render(ctx);
       if (typeof SnowTracks !== 'undefined') SnowTracks.render(ctx);   // wheel ruts the trucks leave in it
       // A job site's work zones: on the ground, over the snow (which used
       // to bury them) and under every entity, so the zone's blue colours
@@ -1942,7 +1938,7 @@ RenderSystem.render = function (t, inputState) {
       // Permanent nuclear blast scars — on the ground, under every entity.
       LightningDamageSystem.renderScars(ctx);
       // Rain puddles on open ground and roads (puddle_system.js), under every entity.
-      if (typeof PuddleSystem !== 'undefined' && _mv('weather')) PuddleSystem.render(ctx);
+      if (typeof PuddleSystem !== 'undefined') PuddleSystem.render(ctx);
 
 
       // 3c. Water base fill — batched into one Path2D + one fill() call for
@@ -1993,7 +1989,7 @@ RenderSystem.render = function (t, inputState) {
       // ground and under buildings, so a figure passing behind a sprite that
       // overhangs its footprint is tucked beneath it rather than on top.
       // Houses' garden paths onto the sidewalk go down first, under the people.
-      if (_mv('buildings')) renderHouseFrontWalks(cStart, cEnd, rStart, rEnd);
+      renderHouseFrontWalks(cStart, cEnd, rStart, rEnd);
       // People, vehicles and animals are gone wherever the apocalypse's front
       // has passed, and everywhere once it is over (ApocalypseSystem.clipLiving).
       ctx.save();
@@ -2025,7 +2021,7 @@ RenderSystem.render = function (t, inputState) {
       // overdraw ring (which exists for 13-tile buildings): a wire paints a
       // few px past its own tile, and a cable run into a building reaches at
       // most 2.5 tiles (WireReach).
-      if (_mv('poles')) renderWirePass(Math.max(cStart, vcS - 1), Math.min(cEnd, vcE + 1),
+      renderWirePass(Math.max(cStart, vcS - 1), Math.min(cEnd, vcE + 1),
                      Math.max(rStart, vrS - 1), Math.min(rEnd, vrE + 1), t);
       _entMs += performance.now() - _t0; }
 
@@ -2074,12 +2070,6 @@ RenderSystem.render = function (t, inputState) {
       const _bpRows = typeof BeltPipeRows === 'undefined' ? null
         : BeltPipeRows.begin(_worldM, cStart, cEnd, rStart, rEnd, viewC0, viewC1, viewR0, viewR1, t,
                              _prevPipeHighlighted.length > 0 || _prevConveyorHighlighted.length > 0);
-      // VIEW dropdown (MapView): which entity layers are hidden this frame.
-      // Null when nothing is, so the loop pays one check per entity at most.
-      const _mvOn = (typeof MapView !== 'undefined' && MapView.hiddenCount() > 0) ? {
-        buildings: MapView.show('buildings'), poles: MapView.show('poles'),
-        networks: MapView.show('networks'), vegetation: MapView.show('vegetation'),
-      } : null;
       for (let r = rStart; r < rEnd; r++) {
         for (let c = cStart; c < cEnd; c++) {
           const e = GridManager.getEntity(c, r);
@@ -2104,19 +2094,6 @@ RenderSystem.render = function (t, inputState) {
             const s = _cullSlack(et);
             if (c + (e.width || 1) + s <= viewC0 || c - s >= viewC1 ||
                 r + (e.height || 1) + s <= viewR0 || r - s >= viewR1) continue;
-          }
-          if (_mvOn !== null) {
-            const _lay = MapView.entityLayer(et);
-            if (_lay && !_mvOn[_lay]) {
-              // Hidden. A belt or pipe laid under it is its own layer, and
-              // still drawn when that layer is shown.
-              if (_mvOn.networks && _lay !== 'networks' && (e._underConveyor || e._underPipe)) {
-                const { x: ux, y: uy } = GridManager.tileToWorld(c, r);
-                if (e._underConveyor) { e._underConveyor.col = e.col; e._underConveyor.row = e.row; renderConveyor(e._underConveyor, ux, uy, t); }
-                if (e._underPipe)     { e._underPipe.col = e.col;     e._underPipe.row = e.row;     renderPipe(e._underPipe, ux, uy, t); }
-              }
-              continue;
-            }
           }
           const { x, y } = GridManager.tileToWorld(c, r);
           if (_bpRows !== null) {
@@ -2195,12 +2172,12 @@ RenderSystem.render = function (t, inputState) {
         if (_we.col + _we.width  < cStart || _we.col > cEnd) continue;
         if (_we.row + _we.height < rStart || _we.row > rEnd) continue;
         const { x: _wex, y: _wey } = GridManager.tileToWorld(_we.col, _we.row);
-        if (_mv('buildings')) renderWaterExtractorStub(_we, _wex, _wey, t);
+        renderWaterExtractorStub(_we, _wex, _wey, t);
       }
 
       // 5b0. Long-outage markers, over every building painted above.
       for (let _oi = 0; _oi < _outageMarked.length; _oi += 3) {
-        if (_mv('icons')) _drawOutageMark(_outageMarked[_oi], _outageMarked[_oi + 1], _outageMarked[_oi + 2], t);
+        _drawOutageMark(_outageMarked[_oi], _outageMarked[_oi + 1], _outageMarked[_oi + 2], t);
       }
       _outageMarked.length = 0;
 
@@ -2223,12 +2200,12 @@ RenderSystem.render = function (t, inputState) {
 
       // 5b'. Wire sockets — the plate where a cable enters a building, queued
       // by the wire pass but drawn now so the building doesn't paint over it.
-      if (_mv('poles')) _renderWireTerminals();
+      _renderWireTerminals();
       // Everything riding the belts — after every belt tile, so none paints
       // over an item crossing onto it (see belt_cargo_system.js).
-      if (_mv('networks')) BeltCargo.render(t);
+      BeltCargo.render(t);
       // Pipes crossing over belts, on top of the cargo passing under them.
-      if (typeof renderPipesOverBelts === 'function' && _mv('networks')) renderPipesOverBelts(t);
+      if (typeof renderPipesOverBelts === 'function') renderPipesOverBelts(t);
 
       if (typeof ContractSystem !== 'undefined') ContractSystem.renderGrade(ctx);
       if (typeof ScenarioSystem !== 'undefined' && ScenarioSystem.renderGrade) ScenarioSystem.renderGrade(ctx);   // a scenario's own climate
@@ -2240,29 +2217,27 @@ RenderSystem.render = function (t, inputState) {
       // plume on top of the finished scene.
       LightningDamageSystem.renderAllFires(ctx, t, cStart, cEnd, rStart, rEnd);
       // Cooling tower steam, deferred for the same reason (render_oil_nuclear.js).
-      if (_mv('buildings')) CoolingTowerPlume.renderAll(ctx, t, cStart, cEnd, rStart, rEnd);
+      CoolingTowerPlume.renderAll(ctx, t, cStart, cEnd, rStart, rEnd);
 
       // 5c2. Snow on roofs and lawns (weather_state.js): over the buildings,
       // under the smog, the weather and the night.
-      if (_mv('buildings') && _mv('weather')) BuildingSnow.render(ctx, cStart, cEnd, rStart, rEnd);
+      BuildingSnow.render(ctx, cStart, cEnd, rStart, rEnd);
       // 5c2b. A calendar event's bunting over the buildings taking part (seasonal_event_fx.js).
       if (typeof SeasonalEventFx !== 'undefined') SeasonalEventFx.renderDay(ctx, t, cStart, cEnd, rStart, rEnd);
 
       // 5c3. Cloud shadows (cloud_shadows.js): the sky's shade across the
       // ground and everything standing on it.
-      if (_mv('weather')) CloudShadows.render(ctx);
+      CloudShadows.render(ctx);
 
       // 5d. Smog haze over the finished scene (pollution_system.js).
       if (typeof PollutionSystem !== 'undefined') PollutionSystem.render(ctx);
 
       // 5e. Heat wave: warm wash and shimmer over the finished scene (weather_state.js).
-      if (_mv('weather')) {   // VIEW: weather hidden takes every haze with it
       HeatSystem.render(ctx, t);
       DustSystem.render(ctx, t);   // a dust storm's haze and billows
       FogSystem.render(ctx, t);    // and fog
       SmokeSystem.render(ctx, t);  // and wildfire smoke
       FrostSystem.renderWash(ctx);   // and winter's cold one
-      }
 
       // 5f. Butterflies and dragonflies low over the ground (small_fliers.js),
       // then the odd flock of birds passing over (weather_state.js).
@@ -2619,7 +2594,7 @@ RenderSystem.render = function (t, inputState) {
       // Lightning strikes land in world space so a bolt hitting a building
       // the player happens to be looking at is drawn on that building.
       // Must stay inside the camera transform (above resetTransform).
-      if (_mv('weather')) LightningDamageSystem.renderStrikes(ctx, t);
+      LightningDamageSystem.renderStrikes(ctx, t);
       // Meltdown danger zones + countdowns over critical generators.
       MeltdownSystem.render(ctx, t);
       // Shock front, fallout haze and per-building fireballs — world space,
@@ -2646,17 +2621,15 @@ RenderSystem.render = function (t, inputState) {
       // 8b. Placement option pins (A / B / C) and amenity request markers —
       // above the night overlay.
       Camera.applyTransform(ctx);
-      if (_mv('buildings') && _mv('zones')) ZoneLights.render(ctx, dark, cStart, cEnd, rStart, rEnd);   // zone street, porch, shop and yard lights
-      if (typeof renderUnpoweredPolesNight === 'function' && _mv('poles')) renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // dead poles outlined over the dark
-      if (_mv('buildings')) SiteYard.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // plant yard floodlights (render_site_yard.js)
+      ZoneLights.render(ctx, dark, cStart, cEnd, rStart, rEnd);   // zone street, porch, shop and yard lights
+      if (typeof renderUnpoweredPolesNight === 'function') renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // dead poles outlined over the dark
+      SiteYard.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // plant yard floodlights (render_site_yard.js)
       if (typeof SeasonalEventFx !== 'undefined') SeasonalEventFx.renderNight(ctx, dark, t, cStart, cEnd, rStart, rEnd);   // festival lights, stage beams, pledge markers
       if (typeof SmallFliers !== 'undefined') SmallFliers.renderNight(ctx);   // fireflies glowing, bats against the dusk
       if (typeof ContractSystem !== 'undefined') ContractSystem.renderLabels(ctx);   // job-site zone names
-      if (_mv('icons')) {   // VIEW: status icons
       _drawAllPlacementPins();
       _drawAmenityRequestMarkers(ctx, t);
       _drawZoneRequestMarkers(ctx, t);
-      }
       WorldBackdrop.renderLights(ctx, t);   // neighbouring towns after dark
       AuroraSystem.renderSparks(ctx, t, cStart, cEnd, rStart, rEnd);   // a geomagnetic storm arcing across substations
       Camera.resetTransform(ctx);
@@ -2716,10 +2689,10 @@ RenderSystem.render = function (t, inputState) {
       // Gone where the apocalypse's front has passed, like the people.
       if (typeof renderDroneFleets === 'function') {
         ctx.save();
-        if (typeof ApocalypseSystem === 'undefined' || ApocalypseSystem.clipLiving(ctx)) { if (_mv('drones')) renderDroneFleets(t); }
+        if (typeof ApocalypseSystem === 'undefined' || ApocalypseSystem.clipLiving(ctx)) renderDroneFleets(t);
         ctx.restore();
       }
-      if (typeof renderMeridianLines === 'function' && _mv('buildings')) renderMeridianLines(t);     // Hyperion's national lines, off past the station's edge
+      if (typeof renderMeridianLines === 'function') renderMeridianLines(t);     // Hyperion's national lines, off past the station's edge
       if (typeof renderAirportFlights === 'function') renderAirportFlights(t);   // airliner climb-out over the city
       if (typeof renderSpaceLaunches === 'function') renderSpaceLaunches(t);     // a rocket climbing out from the launch complex
 
@@ -2742,7 +2715,7 @@ RenderSystem.render = function (t, inputState) {
         const _tsy = (_twy - Camera.y) * Camera.zoom;
         const _tMargin = TILE * 3 * Camera.zoom + 40;
         const _truckOnScreen = _tsx > -_tMargin && _tsx < W + _tMargin && _tsy > -_tMargin && _tsy < H + _tMargin;
-        if (_truckOnScreen && _mv('trucks')) TruckSystem.renderTruck(ctx, Camera, _trk, t);
+        if (_truckOnScreen) TruckSystem.renderTruck(ctx, Camera, _trk, t);
         // Draw patrol path if truck has one — but only while a truck panel
         // is actually open (the global roster, or this specific truck's
         // own edit panel). Otherwise the dashed line + numbered waypoints

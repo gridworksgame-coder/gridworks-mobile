@@ -179,7 +179,6 @@ buildHotbar();
 const TOP_PANELS = [
   { panel: 'grid-panel',        btn: 'grid-tab-btn',    cls: 'open' },
   { panel: 'weather-panel',     btn: 'weather-tab-btn', cls: 'open' },
-  { panel: 'view-panel',        btn: 'view-tab-btn',    cls: 'open' },
   { panel: 'progress-tracker',  btn: 'btn-progress',    cls: 'visible' },
   { panel: 'population-panel',  btn: null,              cls: 'visible' },
   { panel: 'income-breakdown',  btn: null,              cls: 'visible' },
@@ -306,68 +305,6 @@ for (const id of GRID_LISTS) {
     if (open) {
       const r = btn.getBoundingClientRect();
       panel.style.left = r.left + 'px';
-      panel.style.top  = (r.bottom + 4) + 'px';
-      panel.style.right = 'auto';
-      SFX.popup();
-    }
-  });
-}
-
-// VIEW tab: what is shown on the map (MapView, map_view.js). One switch a
-// layer; the tab shows how many are hidden, so a hidden layer is never
-// mistaken for something missing from the city.
-{
-  const btn   = document.getElementById('view-tab-btn');
-  const panel = document.getElementById('view-panel');
-  const rows  = document.getElementById('view-rows');
-  const all   = document.getElementById('view-show-all');
-  const count = document.getElementById('view-tab-count');
-  const P = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
-  const ICONS = {
-    buildings:  `<path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-5h6v5M9 11h.01M15 11h.01"/>`,
-    zones:      `<rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1" stroke-dasharray="2 2"/>`,
-    poles:      `<path d="M12 2v20M7 22h10M5 6h14M7 10h10M5 6l2 4M19 6l-2 4"/>`,
-    networks:   `<path d="M3 8h8a3 3 0 0 1 3 3v2a3 3 0 0 0 3 3h4M3 5v6M21 13v6"/>`,
-    vegetation: `<path d="M12 22v-6M12 16l-5 0 5-7-3 0 3-6 3 6-3 0 5 7z"/>`,
-    trucks:     `<path d="M2 6h11v10H2zM13 10h4l4 3v3h-8"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>`,
-    drones:     `<circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><path d="M7 7l3 3M17 7l-3 3M7 17l3-3M17 17l-3-3"/><rect x="10" y="10" width="4" height="4" rx="1"/>`,
-    weather:    `<path d="M7 15a4 4 0 1 1 .8-7.9A5 5 0 0 1 17.5 9 3.5 3.5 0 0 1 17 16H7z"/><path d="M8 19l-1 2M12 19l-1 2M16 19l-1 2"/>`,
-    icons:      `<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17h.01"/>`,
-  };
-  rows.innerHTML = MapView.LAYERS.map(l =>
-    `<button class="vp-row" data-layer="${l.id}" role="switch">
-       <svg viewBox="0 0 24 24" ${P}>${ICONS[l.id] || ''}</svg>
-       <span class="vp-label">${l.label}</span><span class="vp-switch"></span>
-     </button>`).join('');
-  function refresh() {
-    for (const r of rows.querySelectorAll('.vp-row')) {
-      const on = MapView.show(r.dataset.layer);
-      r.classList.toggle('off', !on);
-      r.setAttribute('aria-checked', on ? 'true' : 'false');
-    }
-    const n = MapView.hiddenCount();
-    btn.classList.toggle('has-hidden', n > 0);
-    count.textContent = n ? String(n) : '';
-    btn.title = n ? `${n} map layer${n > 1 ? 's' : ''} hidden` : 'Choose what is shown on the map';
-    all.disabled = n === 0;
-  }
-  rows.addEventListener('click', e => {
-    const r = e.target.closest('.vp-row');
-    if (!r) return;
-    SFX.click();
-    MapView.toggle(r.dataset.layer);
-  });
-  all.addEventListener('click', () => { SFX.click(); MapView.showAll(); });
-  MapView.onChange(refresh);
-  refresh();
-  btn.addEventListener('click', () => {
-    SFX.click();
-    closeOtherTopPanels('view-panel');
-    const open = panel.classList.toggle('open');
-    btn.classList.toggle('open', open);
-    if (open) {
-      const r = btn.getBoundingClientRect();
-      panel.style.left = Math.min(r.left, window.innerWidth - panel.offsetWidth - 8) + 'px';
       panel.style.top  = (r.bottom + 4) + 'px';
       panel.style.right = 'auto';
       SFX.popup();
