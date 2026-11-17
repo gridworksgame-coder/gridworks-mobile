@@ -162,6 +162,11 @@ const WorldMapSystem = (() => {
     : _layer('Buildings');
   // The VIEW dropdown: open or not, and last frame's hit rects.
   let _viewOpen = false, _viewBtn = null, _viewPanel = null, _viewAll = null;
+  // Clicks on the dropdown are the dropdown's own: until this time a double
+  // click is not the map's (fast travel), so two quick clicks on a switch, or
+  // on the button, never send the camera to the map under it.
+  let _viewEatUntil = 0;
+  const _overView = (x, y) => _inRect(_viewBtn, x, y) || (_viewOpen && _inRect(_viewPanel, x, y));
   let _rodCanvas = null;       // scratch layer for the rod coverage outline
 
   // ── Colours ───────────────────────────────────────────────────────
@@ -722,9 +727,9 @@ const WorldMapSystem = (() => {
         break;
       }
     }
-    // Legend rows are clickable, so they get the hand.
+    // Legend rows and the VIEW dropdown are clickable, so they get the hand.
     if (!_dragging) {
-      const cur = _legendHover && !_plainRow(_legendHover) ? 'pointer' : 'crosshair';
+      const cur = (_legendHover && !_plainRow(_legendHover)) || _overView(_mouseSX, _mouseSY) ? 'pointer' : 'crosshair';
       if (_overlay.style.cursor !== cur) _overlay.style.cursor = cur;
     }
 
@@ -1102,7 +1107,7 @@ const WorldMapSystem = (() => {
     _ctx.restore();
 
     // ── Hover tooltip (entity name under cursor) ────────────────────
-    if (_hoverInfo) _drawHoverTooltip(_hoverInfo);
+    if (_hoverInfo && !_overView(_mouseSX, _mouseSY)) _drawHoverTooltip(_hoverInfo);
   }
 
   // Placing a Drone Port from the map: true while that tool is selected.
@@ -2654,6 +2659,7 @@ const WorldMapSystem = (() => {
       // ── Scroll wheel → zoom ───────────────────────────────────────
       _overlay.addEventListener('wheel', ev => {
         ev.preventDefault();
+        if (_overView(ev.clientX, ev.clientY)) return;   // over the VIEW dropdown
         // Over the legend: scroll the list instead of zooming the map.
         if (_inLegend(ev.clientX, ev.clientY)) {
           if (_legendPanel.maxScroll > 0) {
@@ -2674,12 +2680,14 @@ const WorldMapSystem = (() => {
         // The VIEW dropdown: its button opens and shuts it; while it is open a
         // click on a switch flips it, and a click anywhere else only shuts it.
         if (_inRect(_viewBtn, ev.clientX, ev.clientY)) {
+          _viewEatUntil = performance.now() + 600;
           _viewOpen = !_viewOpen;
           try { if (typeof SFX !== 'undefined') SFX.click(); } catch (err) {}
           ev.preventDefault();
           return;
         }
         if (_viewOpen) {
+          _viewEatUntil = performance.now() + 600;
           ev.preventDefault();
           if (_inRect(_viewAll, ev.clientX, ev.clientY)) {
             for (const t of _overlayToggles) if (t.group === 'layer' && !t.on) {
@@ -2781,6 +2789,7 @@ const WorldMapSystem = (() => {
       // ── Double-click → fast travel ───────────────────────────────
       _overlay.addEventListener('dblclick', ev => {
         ev.preventDefault();
+        if (performance.now() < _viewEatUntil || _overView(ev.clientX, ev.clientY)) return;   // the VIEW dropdown's
         if (_inLegend(ev.clientX, ev.clientY)) {
           // Travel to the one thing a row stands for. A row for several only
           // opens its list (its two clicks shut it again): the travelling is
