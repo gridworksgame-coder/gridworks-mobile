@@ -32,6 +32,12 @@ const ZoneLife = (() => {
   // level: how many figures may still be drawn this frame, and what share of
   // them are out at all.
   let _budget = 0, _density = 1;
+  // The people drawn last frame, { id, x, y, zone, standing }, in world px:
+  // a person is only a function of the clock, so this is how anything else
+  // (CitizenChatter's speech bubbles) finds one and follows them. id is
+  // stable for one walk along one run (or one group's stay).
+  let _people = [], _peopleNext = [], _peopleT = -1;
+  const PEOPLE_MAX = 400;
 
   // Residents out walking, matched to how many people actually live here.
   // A residential zone's figures used to come from its sidewalk length alone
@@ -1685,6 +1691,7 @@ const ZoneLife = (() => {
   }
 
   function render(ctx, t, cStart, cEnd, rStart, rEnd) {
+    _people = _peopleNext; _peopleNext = []; _peopleT = performance.now();
     if (typeof _zoneGroundPlan !== 'function' || typeof ZoneSystem === 'undefined') return;
     // Graphics quality (gfx_quality.js). Medium draws exactly what high does,
     // under a tighter per-frame figure budget (only reached with a very busy
@@ -1781,6 +1788,7 @@ const ZoneLife = (() => {
               if (_excl.length && _inExcl(gx, gy)) continue;
               _budget -= 3;
               _enq(2, gx, gy + 3, gkind, 0, run.horiz, gk, ga, Z);
+              if (_peopleNext.length < PEOPLE_MAX && ga > 0.9) _peopleNext.push({ id: 'g' + gk, x: gx, y: gy, zone: key, standing: true });
             }
           }
 
@@ -1839,6 +1847,7 @@ const ZoneLife = (() => {
             }
             if (_snowy && typeof Wildlife !== 'undefined' && kind !== 'scooter') _print(pk, kind, x, y + 3, run.horiz, dir, t);
             _enq(0, x, y + 3, kind, dir, run.horiz, pid, a);
+            if (_peopleNext.length < PEOPLE_MAX && a > 0.9 && kind !== 'bike' && kind !== 'jogger') _peopleNext.push({ id: 'p' + pid, x, y, zone: key, standing: false });
           }
         }
       }
@@ -1989,6 +1998,9 @@ const ZoneLife = (() => {
 
   // _dev: the figure painters, for drawing them on their own from the console.
   return { render, renderRoads, drawVehicle, drawPerson, drawSmallPerson, drawGroup: _drawGroup, VEH,
+    // The people drawn on the latest frame (empty once a frame or two goes by
+    // without the zones being drawn: zoomed out, or nothing on screen).
+    people: () => (performance.now() - _peopleT < 250 ? _people : []),
     rain: () => _rain, cold: () => _cold, pool: _pool,
     _dev: { drawPerson, drawSmallPerson, drawGroup: _drawGroup, drawMachine: _drawMachine, ZONES, setRain: (r) => { _rain = r; } } };
 })();
