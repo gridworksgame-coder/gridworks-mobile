@@ -1284,7 +1284,11 @@ const NationalProject = (() => {
     const e = e0;
     const c = LIVE[phase === 'stage4' ? 3 : 2];
     _liveData(e);
-    const now = performance.now() / 1000, z = Camera.zoom, x0 = Camera.x, y0 = Camera.y;
+    // The animation clock, so the waves, surges and arcs stop while time is
+    // paused and speed up with fast-forward, like every building. It was the
+    // wall clock. (The fade-in above stays on real seconds.)
+    const now = (typeof GameLoop !== 'undefined' && GameLoop.animT) ? GameLoop.animT() : performance.now() / 1000;
+    const z = Camera.zoom, x0 = Camera.x, y0 = Camera.y;
     const sxs = x => (x - x0) * z, sys = y => (y - y0) * z;
     const night = 0.45 + 0.55 * (DayNight.darkness ? DayNight.darkness() : 0);
     const I = (0.55 + 0.45 * stageProgress()) * night * F;      // builds through the stage

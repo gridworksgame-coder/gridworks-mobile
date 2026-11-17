@@ -10753,7 +10753,9 @@ function renderNationalGov(e, px, py, t) {
 function _fusionCampusSite(e, W, H, offX, offY, CK, t, shotK) {
   const on = e.powered, night = DayNight.darkness() > 0.3, detail = Camera.zoom > 0.3;
   const L = (d, n, o) => on ? (night ? n : d) : o;
-  const now = performance.now() / 1000;
+  // The animation clock (t): stops while time is paused, like every other
+  // building. It was the wall clock, so the campus kept moving through a pause.
+  const now = t;
   const rect = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
   const disc = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
   const shadow = (x, y, w, h) => rect(x + 10, y + 12, w, h, 'rgba(0,0,0,0.3)');
@@ -11482,10 +11484,12 @@ function renderFusionLab(e, px, py, t) {
   if (bonusK > 0) ring(1 - bonusK, 180, 560, '255,200,80', 0.8, 8);
   // Ignition imminent: searchlights sweep out from the campus corners and
   // the fence line pulses magenta.
+  // Ongoing, so on the animation clock (t) and still while paused; the
+  // one-off effects above play on the real clock (now) by design.
   if (imminent) {
     const len = 900, wd = 0.07;
     [[20, 20], [AW - 20, 20], [20, AH - 20], [AW - 20, AH - 20]].forEach(([cx, cy], k) => {
-      const a = Math.atan2(cy - AH / 2, cx - AW / 2) + Math.sin(now * 0.9 + k * 1.7) * 0.9;
+      const a = Math.atan2(cy - AH / 2, cx - AW / 2) + Math.sin(t * 0.9 + k * 1.7) * 0.9;
       const g = ctx.createRadialGradient(X(cx), Y(cy), 0, X(cx), Y(cy), len * S);
       g.addColorStop(0, 'rgba(255,170,240,0.32)'); g.addColorStop(1, 'rgba(255,120,220,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(X(cx), Y(cy));
@@ -11494,15 +11498,15 @@ function renderFusionLab(e, px, py, t) {
       ctx.closePath(); ctx.fill();
       glow(cx, cy, 30, PLASMA, 0.8);
     });
-    const p = 0.5 + 0.5 * Math.sin(now * 5);
+    const p = 0.5 + 0.5 * Math.sin(t * 5);
     ctx.shadowColor = 'rgba(255,90,220,1)'; ctx.shadowBlur = 20 * S;
     ctx.strokeStyle = `rgba(255,120,220,${(0.35 + 0.5 * p).toFixed(3)})`; ctx.lineWidth = (2 + 3 * p) * S;
     ctx.strokeRect(X(4), Y(4), (AW - 8) * S, (AH - 8) * S);
     ctx.shadowBlur = 0;
-    ring((now % 1.6) / 1.6, 160, 360, PLASMA, 0.6, 5);                                // the tokamak's heartbeat
+    ring((t % 1.6) / 1.6, 160, 360, PLASMA, 0.6, 5);                                // the tokamak's heartbeat
   }
   // Fusion achieved: the machine breathes slow rings of light out over the city.
-  if (ignited) { ring((now % 4) / 4, 170, 520, PLASMA, 0.35, 6); ring(((now + 2) % 4) / 4, 170, 520, '255,220,120', 0.2, 4); }
+  if (ignited) { ring((t % 4) / 4, 170, 520, PLASMA, 0.35, 6); ring(((t + 2) % 4) / 4, 170, 520, '255,220,120', 0.2, 4); }
   ctx.restore();
 }
 
@@ -11537,15 +11541,20 @@ function renderMeridianStation(e, px, py, t) {
   const on = e.powered, dark = DayNight.darkness(), night = dark > 0.3, hr = DayNight.hour();
   const detail = Camera.zoom > 0.3;
   const L = (d, n, o) => on ? (night ? n : d) : o;
-  const now = performance.now() / 1000;
+  // Two clocks. Every animation runs on now, the game's animation clock (t),
+  // which stops while time is paused like every other building's; it used to
+  // be the wall clock, so the station kept moving through a pause. The real
+  // timers (the build catch-up and the effect timestamps NationalProject
+  // stamps with performance.now) stay on wall.
+  const wall = performance.now() / 1000, now = t;
   // Committing the funding takes Foundations halfway in one tick. The site
   // catches up over half a minute instead, so the pad is seen being poured
   // and the halls going up rather than appearing finished.
   let build = NP ? NP.build : 1;
   if (NP && NP.stage === 0 && _meridianBuildShown >= 0 && build > _meridianBuildShown) {
-    build = _meridianBuildShown = Math.min(build, _meridianBuildShown + Math.min(0.5, Math.max(0, now - _meridianBuildAt)) * 0.015);
+    build = _meridianBuildShown = Math.min(build, _meridianBuildShown + Math.min(0.5, Math.max(0, wall - _meridianBuildAt)) * 0.015);
   } else _meridianBuildShown = build;
-  _meridianBuildAt = now;
+  _meridianBuildAt = wall;
   const gold = NP && (NP.final || NP.complete);
   const surge = NP && NP.stage === 1 && typeof NationalProject !== 'undefined' ? NationalProject.surge(hr) : null;
   const firing = on && surge && surge.firing, spinUp = on && surge && surge.spinUp;
@@ -11555,10 +11564,10 @@ function renderMeridianStation(e, px, py, t) {
   // along it is. Switching on sends a shockwave off the Spire (startK);
   // switching off makes everything sputter as it runs down (sputter).
   const xk = on && NP && NP.stage >= 2 ? (NP.exportK ?? (exporting ? 1 : 0)) : 0;
-  const xe = NP && NP.exportEdge, xeAge = xe ? now - xe.at : 99;
+  const xe = NP && NP.exportEdge, xeAge = xe ? wall - xe.at : 99;
   const startK = on && xe && xe.on && xeAge < 2.4 ? 1 - xeAge / 2.4 : 0;
   const sputter = on && xe && !xe.on && xk > 0 ? 0.45 + 0.55 * Math.random() : 1;
-  const fx = NP ? NP.fx : null, fxAge = fx ? now - fx.at : 99;
+  const fx = NP ? NP.fx : null, fxAge = fx ? wall - fx.at : 99;
   const fxK = (kind, dur) => fx && fx.kind === kind && fxAge < dur ? 1 - fxAge / dur : 0;
   const stageK = fxK('stage', 5), surgeFx = on ? fxK('surge', 2.2) : 0, abortK = Math.max(fxK('abort', 2.6), fxK('outage', 3));
   const ACC = gold ? '255,208,112' : '122,216,255';
@@ -13014,7 +13023,7 @@ function renderMeridianLines(t) {
   const fade = u => { const v = Math.max(0, (u - HOLD) / (1 - HOLD)); return v >= 1 ? 0 : (1 - v) * (1 - v); };
   const PULSES = Math.round(5 * LEN / 4800), SPEED = 0.22 * 4800 / LEN;   // the same spacing and pace as on the old, short lines
   const PYL = [[2450, 260], [2450, 640], [2450, 1020]];
-  const now = performance.now() / 1000, z = Camera.zoom;
+  const now = t, z = Camera.zoom;
   const vw = window.innerWidth / z, vh = window.innerHeight / z;
   ctx.save();
   ctx.translate(-Camera.x * z, -Camera.y * z);
