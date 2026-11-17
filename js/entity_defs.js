@@ -2715,7 +2715,7 @@ const SubtypeFootprints = {
   coop:            { width: 9, height: 10 },
   pharmalab:       { width: 12, height: 12 },
   radiology:       { width: 16, height: 12 },
-  stadium:         { width: 11, height: 9 },
+  stadium:         { width: 14, height: 12 },   // grew from 11×9: its art is scaled up (ArtFootprints)
   semifab:         { width: 9, height: 7 },
   aicompute:       { width: 32, height: 23 },
   spaceport:       { width: 24, height: 16 },
@@ -2825,7 +2825,7 @@ const ArtFootprints = {
     cryptomine: [6, 6], machineshop: [8, 5], fishhatchery: [8, 6], desal: [10, 7], supercon: [9, 7],
     aicompute: [14, 10], verticalfarm: [6, 8], geneworks: [12, 9], collider: [18, 14],
     massdriver: [24, 10], antimatter: [16, 12], sawmill: [5, 4], glassworks: [5, 4],
-    papermill: [7, 5], recyclingplant: [7, 5],
+    papermill: [7, 5], recyclingplant: [7, 5], stadium: [11, 9],
   },
 };
 

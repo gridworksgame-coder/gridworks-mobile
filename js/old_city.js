@@ -160,15 +160,21 @@ const OldCity = (() => {
     buildings.push({ e: _entity(T.GOVBUILDING, null, hall.x, hall.y, hall.w, hall.h), x: hall.x, y: hall.y, w: hall.w, h: hall.h, district: 'downtown' });
 
     // North side: the stadium, the fair and the museums.
-    const north = _grid('leisure', -31, -47, 31, -26, 14, 19, -31, -47);
+    // Blocks 16 wide so the stadium (14×12 with a tile of sidewalk round it)
+    // fits one; laid so the avenue up from City Hall (x -1..1) is still a road.
+    const north = _grid('leisure', -31, -47, 31, -26, 16, 19, -17, -47);
     const NORTH = [
       [T.COMMERCIAL, 'convention', 8, 5, 3], [T.COMMERCIAL, 'aquarium', 6, 5, 3], [T.COMMERCIAL, 'sciencemuseum', 5, 4, 3],
       [T.COMMERCIAL, 'bowling', 6, 4, 3], [T.COMMERCIAL, 'restaurant', 3, 2, 3], [T.COMMERCIAL, 'fastfood', 2, 2, 3],
       [T.SMALLPARK, null, 3, 2, 3], [T.FOUNTAIN, null, 3, 3, 2],
     ];
-    north.forEach((b, i) => {
-      const big = i === 0 ? ['stadium', 11, 9] : i === 1 ? ['amusementpark', 10, 8] : null;
+    // The stadium, then the fair, each in the first block left that fits it.
+    const BIG = [['stadium', 14, 12], ['amusementpark', 10, 8]];
+    let bigNext = 0;
+    north.forEach(b => {
+      const big = BIG[bigNext];
       if (big && b.w >= big[1] + 2 && b.h >= big[2] + 2) {
+        bigNext++;
         // `live`: all movement (the match and its crowd, the rides turning),
         // so these two are drawn every frame instead of baked (see _drawLive).
         buildings.push({ e: _entity(T.COMMERCIAL, big[0], b.x + 1, b.y + 1, big[1], big[2], big[0] === 'stadium' ? { _matchTonight: true, _stadiumEvent: 'match' } : {}), x: b.x + 1, y: b.y + 1, w: big[1], h: big[2], district: 'leisure', live: true });   // (and it is match night)
@@ -832,7 +838,7 @@ const OldCity = (() => {
       case 'skyline':     return at(-14, -4);
       case 'skylineEnd':  return at(14, 2);
       case 'downtown':    return at(-2, 3);
-      case 'leisure':     return at(-14, -37);
+      case 'leisure':     return at(-2, -38);   // between the stadium and the fair
       case 'residential': return at(-56, 0);
       case 'airport':     return at(0, 34);
       case 'industrial':  return at(48, 0);

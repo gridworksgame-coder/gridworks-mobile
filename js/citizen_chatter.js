@@ -810,6 +810,12 @@ const CitizenChatter = (() => {
     let set; try { set = EntityRegistry.active(); } catch (_e) { return; }
     if (!set) return;
     const gnow = _gameNow();
+    const inc = [];
+    for (const e of set) {
+      const k = (e._lightningDamaged || e._irreparable || e._detonated) ? _incidentOf(e) : null;
+      if (k) inc.push({ e, kind: k });
+    }
+    _incidents = inc;
     for (const e of set) {
       if (_known.has(e)) continue;
       _known.add(e);
@@ -840,6 +846,59 @@ const CitizenChatter = (() => {
     return best;
   }
 
+  // ── Incidents: lightning strikes, fires, blasts ────────────────────
+  // A building struck by lightning, still burning, or wrecked by a blast
+  // (a reactor going up, the ruins it leaves) changes how everyone near it
+  // talks: the cheerful lines stand down and they talk about what
+  // happened. {name} is the building's own name.
+  const INCIDENT_RADIUS = 24;
+  const INCIDENT_LINES = {
+    strike: {
+      res: ["Lightning hit the {name}! Did you hear it?!", "That bang was the {name} getting struck.", "Kids are scared after that strike.",
+            "Never seen lightning hit that close.", "My hair's still standing up after that.", "The whole street lit up white.",
+            "Hope nobody was in the {name}.", "Smell of burning since the strike."],
+      work: ["Lightning took out the {name}!", "Strike on the {name}, crews are on the way.", "That {name} needs a lightning rod.",
+             "Everyone's at the window staring at the {name}.", "Insurance is going to love this."],
+    },
+    fire: {
+      res: ["The {name}'s on fire!", "Call the fire brigade!", "Smoke's pouring out of the {name}.", "Kids, come away from the window.",
+            "Can feel the heat from here.", "Firefighters are still at it.", "Ash coming down in the garden."],
+      work: ["The {name} is burning!", "Evacuate! Fire at the {name}!", "Fire crews blocking the road.", "Smoke everywhere, close the doors!"],
+    },
+    blast: {
+      res: ["The whole block's gone…", "I felt the blast from here.", "Is everyone okay over there?", "The windows came in. All of them.",
+            "We're packing the car. We're leaving.", "I can't stop shaking.", "Where the {name} was, there's nothing.",
+            "My neighbour worked at the {name}.", "Nobody's sleeping tonight.", "Sirens, all night.", "How could this happen here?",
+            "Is the air even safe now?", "Kids keep asking what happened."],
+      work: ["Half the district's flattened.", "We're shutting until it's safe.", "Staff are being sent home.", "That blast… I don't have words.",
+             "Insurance won't cover a reactor blast.", "Who signed off on that reactor?!", "Crews are searching the ruins."],
+      national: ["National emergency declared.", "The Prime Minister is on her way.", "Inquiry into the blast starts tomorrow.",
+                 "The whole country's watching this.", "Every crew in the nation is heading here."],
+    },
+  };
+  // What's happened to a building, or null: 'blast' for a wreck from a
+  // reactor going up (its ruins, the wrecked, the set alight), 'fire' while
+  // a struck building still burns, 'strike' once it's out but not mended.
+  function _incidentOf(e) {
+    if (e._irreparable || e._detonated || (e._lightningDamaged && e._fireCause === 'blast')) return 'blast';
+    if (e._lightningDamaged) return e._fireOut ? 'strike' : 'fire';
+    return null;
+  }
+  let _incidents = [];   // [{ e, kind }], rebuilt every scan
+
+  // A building's name as the neighbours would say it after "the": a family
+  // home is "Vermas' house" ("The Vermas" -> "the Vermas' house"), a business
+  // its own name, anything else what it is.
+  function _nameOf(e) {
+    const bn = e.businessName ? String(e.businessName) : '';
+    if ((e.type === T.HOUSE || e.type === T.CABIN) && bn) {
+      const fam = bn.replace(/^the\s+/i, '');
+      return fam.endsWith('s') ? fam + "' house" : fam + "'s house";
+    }
+    if (bn) return bn;
+    return (typeof EntityDefs !== 'undefined' && EntityDefs[e.type]?.label) || 'building';
+  }
+
   // ── Who can speak ──────────────────────────────────────────────────
   const GOV_TYPES = ['TOWNHALL', 'CIVICCENTER', 'COURTHOUSE', 'EMS', 'HOSPITAL', 'UNIVERSITY', 'TRANSPORTHUB'];
   // The National Government Zone's landmarks: their own voice (LINES.national).
@@ -868,7 +927,9 @@ const CitizenChatter = (() => {
     let city = 'town', co = 'the power company';
     try { if (typeof CityInfo !== 'undefined') { city = CityInfo.getCityName() || city; co = CityInfo.getCompanyName?.() || co; } } catch (_e) {}
     const name = (vars && vars.name) || 'place';
-    return s.replace(/\{city\}/g, city).replace(/\{co\}/g, co).replace(/\{name\}/g, name);
+    return s.replace(/\{city\}/g, city).replace(/\{co\}/g, co)
+      .replace(/\b([Tt])he \{name\}/g, (m, t) => /^the\s/i.test(name) ? t + name.slice(1) : t + 'he ' + name)
+      .replace(/\{name\}/g, name);
   }
 
   // The situations a building could speak to right now, with weights. Its own
@@ -876,6 +937,25 @@ const CitizenChatter = (() => {
   function _situations(e, zone, asPerson) {
     const L = LINES[zone], out = [];
     const add = (w, list, vars) => { if (list && list.length) out.push([w, list, vars]); };
+    // Something terrible happened here or nearby: that's what they talk about.
+    const own = null;   // a damaged or destroyed building never speaks itself (see _candidates)
+    let near = null, nd = INCIDENT_RADIUS * INCIDENT_RADIUS;
+    if (_incidents.length) {
+      const cx = e.col + (e.width || 1) / 2, cy = e.row + (e.height || 1) / 2;
+      for (const n of _incidents) {
+        if (n.e === e) continue;
+        const dx = n.e.col + (n.e.width || 1) / 2 - cx, dy = n.e.row + (n.e.height || 1) / 2 - cy, d = dx * dx + dy * dy;
+        // The worst thing nearby, then the nearest of those.
+        const rank = { blast: 3, fire: 2, strike: 1 };
+        if (d < INCIDENT_RADIUS * INCIDENT_RADIUS && (!near || rank[n.kind] > rank[near.kind] || (rank[n.kind] === rank[near.kind] && d < nd))) { near = n; nd = d; }
+      }
+    }
+    if (near) {
+      const set = INCIDENT_LINES[near.kind];
+      const pool = zone === 'residential' ? set.res : zone === 'national' ? (set.national || set.work) : set.work;
+      add(near.kind === 'blast' ? 16 : 10, pool, { name: _nameOf(near.e) });
+    }
+    const sombre = !!(own || near), sombreNow = sombre;
     // Something going up, or just opened, nearby: big news locally.
     const news = _newsNear(e);
     if (news) {
@@ -912,7 +992,7 @@ const CitizenChatter = (() => {
     let smog = 0;
     try { if (typeof PollutionSystem !== 'undefined') smog = PollutionSystem.exposureFor(e) || 0; } catch (_e) {}
     if (smog > 25) add(4 + Math.min(4, smog / 25), L.smog);
-    if (e.powered && !dark && (e.satisfaction ?? 0) >= 85) add(2, L.happy);
+    if (!sombre && e.powered && !dark && (e.satisfaction ?? 0) >= 85) add(2, L.happy);
     // The world around them.
     let ev = null;
     try { ev = typeof WeatherEventSystem !== 'undefined' ? WeatherEventSystem.getActiveEvent() : null; } catch (_e) {}
@@ -925,10 +1005,10 @@ const CitizenChatter = (() => {
     try {
       if (typeof NationalProject !== 'undefined') {
         const v = NationalProject.visual();
-        if (v && (v.complete || v.final || v.exporting)) add(1.5, L.hyperion);
+        if (v && (v.complete || v.final || v.exporting) && !sombreNow) add(1.5, L.hyperion);
       }
     } catch (_e) {}
-    add(2, L.flavour);
+    add(sombre ? 0.3 : 2, L.flavour);   // small talk mostly stops after something like that
     return out;
   }
 
@@ -965,7 +1045,9 @@ const CitizenChatter = (() => {
       let set; try { set = EntityRegistry.getByType(type); } catch (_e) { continue; }
       if (!set) continue;
       for (const e of set) {
-        if (e._constructing || e._irreparable || e._ghost) continue;
+        // Not a building site, and not a damaged or destroyed one: the people
+        // around it do the talking.
+        if (e._constructing || e._irreparable || e._detonated || e._lightningDamaged || e._ghost) continue;
         const wx = (e.col + (e.width || 1) / 2) * TILE, wy = e.row * TILE;
         if (wx < v.x0 || wx > v.x1 || wy < v.y0 || wy > v.y1) continue;
         if (t - (spokeAt.get(e) || -1e9) < QUIET_FOR) continue;
@@ -1004,7 +1086,7 @@ const CitizenChatter = (() => {
     for (const type of SPEAKER_TYPES()) {
       let set; try { set = EntityRegistry.getByType(type); } catch (_e) { continue; }
       for (const e of set || []) {
-        if (zoneOf(e) !== p.zone || e._constructing) continue;
+        if (zoneOf(e) !== p.zone || e._constructing || e._irreparable || e._detonated) continue;
         const dx = e.col + (e.width || 1) / 2 - pc, dy = e.row + (e.height || 1) / 2 - pr;
         const d = dx * dx + dy * dy;
         if (d < bd) { bd = d; best = e; }
@@ -1026,7 +1108,8 @@ const CitizenChatter = (() => {
       return;
     }
     // Buildings with something on their minds are likelier to be the ones heard.
-    const weightOf = e => (!e.powered ? 4 : 1) * (e._churnWarned ? 2 : 1) * (_news.length && _newsNear(e) ? 3 : 1);
+    const weightOf = e => (!e.powered ? 4 : 1) * (e._churnWarned ? 2 : 1) * (_news.length && _newsNear(e) ? 3 : 1)
+      * (_incidents.length && _incidents.some(n => Math.abs(n.e.col - e.col) < INCIDENT_RADIUS && Math.abs(n.e.row - e.row) < INCIDENT_RADIUS) ? 3 : 1);
     let total = 0; for (const e of list) total += weightOf(e);
     let r = Math.random() * total, e = list[0];
     for (const c of list) { if ((r -= weightOf(c)) <= 0) { e = c; break; } }
@@ -1145,6 +1228,9 @@ const CitizenChatter = (() => {
     // Paused or fast-forwarding: none shown, and the next one waits a beat
     // after normal speed comes back.
     if (_offSpeed() || _inCutscene()) { bubbles.length = 0; nextAt = t + 2 + Math.random() * 3; return; }
+    // The apocalypse: from the countdown song through the blast and after,
+    // no one speaks (and after it there's no one left to).
+    if (typeof ApocalypseSystem !== 'undefined' && (ApocalypseSystem.hasEnded() || ApocalypseSystem.isDramatic())) { bubbles.length = 0; return; }
     if (!nextAt) nextAt = t + 3 + Math.random() * 4;
     if (t >= nextAt) {
       if (bubbles.length < MAX_ON_SCREEN) _spawn();
