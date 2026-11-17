@@ -429,7 +429,7 @@ const MenuSystem = (() => {
       // settles would send a real city to browser storage, which can't hold it.
       try { await folderReady; } catch (_e) {}
       try {
-        await SaveSystem.importSlot(parsed.text);
+        await SaveSystem.importSlot(parsed.text, file.name);
       } catch (err) {
         console.warn('Import could not be stored; opening the file directly:', err);
         // Opening it directly is only safe on a map of the save's own size:
@@ -444,7 +444,7 @@ const MenuSystem = (() => {
         const city = (parsed.data.cityInfo && parsed.data.cityInfo.cityName) || 'Imported City';
         showToast('Could not copy the save into your saves; opening it directly. Save in game to keep it', '#ffd060', '#1a1400', '#5a4400');
         pendingLoadText = parsed.text;
-        startGame(true, SaveSystem.newSlotIdFor(city));
+        startGame(true, SaveSystem.newSlotIdFor(city, SaveSystem.importName(file.name)));
         return;
       }
       showToast('Save imported ✓', '#50e890', '#001a08', '#003018');

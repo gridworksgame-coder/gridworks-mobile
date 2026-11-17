@@ -313,12 +313,14 @@ const SaveSystem = (() => {
       // same second would produce identical filenames and the second would
       // silently overwrite the first instead of creating a new file. Suffix
       // until the name is free.
-      const taken = new Set(FolderMode.list().map(s => s.fileName));
-      if (!taken.has(base)) return base;
+      // Compared ignoring case: Windows treats "endgame.json" and
+      // "Endgame.json" as the same file, so the second would overwrite the first.
+      const taken = new Set(FolderMode.list().map(s => String(s.fileName).toLowerCase()));
+      if (!taken.has(base.toLowerCase())) return base;
       const stem = base.replace(/\.json$/i, '');
       for (let n = 2; n < 1000; n++) {
         const candidate = `${stem} (${n}).json`;
-        if (!taken.has(candidate)) return candidate;
+        if (!taken.has(candidate.toLowerCase())) return candidate;
       }
       return `${stem}_${Math.floor(Math.random() * 1e6)}.json`;
     }
@@ -448,15 +450,25 @@ const SaveSystem = (() => {
     return { text, data };
   }
 
-  async function importSlot(rawText) {
+  // The name a save is listed under after import: the imported file's own
+  // name ("Endgame.json" -> "Endgame"). Renaming it to city + import time
+  // made it look like a different save, dated the day it was imported.
+  // Null when there is no usable name, so the city + timestamp name is used.
+  function importName(fileName) {
+    const stem = String(fileName || '').replace(/\.json$/i, '').trim();
+    return stem || null;
+  }
+
+  async function importSlot(rawText, fileName) {
     const { text: jsonText, data } = readImport(rawText);
     const city = (data.cityInfo && data.cityInfo.cityName) || 'Imported City';
+    const name = importName(fileName);
 
     // Folder mode: the file on disk IS the slot, and the folder has no
     // few-megabyte ceiling. A real city serialises to well past what
     // localStorage will hold, so this is the only path that can import one.
     if (FolderMode.active()) {
-      const id = newSlotId(null, city);
+      const id = newSlotId(name, city);
       const ok = await FolderMode.writeSave(id, jsonText);
       if (!ok) throw new Error(FolderMode.error() || 'Could not write to the save folder');
       return id;
@@ -469,6 +481,7 @@ const SaveSystem = (() => {
       id,
       worldId: id,   // an imported file starts its own world
 
+      ...(name ? { saveName: name } : {}),
       cityName:    city,
       companyName: (data.cityInfo && data.cityInfo.companyName) || 'Gridworks Power Co.',
       savedAt:     data._savedAt || Date.now(),
@@ -3258,7 +3271,8 @@ const SaveSystem = (() => {
     listSlots, listWorldSlots, createSlot, deleteSlot, importSlot, exportSlotRaw,
     readImport,
     // A fresh slot id for a world of this city (a filename in folder mode).
-    newSlotIdFor: (city) => newSlotId(null, city),
+    newSlotIdFor: (city, name) => newSlotId(name || null, city),
+    importName,
     getCurrentSlot, setCurrentSlot,
     // The file the NEXT automatic save (interval, exit hooks, F2) will write.
     getAutoSlot: () => resolveAutoSlot(),
