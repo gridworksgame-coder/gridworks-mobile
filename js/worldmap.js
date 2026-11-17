@@ -121,18 +121,24 @@ const WorldMapSystem = (() => {
   // it would show exists. They are viewing preferences, so they live in
   // localStorage rather than the save.
   const ROD_TYPES_MAP = [T.LIGHTNINGROD, T.LIGHTNINGROD2, T.LIGHTNINGROD3].filter(v => v !== undefined);
+  // All of them live in the VIEW dropdown above the map's top-right corner
+  // (_drawToggles): first the map's own layers, each on by default and
+  // always offered, then the overlays, each offered once something it would
+  // show exists.
   const _overlayToggles = [
-    { key: 'gridworks.worldmap.showPowerLines', label: 'SHOW POWER LINES',
-      color: '#50e890', ink: '#c8ffe0', defaultOn: true,
-      offered: () => EntityRegistry.getByType(T.WIRE).size > 0 || EntityRegistry.getByType(T.POLE).size > 0 },
-    { key: 'gridworks.worldmap.showDroneNets', label: 'SHOW DRONE NETWORKS',
-      color: '#5ad8ff', ink: '#bff0ff',
+    { key: 'gridworks.worldmap.showBuildings', label: 'Buildings', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showZones', label: 'Zones', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showPowerLines', label: 'Power Towers / Poles', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showNetworks', label: 'Pipes & Conveyors', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showTrees', label: 'Trees & Vegetation', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showTrucks', label: 'Trucks', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showDrones', label: 'Drones', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showAlerts', label: 'Status Alerts', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showDroneNets', label: 'Drone Networks', group: 'overlay',
       offered: () => EntityRegistry.getByType(T.DRONEPORT).size > 0 || EntityRegistry.getByType(T.DRONECHARGER).size > 0 },
-    { key: 'gridworks.worldmap.showRodCover', label: 'SHOW LIGHTNING ROD COVERAGE',
-      color: '#be96ff', ink: '#e6d8ff',
+    { key: 'gridworks.worldmap.showRodCover', label: 'Lightning Rod Coverage', group: 'overlay',
       offered: () => ROD_TYPES_MAP.some(t => EntityRegistry.getByType(t).size > 0) },
-    { key: 'gridworks.worldmap.showPollution', label: 'SHOW AIR POLLUTION',
-      color: '#ffa040', ink: '#ffe0c0',
+    { key: 'gridworks.worldmap.showPollution', label: 'Air Pollution', group: 'overlay',
       offered: () => typeof PollutionSystem !== 'undefined' && PollutionSystem.hasAny() },
   ];
   for (const tg of _overlayToggles) {
@@ -146,6 +152,16 @@ const WorldMapSystem = (() => {
   const _showDroneNets = () => _toggleOn('gridworks.worldmap.showDroneNets');
   const _showRodCover  = () => _toggleOn('gridworks.worldmap.showRodCover');
   const _showPowerLines = () => _toggleOn('gridworks.worldmap.showPowerLines');
+  const _layer = name => _toggleOn('gridworks.worldmap.show' + name);
+  // Which VIEW layer a type drawn in the buildings pass belongs to.
+  const _NET_TYPES = new Set([T.PIPE, T.UNDERGNDPIPE, T.CONVEYOR, T.UNDERGNDCONVEYOR, T.CONVEYORSPLITTER].filter(v => v !== undefined));
+  const _POLE_TYPES = new Set([T.POWERTOWER, T.PROTECTOR].filter(v => v !== undefined));
+  const _typeShown = type => _NET_TYPES.has(type) ? _layer('Networks')
+    : _POLE_TYPES.has(type) ? _showPowerLines()
+    : type === T.TRUCK ? _layer('Trucks')
+    : _layer('Buildings');
+  // The VIEW dropdown: open or not, and last frame's hit rects.
+  let _viewOpen = false, _viewBtn = null, _viewPanel = null, _viewAll = null;
   let _rodCanvas = null;       // scratch layer for the rod coverage outline
 
   // ── Colours ───────────────────────────────────────────────────────
@@ -389,7 +405,7 @@ const WorldMapSystem = (() => {
       for (const e of EntityRegistry.getByType(T.WATER)) {
         if (e.col >= 0 && e.col < COLS && e.row >= 0 && e.row < ROWS) water[e.row * COLS + e.col] = e._reservoirId !== undefined ? 2 : 1;
       }
-      for (const e of EntityRegistry.getByType(T.TREE)) {
+      if (_layer('Trees')) for (const e of EntityRegistry.getByType(T.TREE)) {
         if (e.col >= 0 && e.col < COLS && e.row >= 0 && e.row < ROWS) trees[e.row * COLS + e.col] = 1;
       }
     }
@@ -653,7 +669,7 @@ const WorldMapSystem = (() => {
     // which change as the player builds (placing clears trees), so rebuild
     // when their counts differ from the last bake — otherwise reuse it.
     const sig = (typeof EntityRegistry !== 'undefined')
-      ? EntityRegistry.getByType(T.TREE).size * 1000003 + EntityRegistry.getByType(T.WATER).size + ':' + TerrainSystem.version() : 0;
+      ? EntityRegistry.getByType(T.TREE).size * 1000003 + EntityRegistry.getByType(T.WATER).size + ':' + TerrainSystem.version() + (_layer('Trees') ? '' : ':notrees') : 0;
     if (!_terrainValid || sig !== _terrainSig) { _buildTerrain(); _terrainSig = sig; }
     _ctx.save();
     _ctx.translate(ox, oy);
@@ -713,7 +729,7 @@ const WorldMapSystem = (() => {
     }
 
     // ── Zones ────────────────────────────────────────────────────────
-    _drawZones(es);
+    if (_layer('Zones')) _drawZones(es);
 
     // ── Rod and drone coverage — under deposits and buildings so the dots
     //    stay readable inside a tinted area; drones on top of rods. ──
@@ -803,6 +819,7 @@ const WorldMapSystem = (() => {
         try { list = EntityRegistry.getByType(type); } catch(err) { continue; }
         if (!list || list.size === 0) continue;
 
+        if (!_typeShown(type)) continue;   // VIEW dropdown
         const isLegendMatch = _isHL('building', type);
         const isExtractor = EXTRACTOR_TYPES.has(type);
 
@@ -840,7 +857,8 @@ const WorldMapSystem = (() => {
           // Plants PollutionSystem counts in its "Smog alert: N plants are
           // polluting too much" notification pulse smoky olive with the same ping.
           const polluting = !struck && !leaving && !!e._pollutionProblem;
-          if (struck) {
+          const alerts = _layer('Alerts');   // VIEW: Status Alerts
+          if (alerts && struck) {
             const tNow = performance.now() / 1000;
             const blink = 0.5 + 0.5 * Math.sin(tNow * 7);
             _ctx.fillStyle = `rgba(255,255,255,${(0.25 + 0.65 * blink).toFixed(3)})`;
@@ -851,7 +869,7 @@ const WorldMapSystem = (() => {
             _ctx.lineWidth = 2;
             _ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
             _ctx.restore();
-          } else if (leaving || polluting) {
+          } else if (alerts && (leaving || polluting)) {
             // [fill, glow, outline, ring] — magenta for leaving, olive for smog.
             const pal = leaving
               ? ['255,60,170', '#ff3caa', '255,120,200', '255,90,190']
@@ -871,7 +889,7 @@ const WorldMapSystem = (() => {
             _ctx.strokeStyle = `rgba(${pal[3]},${(0.7 * (1 - p)).toFixed(3)})`;
             _ctx.lineWidth = 1.5;
             _ctx.beginPath(); _ctx.arc(cx, cy, Math.max(sw, sh) / 2 + 3 + p * 12, 0, Math.PI * 2); _ctx.stroke();
-          } else if (dark && !dry) {
+          } else if (alerts && dark && !dry) {
             const tNow = performance.now() / 1000;
             const blink = 0.5 + 0.5 * Math.sin(tNow * 4);
             _ctx.fillStyle = `rgba(255,176,64,${(0.2 + 0.5 * blink).toFixed(3)})`;
@@ -883,7 +901,7 @@ const WorldMapSystem = (() => {
             _ctx.strokeRect(sx - 2, sy - 2, sw + 4, sh + 4);
             _ctx.restore();
           }
-          if (dry && !struck) {
+          if (alerts && dry && !struck) {
             const tNow = performance.now() / 1000;
             const blink = 0.5 + 0.5 * Math.sin(tNow * 6);
             const cx = sx + sw / 2, cy = sy + sh / 2;
@@ -957,7 +975,7 @@ const WorldMapSystem = (() => {
     // shatter one network into dozens — draw the same bright-white pulse
     // lightning-damaged buildings get so the break is findable on the map.
     // Struck Power Towers already pulse via `_lightningDamaged` above.
-    if (typeof GridBreakWatch !== 'undefined' && GridBreakWatch.any()) {
+    if (_layer('Alerts') && typeof GridBreakWatch !== 'undefined' && GridBreakWatch.any()) {
       const tNow = performance.now() / 1000;
       const blink = 0.5 + 0.5 * Math.sin(tNow * 7);
       for (const b of GridBreakWatch.list()) {
@@ -986,7 +1004,7 @@ const WorldMapSystem = (() => {
     _drawContamination(es);
 
     // ── Drones in flight — over everything on the ground, like the city view.
-    _drawDrones(es);
+    if (_layer('Drones')) _drawDrones(es);
 
     // ── Viewport rectangle ────────────────────────────────────────────
     {
@@ -1547,47 +1565,114 @@ const WorldMapSystem = (() => {
   // Overlay toggles above the map, filled in right to left from the top-right
   // corner. One that would run into the centred title goes on the LEFT of it
   // instead, filling in from the top-left corner.
+  // The VIEW dropdown, above the map's top-right corner: a button that says
+  // how many layers are hidden, and when open a panel of switches, the map's
+  // layers first, then the overlays on offer. Rects are kept for the clicks.
   function _drawToggles(ox, oy, mW) {
+    for (const tg of _overlayToggles) tg.rect = null;
+    _viewAll = null; _viewPanel = null;
+    const hidden = _overlayToggles.filter(t => t.group === 'layer' && !t.on).length;
+    const lit = _viewOpen || _inRect(_viewBtn, _mouseSX, _mouseSY);
     _ctx.save();
-    _ctx.font = 'bold 12px Inter, Arial, sans-serif';
-    const titleHalf = (_ctx.measureText(_titleText()).width + 28) / 2;
-    _ctx.restore();
-    const midX = window.innerWidth / 2;
-    let right = ox + mW, left = ox;
-    for (const tg of _overlayToggles) {
-      tg.rect = null;
-      if (typeof EntityRegistry === 'undefined' || !tg.offered()) continue;
-      _ctx.save();
-      _ctx.font = 'bold 10px Inter, Arial, sans-serif';
-      const box = 11, pad = 9, gap = 7;
-      const w = pad + box + gap + Math.ceil(_ctx.measureText(tg.label).width) + pad;
-      const h = 20, y = oy - 30;
-      let x;
-      if (right - w >= midX + titleHalf + 8) { x = right - w; right = x - 8; }
-      else                                   { x = left;     left  = x + w + 8; }
-      tg.rect = { x, y, w, h };
-      const hot = _inRect(tg.rect, _mouseSX, _mouseSY);
-      _ctx.fillStyle = hot ? 'rgba(16,30,46,0.95)' : 'rgba(8,14,24,0.92)';
-      _ctx.strokeStyle = tg.on ? tg.color : 'rgba(120,200,255,0.5)';
-      _ctx.lineWidth = 1;
-      _ctx.beginPath(); _ctx.roundRect(x, y, w, h, 10); _ctx.fill(); _ctx.stroke();
-      // Checkbox
-      const bx = x + pad, by = y + (h - box) / 2;
-      _ctx.strokeStyle = tg.color;
-      _ctx.strokeRect(bx + 0.5, by + 0.5, box - 1, box - 1);
-      if (tg.on) {
-        _ctx.fillStyle = tg.color;
-        _ctx.fillRect(bx + 2, by + 2, box - 4, box - 4);
-        _ctx.strokeStyle = '#06121c'; _ctx.lineWidth = 1.6;
-        _ctx.beginPath();
-        _ctx.moveTo(bx + 3, by + box / 2); _ctx.lineTo(bx + box / 2 - 0.5, by + box - 3.5); _ctx.lineTo(bx + box - 2.5, by + 3);
-        _ctx.stroke();
-      }
-      _ctx.fillStyle = tg.on ? tg.ink : 'rgba(191,232,255,0.75)';
-      _ctx.textBaseline = 'middle';
-      _ctx.fillText(tg.label, bx + box + gap, y + h / 2 + 0.5);
-      _ctx.restore();
+    _ctx.font = 'bold 10px Inter, Arial, sans-serif';
+    _ctx.textBaseline = 'middle';
+    // Button
+    const label = 'VIEW';
+    const lw = Math.ceil(_ctx.measureText(label).width);
+    const badge = hidden ? 16 : 0;
+    const bw = 12 + 14 + 6 + lw + (badge ? 6 + badge : 0) + 8 + 8 + 12, bh = 22;
+    const bx = ox + mW - bw, by = oy - 31;
+    _viewBtn = { x: bx, y: by, w: bw, h: bh };
+    _ctx.fillStyle = lit ? 'rgba(0,56,104,0.55)' : 'rgba(8,14,24,0.92)';
+    _ctx.strokeStyle = lit ? '#2868a0' : 'rgba(120,200,255,0.35)';
+    _ctx.lineWidth = 1;
+    _ctx.beginPath(); _ctx.roundRect(bx, by, bw, bh, 5); _ctx.fill(); _ctx.stroke();
+    let cx = bx + 12;
+    const ink = lit ? '#90d0ff' : '#6aa8cc';
+    // Eye icon
+    _ctx.strokeStyle = ink; _ctx.lineWidth = 1.4;
+    _ctx.beginPath(); _ctx.ellipse(cx + 7, by + bh / 2, 6.5, 3.8, 0, 0, Math.PI * 2); _ctx.stroke();
+    _ctx.beginPath(); _ctx.arc(cx + 7, by + bh / 2, 1.8, 0, Math.PI * 2); _ctx.stroke();
+    cx += 14 + 6;
+    _ctx.fillStyle = ink;
+    _ctx.fillText(label, cx, by + bh / 2 + 0.5);
+    cx += lw;
+    if (badge) {
+      cx += 6;
+      _ctx.fillStyle = '#ffb040';
+      _ctx.beginPath(); _ctx.roundRect(cx, by + (bh - 14) / 2, badge, 14, 7); _ctx.fill();
+      _ctx.fillStyle = '#1a1000'; _ctx.textAlign = 'center';
+      _ctx.fillText(String(hidden), cx + badge / 2, by + bh / 2 + 0.5);
+      _ctx.textAlign = 'left';
+      cx += badge;
     }
+    // Caret
+    cx += 8;
+    _ctx.strokeStyle = ink; _ctx.lineWidth = 1.4;
+    const cy = by + bh / 2;
+    _ctx.beginPath();
+    if (_viewOpen) { _ctx.moveTo(cx, cy + 2); _ctx.lineTo(cx + 4, cy - 2); _ctx.lineTo(cx + 8, cy + 2); }
+    else           { _ctx.moveTo(cx, cy - 2); _ctx.lineTo(cx + 4, cy + 2); _ctx.lineTo(cx + 8, cy - 2); }
+    _ctx.stroke();
+    _ctx.restore();
+    if (!_viewOpen) return;
+
+    // Panel
+    const layers = _overlayToggles.filter(t => t.group === 'layer');
+    const overlays = typeof EntityRegistry === 'undefined' ? [] : _overlayToggles.filter(t => t.group === 'overlay' && t.offered());
+    const PW = 236, RH = 26, HEAD = 30, SUB = 26, PADB = 8;
+    const ph = HEAD + layers.length * RH + (overlays.length ? SUB + overlays.length * RH : 0) + PADB;
+    const px = ox + mW - PW, py = by + bh + 6;
+    _viewPanel = { x: px, y: py, w: PW, h: ph };
+    _ctx.save();
+    _ctx.shadowColor = 'rgba(0,0,0,0.6)'; _ctx.shadowBlur = 24; _ctx.shadowOffsetY = 8;
+    _ctx.fillStyle = 'rgba(8,12,20,0.97)';
+    _ctx.beginPath(); _ctx.roundRect(px, py, PW, ph, 8); _ctx.fill();
+    _ctx.shadowColor = 'transparent'; _ctx.shadowBlur = 0; _ctx.shadowOffsetY = 0;
+    _ctx.strokeStyle = '#243250'; _ctx.lineWidth = 1; _ctx.stroke();
+    _ctx.textBaseline = 'middle';
+    // Header + Show all
+    _ctx.font = '600 10px Inter, Arial, sans-serif';
+    _ctx.fillStyle = '#80c8ff';
+    _ctx.fillText('SHOW ON MAP', px + 14, py + HEAD / 2 + 1);
+    _ctx.font = '500 10px Inter, Arial, sans-serif';
+    const allW = Math.ceil(_ctx.measureText('SHOW ALL').width);
+    _viewAll = hidden ? { x: px + PW - 14 - allW - 4, y: py + 6, w: allW + 8, h: HEAD - 12 } : null;
+    _ctx.fillStyle = hidden ? (_inRect(_viewAll, _mouseSX, _mouseSY) ? '#7aeaff' : '#00d4ff') : 'rgba(74,104,120,0.6)';
+    _ctx.fillText('SHOW ALL', px + PW - 14 - allW, py + HEAD / 2 + 1);
+    _ctx.strokeStyle = '#1c2840';
+    _ctx.beginPath(); _ctx.moveTo(px + 1, py + HEAD - 2.5); _ctx.lineTo(px + PW - 1, py + HEAD - 2.5); _ctx.stroke();
+    let y = py + HEAD;
+    const row = tg => {
+      tg.rect = { x: px + 1, y, w: PW - 2, h: RH };
+      if (_inRect(tg.rect, _mouseSX, _mouseSY)) { _ctx.fillStyle = 'rgba(0,212,255,0.07)'; _ctx.fillRect(px + 1, y, PW - 2, RH); }
+      _ctx.font = '500 12px Inter, Arial, sans-serif';
+      _ctx.fillStyle = tg.on ? '#c8dcec' : '#4a6878';
+      _ctx.fillText(tg.label, px + 14, y + RH / 2 + 0.5);
+      // Switch
+      const sw = 28, sh = 16, sx = px + PW - 14 - sw, sy = y + (RH - sh) / 2;
+      _ctx.fillStyle = tg.on ? 'rgba(0,212,255,0.18)' : '#14202e';
+      _ctx.strokeStyle = tg.on ? 'rgba(0,212,255,0.55)' : '#24384c';
+      _ctx.beginPath(); _ctx.roundRect(sx, sy, sw, sh, 8); _ctx.fill(); _ctx.stroke();
+      const kx = tg.on ? sx + sw - 8 : sx + 8;
+      _ctx.save();
+      if (tg.on) { _ctx.shadowColor = 'rgba(0,212,255,0.6)'; _ctx.shadowBlur = 6; }
+      _ctx.fillStyle = tg.on ? '#00d4ff' : '#4a6878';
+      _ctx.beginPath(); _ctx.arc(kx, sy + sh / 2, 5, 0, Math.PI * 2); _ctx.fill();
+      _ctx.restore();
+      y += RH;
+    };
+    for (const tg of layers) row(tg);
+    if (overlays.length) {
+      _ctx.strokeStyle = '#1c2840';
+      _ctx.beginPath(); _ctx.moveTo(px + 1, y + 4.5); _ctx.lineTo(px + PW - 1, y + 4.5); _ctx.stroke();
+      _ctx.font = '600 10px Inter, Arial, sans-serif';
+      _ctx.fillStyle = '#80c8ff';
+      _ctx.fillText('OVERLAYS', px + 14, y + SUB / 2 + 3);
+      y += SUB;
+      for (const tg of overlays) row(tg);
+    }
+    _ctx.restore();
   }
 
   // On a contract: everything past the site's edge blacked out, then the site
@@ -2490,6 +2575,7 @@ const WorldMapSystem = (() => {
   function close() {
     if (!_open) return;
     _open = false;
+    _viewOpen = false;   // the VIEW dropdown starts shut next time
     _overlay.style.display = 'none';
     _legendBar?.input.blur();   // or the next keypress types into a hidden box
   }
@@ -2585,11 +2671,31 @@ const WorldMapSystem = (() => {
       _overlay.addEventListener('mousedown', ev => {
         // The overlay toggles sit outside the map rectangle, so they have to
         // be checked before the click-outside-closes rule below.
-        const tg = _overlayToggles.find(t => _inRect(t.rect, ev.clientX, ev.clientY));
-        if (tg) {
-          tg.on = !tg.on;
-          try { localStorage.setItem(tg.key, tg.on ? '1' : '0'); } catch (err) {}
+        // The VIEW dropdown: its button opens and shuts it; while it is open a
+        // click on a switch flips it, and a click anywhere else only shuts it.
+        if (_inRect(_viewBtn, ev.clientX, ev.clientY)) {
+          _viewOpen = !_viewOpen;
+          try { if (typeof SFX !== 'undefined') SFX.click(); } catch (err) {}
           ev.preventDefault();
+          return;
+        }
+        if (_viewOpen) {
+          ev.preventDefault();
+          if (_inRect(_viewAll, ev.clientX, ev.clientY)) {
+            for (const t of _overlayToggles) if (t.group === 'layer' && !t.on) {
+              t.on = true;
+              try { localStorage.setItem(t.key, '1'); } catch (err) {}
+            }
+            return;
+          }
+          const tg = _overlayToggles.find(t => _inRect(t.rect, ev.clientX, ev.clientY));
+          if (tg) {
+            tg.on = !tg.on;
+            try { localStorage.setItem(tg.key, tg.on ? '1' : '0'); } catch (err) {}
+            try { if (typeof SFX !== 'undefined') SFX.click(); } catch (err) {}
+            return;
+          }
+          if (!_inRect(_viewPanel, ev.clientX, ev.clientY)) _viewOpen = false;
           return;
         }
         // The legend is its own control: grab its scrollbar to scroll, and a
