@@ -497,22 +497,32 @@ const NationalProject = (() => {
     _xk = on ? Math.min(1, _xk + dt / X_UP) : Math.max(0, _xk - dt / X_DOWN);
   }
   // Heard anywhere (it is the answer to a button in the dossier), louder near
-  // the station. Up: a machine note climbing under a rising hiss, then the
-  // thump of the line taking the load. Down: the note falling away, and the
-  // breakers clacking open one after another.
+  // the station. Up: the machine spooling up under a rush of air, the
+  // contactors slamming shut and a deep hit as the line takes the load, the
+  // charge crackling off it. Down: the breakers clacking open, the machine
+  // spooling down into the dark and a low thud as it stops.
+  // (Both used to be a bare sawtooth sliding at full volume from its first
+  // instant, 38 Hz up or 210 Hz down to 28, which sounded like a fart.)
   function _xSound(on, e) {
     if (typeof SFX === 'undefined' || !SFX.context || !SFX.context()) return;
-    const near = 0.4 + 0.6 * _surgeNear(e);
+    const near = 0.4 + 0.6 * _surgeNear(e), up = X_UP * 0.8;
     if (on) {
-      _sweep(38, 210, X_UP * 0.8, 0.13 * near, 'sawtooth');
-      _sweep(76, 420, X_UP * 0.8, 0.035 * near, 'square');
-      _noise(X_UP * 0.8, 0.05 * near, 220, 3800, 0.95, 0.7);
-      _tone(52, 0.9, 0.3 * near, 'sine', X_UP * 0.8);
-      _noise(0.45, 0.1 * near, 5000, 1200, 0.04, 1, X_UP * 0.8);
+      _riser(up, 0.05 * near, 0.9, 1.6);
+      _whooshIn(up, 0.06 * near, true, 0.9);
+      _sweep(180, 720, up, 0.012 * near, 'sine');                 // a clean turbine whine climbing
+      _clank(0.09 * near, up);
+      _impact(0.3 * near, 1.25, up);
+      _sweep(90, 26, 1.6, 0.18 * near, 'sine', up);
+      _arc(0.8, 0.045 * near, up);
+      _noise(2.2, 0.1 * near, 170, 32, 0.02, 0.8, up);
+      _shimmer(2.2, 0.02 * near, up);
     } else {
-      _sweep(210, 28, X_DOWN, 0.12 * near, 'sawtooth');
-      _noise(X_DOWN * 0.8, 0.04 * near, 3000, 180, 0.05, 0.7);
-      for (const d of [0, 0.22, 0.5]) _tone(1700 - d * 600, 0.04, 0.08 * near, 'square', d);
+      _clank(0.07 * near, 0);
+      _clank(0.045 * near, 0.24);
+      _clank(0.03 * near, 0.52);
+      _spoolDown(X_DOWN, 0.06 * near);
+      _noise(X_DOWN * 0.8, 0.035 * near, 2600, 160, 0.05, 0.7);
+      _impact(0.13 * near, 0.75, X_DOWN * 0.85);
     }
   }
 
@@ -1205,7 +1215,18 @@ const NationalProject = (() => {
   // the station and zoomed in, gone out of earshot (_earshot). Every frame re-arms
   // a fade half a second out, so when the draw stops being drawn (the stage
   // ends, a scene takes over, the window is hidden) the drone dies away.
-  const LS = { vox: null, surge: -1 };
+  const LS = { vox: null, surge: -1, take: -1 };
+  // The surge's takes (see _liveSound): the same sound, played a little
+  // differently each time. p pitch, glide how far the riser climbs (a
+  // fifth is 1.5), a the whoosh's colour (higher is brighter air), s the
+  // hit's size, arc how much charge crackles, echo [delay s, level], echo2
+  // a second, fainter echo, clank the contactors (full draw only).
+  const SURGE_TAKES = [
+    { p: 1,    glide: 1.5,  a: 1,    s: 1,    arc: 1,   echo: [0.42, 1],   echo2: false, clank: true },
+    { p: 0.9,  glide: 1.5,  a: 0.85, s: 1.1,  arc: 0.6, echo: [0.55, 1.2], echo2: true,  clank: false },
+    { p: 1.07, glide: 1.33, a: 1.15, s: 0.95, arc: 1.4, echo: [0.34, 0.8], echo2: false, clank: true },
+    { p: 0.95, glide: 1.68, a: 0.95, s: 1.05, arc: 0.8, echo: [0.48, 1],   echo2: true,  clank: true },
+  ];
   function _liveSound(e, c, final, swell, near, now, sp, F = 1) {
     const ctx = typeof SFX !== 'undefined' && SFX.context ? SFX.context() : null;
     if (!ctx) return;
@@ -1237,28 +1258,52 @@ const NationalProject = (() => {
         // Its loudness for distance is the station gain's (_atStation), which
         // keeps following the camera while the surge plays out.
         const dur = Math.min(c.surge, 3.2), v = (0.35 + 0.65 * _zoomK()) * (final ? 1.2 : 1);
-        _atStation(e, () => {
-          if (final) {
-            // Full draw: a filtered riser of low detuned saws building into the
-            // landing and cut dead on it, then a deep hit with the clang of big
-            // contactors and the rumble rolling off it. (It used to be a bare
-            // sawtooth sliding up from 70 Hz, loudest at its start, which buzzed
-            // like a raspberry.)
-            _riser(dur, 0.045 * v);
-            _impact(0.32 * v, 1.25, dur);
-            _clank(0.1 * v, dur);
-            _noise(1.6, 0.14 * v, 180, 38, 0.02, 0.8, dur);
-            _shimmer(2.2, 0.02 * v, dur);
-            return;
-          }
-          _sweep(70, 360, dur, 0.07 * v, 'sawtooth');
-          _noise(dur, 0.06 * v, 250, 3600, 0.92, 0.9);
-          _tone(36, 1.8, 0.22 * v, 'sine', dur);
-          _noise(1.1, 0.16 * v, 220, 45, 0.02, 0.8, dur);
-          _noise(0.18, 0.08 * v, 4200, 1400, 0.02, 1.2, dur);
-        });
+        _atStation(e, () => _surgeHit(dur, v, final));
       }
     }
+  }
+  // One surge: a whoosh climbing for `dur` seconds, landing on the boom.
+  // Every surge is the same deep whoosh-boom, but no two in a row are the
+  // same take: one of SURGE_TAKES (never the last one), with a little
+  // jitter on top. p = pitch, a = air (the whoosh's colour), s = the hit's
+  // size, echo = [delay, level] of the echo off the city.
+  function _surgeHit(dur, v, final) {
+    let ti = Math.floor(Math.random() * SURGE_TAKES.length);
+    if (ti === LS.take) ti = (ti + 1) % SURGE_TAKES.length;
+    LS.take = ti;
+    const J = (x, k) => x * (1 + (Math.random() * 2 - 1) * k);
+    const tk = SURGE_TAKES[ti], p = J(tk.p, 0.025), a = J(tk.a, 0.06), s = J(tk.s, 0.05);
+    if (final) {
+      // Full draw: a filtered riser of low detuned saws building into the
+      // landing and cut dead on it, a wide rush of air over it with a
+      // breath in just before the hit, then a deep hit with a sub drop
+      // under it, the clang of big contactors, a crack of arcing charge,
+      // the rumble rolling off it and its echo coming back off the city.
+      // (It used to be a bare sawtooth sliding up from 70 Hz, loudest at
+      // its start, which buzzed like a raspberry.)
+      _riser(dur, 0.045 * v, p, tk.glide);
+      _whooshIn(dur, 0.075 * v, true, a);
+      _impact(0.36 * v, 1.45 * s, dur);
+      _sweep(95 * p, 26 * p, 1.7 * s, 0.2 * v, 'sine', dur);
+      if (tk.clank) _clank(0.11 * v, dur);
+      _arc(0.9, 0.05 * v * tk.arc, dur);
+      _noise(2.6 * s, 0.15 * v, 170 * p, 30, 0.02, 0.8, dur);
+      _impact(0.11 * v * tk.echo[1], 1.7, dur + J(tk.echo[0], 0.1));
+      if (tk.echo2) _impact(0.05 * v, 1.9, dur + tk.echo[0] + 0.5);
+      _shimmer(2.6, 0.024 * v, dur);
+      return;
+    }
+    // Stage III: the same shape, smaller. A riser of low saws and a rush
+    // of air climbing into the landing, a breath in, then a hit with a
+    // sub drop, a short crack of charge, the rumble and a faint echo.
+    // (The riser replaces a bare sawtooth slide, which buzzed.)
+    _riser(dur, 0.028 * v, p, tk.glide);
+    _whooshIn(dur, 0.06 * v, false, a);
+    _impact(0.24 * v, 1.05 * s, dur);
+    _sweep(80 * p, 30 * p, 1.3 * s, 0.15 * v, 'sine', dur);
+    _arc(0.45, 0.035 * v * tk.arc, dur);
+    _noise(1.7 * s, 0.13 * v, 200 * p, 36, 0.02, 0.8, dur);
+    _impact(0.06 * v * tk.echo[1], 1.3, dur + J(tk.echo[0] * 0.85, 0.1));
   }
   function _liveSoundStop() {
     if (!LS.vox) return;
@@ -2513,10 +2558,10 @@ const NationalProject = (() => {
   // The scene's own sound, synthesised: _sweep is a tone that slides (booms,
   // knocks, things winding down), _noise a band of noise that slides (rushes
   // of air, ticks, pops, crackle). `att` is the share of `dur` spent rising.
-  function _sweep(f0, f1, dur, vol, type = 'sine') {
+  function _sweep(f0, f1, dur, vol, type = 'sine', delay = 0) {
     const c = typeof SFX !== 'undefined' && SFX.context ? SFX.context() : null;
     if (!c) return;
-    const v = vol * (SFX.getVolume ? SFX.getVolume() : 1), t0 = c.currentTime;
+    const v = vol * (SFX.getVolume ? SFX.getVolume() : 1), t0 = c.currentTime + delay;
     const o = c.createOscillator(), gn = c.createGain();
     o.type = type; o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t0 + dur);
     gn.gain.setValueAtTime(0.0001, t0); gn.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), t0 + 0.015); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
@@ -2741,23 +2786,44 @@ const NationalProject = (() => {
   }
   // The countdown's tension: noise sweeping up under a cluster of detuned
   // saws gliding up a fifth through an opening filter. It ends dead on time.
-  function _riser(dur, vol) {
+  // `pitch` scales the saws, `glide` is how far they climb (1.5: a fifth).
+  function _riser(dur, vol, pitch = 1, glide = 1.5) {
     const c = _ac(); if (!c) return;
     const v = vol * _mv(), t0 = c.currentTime, out = _send(c, 0.35);
     const n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
     n.buffer = _nbuf(c); n.loop = true; f.type = 'bandpass'; f.Q.value = 1.2;
     f.frequency.setValueAtTime(260, t0); f.frequency.exponentialRampToValueAtTime(7000, t0 + dur);
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(v, t0 + dur * 0.98); g.gain.setValueAtTime(0, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), t0 + dur * 0.98); g.gain.setValueAtTime(0, t0 + dur);
     n.connect(f); f.connect(g); g.connect(out); n.start(t0, Math.random()); n.stop(t0 + dur + 0.02);
     const lp = c.createBiquadFilter(), cg = c.createGain();
     lp.type = 'lowpass'; lp.Q.value = 1.5; lp.frequency.setValueAtTime(180, t0); lp.frequency.exponentialRampToValueAtTime(3600, t0 + dur);
-    cg.gain.setValueAtTime(0.0001, t0); cg.gain.exponentialRampToValueAtTime(v * 0.42, t0 + dur * 0.98); cg.gain.setValueAtTime(0, t0 + dur);
+    cg.gain.setValueAtTime(0.0001, t0); cg.gain.exponentialRampToValueAtTime(Math.max(0.0002, v * 0.42), t0 + dur * 0.98); cg.gain.setValueAtTime(0, t0 + dur);
     lp.connect(cg); cg.connect(out);
     for (const [f0, det] of [[41.2, 0], [41.2, 11], [61.7, -8], [82.4, 6], [123.5, -13], [164.8, 9]]) {
       const o = c.createOscillator(); o.type = 'sawtooth'; o.detune.value = det;
-      o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f0 * 1.5, t0 + dur);
+      o.frequency.setValueAtTime(f0 * pitch, t0); o.frequency.exponentialRampToValueAtTime(f0 * pitch * glide, t0 + dur);
       o.connect(lp); o.start(t0); o.stop(t0 + dur + 0.02);
     }
+  }
+  // A machine spooling down: the riser's low detuned saws run backwards,
+  // falling through a filter that closes, eased in (no hard edge) and dying
+  // away, with a sine sub falling under them. Into the hall.
+  function _spoolDown(dur, vol) {
+    const c = _ac(); if (!c) return;
+    const v = vol * _mv(), t0 = c.currentTime, out = _send(c, 0.4);
+    const lp = c.createBiquadFilter(), g = c.createGain();
+    lp.type = 'lowpass'; lp.Q.value = 0.9; lp.frequency.setValueAtTime(900, t0); lp.frequency.exponentialRampToValueAtTime(80, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), t0 + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    lp.connect(g); g.connect(out);
+    for (const [f0, det] of [[61.7, 0], [61.7, 12], [82.4, -9], [123.5, 7]]) {
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.detune.value = det;
+      o.frequency.setValueAtTime(f0, t0); o.frequency.exponentialRampToValueAtTime(f0 * 0.45, t0 + dur);
+      o.connect(lp); o.start(t0); o.stop(t0 + dur + 0.02);
+    }
+    const s = c.createOscillator(), sg = c.createGain();
+    s.type = 'sine'; s.frequency.setValueAtTime(64, t0); s.frequency.exponentialRampToValueAtTime(24, t0 + dur);
+    sg.gain.setValueAtTime(0.0001, t0); sg.gain.exponentialRampToValueAtTime(Math.max(0.0002, v * 2.4), t0 + 0.15); sg.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    s.connect(sg); sg.connect(out); s.start(t0); s.stop(t0 + dur + 0.02);
   }
   // A heavy clock: a woody click over a short low knock, heavier as it goes.
   function _tock(vol) {
@@ -2803,6 +2869,36 @@ const NationalProject = (() => {
       n.buffer = _nbuf(c); n.loop = true; f.type = 'bandpass'; f.Q.value = 3; f.frequency.value = fc;
       g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(v, t0 + dur * 0.35); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       n.connect(f); f.connect(g); g.connect(out); n.start(t0, Math.random()); n.stop(t0 + dur + 0.05);
+    }
+  }
+  // A surge's whoosh: two bands of air climbing into the landing, a low
+  // body and a bright edge (the edge only at full draw), swelling to the
+  // end, then a breath in: the air drops away in the last tenth of a second
+  // so the hit lands in a gap rather than on top of the rush. Into the hall.
+  // `air` shifts its colour (above 1 brighter, below darker).
+  function _whooshIn(dur, vol, wide, air = 1) {
+    const c = _ac(); if (!c) return;
+    const v = vol * _mv(), t0 = c.currentTime, out = _send(c, 0.4), gap = Math.min(0.12, dur * 0.08);
+    const layers = wide ? [[320, 2600, 0.9, 1], [1400, 9000, 1.4, 0.55]] : [[260, 2200, 0.9, 1], [1100, 6000, 1.4, 0.35]];
+    for (const [f0, f1, q, a] of layers) {
+      const n = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain();
+      n.buffer = _nbuf(c); n.loop = true; f.type = 'bandpass'; f.Q.value = q;
+      f.frequency.setValueAtTime(f0 * air, t0); f.frequency.exponentialRampToValueAtTime(Math.min(16000, f1 * air), t0 + dur - gap);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v * a * 0.35), t0 + (dur - gap) * 0.55);   // building...
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v * a), t0 + dur - gap);                  // ...to the top
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur - 0.005);               // the breath in
+      n.connect(f); f.connect(g); g.connect(out); n.start(t0, Math.random()); n.stop(t0 + dur + 0.02);
+    }
+  }
+  // Charge arcing as a surge lands: a quick scatter of bright untuned
+  // snaps, thickest at the hit and thinning out over `dur`.
+  function _arc(dur, vol, delay = 0) {
+    const n = Math.round(6 + dur * 10);
+    for (let i = 0; i < n; i++) {
+      const u = Math.pow(Math.random(), 1.8);                     // bunched up at the start
+      const f = 2600 + Math.random() * 5200;
+      _noise(0.02 + Math.random() * 0.035, vol * (1 - 0.7 * u) * (0.5 + Math.random() * 0.5), f, f * 0.6, 0.05, 6, delay + u * dur);
     }
   }
   // A relay ticking over somewhere in the city: a tiny untuned click.
@@ -3013,6 +3109,10 @@ const NationalProject = (() => {
   return {
     tick, demandKW, surge, incomeNow, stationDue, named, visual, renderWorld, renderFireworks, setFestiveFireworks, openDossier, closeDossier,
     // Dev / tests: send up one shell of a given kind over the middle of the view.
+    // Dev: hear the station's surge (final: the full-draw one) or the export
+    // switching on/off, wherever the camera is.
+    devSurge: (final = true) => _surgeHit(3.2, 1.2, final),
+    devExportSound: (on = true) => { let st = null; try { st = station(); } catch (_e) {} _xSound(on, st || { col: 0, row: 0, width: 1, height: 1 }); },
     devFirework: (kind) => { const z = Camera.zoom, x0 = Camera.x, y0 = Camera.y; _fwLaunch(x0, y0, x0 + innerWidth / z, y0 + innerHeight / z, false, kind); },
     // The same sky, for another scene to run on its own canvas (CompanyHQ's unveiling).
     fw: { step: _fwStep, draw: _fwDraw, load: _loadPops, reset() { FW.rockets.length = 0; FW.stars.length = 0; FW.smoke.length = 0; FW.flare = 0; FW.sites = null; FW.next = 0; } },
