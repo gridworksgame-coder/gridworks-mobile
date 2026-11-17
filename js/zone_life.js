@@ -38,6 +38,10 @@ const ZoneLife = (() => {
   // (CitizenChatter's speech bubbles) finds one and follows them. id is
   // stable for one walk along one run (or one group's stay).
   let _people = [], _peopleNext = [], _peopleT = -1;
+  // Likewise the police cars and ambulances drawn on commercial streets last
+  // frame, { ref, kind, x, y } (ref: the vehicle itself, stable while it
+  // drives), for OutdoorAmbience's sirens.
+  let _emerg = [], _emergNext = [], _emergT = -1;
   const PEOPLE_MAX = 400;
 
   // Residents out walking, matched to how many people actually live here.
@@ -1439,6 +1443,10 @@ const ZoneLife = (() => {
       }
       if (a <= 0) continue;
       if (--_budget < 0) return;
+      // A police car or ambulance out on a commercial street: OutdoorAmbience
+      // gives it a siren (see emergency()).
+      if ((v.kind === 'police' || v.kind === 'ambulance') && sim.zoneKey === 'commercial' && a > 0.5 && !inT && !outT && _emergNext.length < 16)
+        _emergNext.push({ ref: v, kind: v.kind, x: v.x, y: v.y });
       // Ruts where it drives through lying snow (weather_state.js decides if there is any).
       if (_snowy && !inT && !outT && typeof SnowTracks !== 'undefined') { const V = VEH[v.kind]; if (V) SnowTracks.vehicle(v, v.x, v.y, v.ang, V.len, V.wid); }
       const fx = (v.brakeT > 0 && !v.dead ? FX_BRAKE : 0) | (v.fa >= 0 ? _signal(sim, v) : 0);
@@ -1460,6 +1468,7 @@ const ZoneLife = (() => {
   function _traffic(ctx, base, key, rect, plan, Z, activity, t, dark, detail, vx0, vy0, vx1, vy1) {
     const sim = _simFor(key, rect, plan, Z, activity);
     sim.seen = t;
+    sim.zoneKey = key;
     const dt = sim.lastT === null || t < sim.lastT || t - sim.lastT > 1 ? 0 : Math.min(0.1, t - sim.lastT);
     sim.lastT = t;
     if (dt > 0) {
@@ -1693,6 +1702,7 @@ const ZoneLife = (() => {
 
   function render(ctx, t, cStart, cEnd, rStart, rEnd) {
     _people = _peopleNext; _peopleNext = []; _peopleT = performance.now();
+    _emerg = _emergNext; _emergNext = []; _emergT = _peopleT;
     if (typeof _zoneGroundPlan !== 'function' || typeof ZoneSystem === 'undefined') return;
     // Graphics quality (gfx_quality.js). Every level draws the same people,
     // in full, at the same zooms: the figures are cheap (about 0.6 ms a
@@ -2006,6 +2016,7 @@ const ZoneLife = (() => {
     // The people drawn on the latest frame (empty once a frame or two goes by
     // without the zones being drawn: zoomed out, or nothing on screen).
     people: () => (performance.now() - _peopleT < 250 ? _people : []),
+    emergency: () => (performance.now() - _emergT < 250 ? _emerg : []),
     rain: () => _rain, cold: () => _cold, pool: _pool,
     _dev: { drawPerson, drawSmallPerson, drawGroup: _drawGroup, drawMachine: _drawMachine, ZONES, setRain: (r) => { _rain = r; } } };
 })();

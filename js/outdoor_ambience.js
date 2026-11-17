@@ -716,6 +716,98 @@ const OutdoorAmbience = (() => {
     }
   }
 
+  // ── Sirens ────────────────────────────────────────────────────────
+  // A police car or ambulance seen on a commercial street (ZoneLife draws
+  // them; emergency() is who it drew last frame) may be on a call: then it
+  // runs its siren, a police wail or an ambulance's hi-lo, following it
+  // across the view (panned, quieter, duller and wetter towards the edges
+  // like any call here) until it drives out of sight. Kept rare and low:
+  // one at a time, not every one of them on a call, a long gap after each,
+  // and none longer than SIREN.maxFor.
+  // vol: per kind, so each sits about 5 dB under a car horn in the middle
+  // of the view (measured: horn -38 dB, both sirens about -43.5).
+  const SIREN = { vol: { police: 0.08, ambulance: 0.063 }, chance: 0.6, gap: 25, maxFor: 14, fadeIn: 0.8, fadeOut: 1.2 };
+  const _onCall = new WeakMap();   // vehicle -> whether it is running its siren
+  let siren = null, sirenNext = 0;
+  function _view() {
+    // (At least a pixel across: a minimised window is 0 wide, and the
+    // placing below divides by it.)
+    const z = Camera.zoom || 1, w = Math.max(1, window.innerWidth) / z, h = Math.max(1, window.innerHeight) / z;
+    return { cx: Camera.x + w / 2, cy: Camera.y + h / 2, w, h };
+  }
+  function _sirenStart(v, hold = 0) {
+    const t0 = c.currentTime, police = v.kind !== 'ambulance';
+    const tone = c.createBiquadFilter(); tone.type = 'bandpass'; tone.frequency.value = 1150; tone.Q.value = 0.6;
+    const g = c.createGain(); g.gain.value = 0;
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6000;
+    tone.connect(g); g.connect(lp);
+    let tail = lp, pan = null;
+    if (c.createStereoPanner) { pan = c.createStereoPanner(); lp.connect(pan); tail = pan; }
+    tail.connect(master);
+    const send = c.createGain(); send.gain.value = 0.2; tail.connect(send); send.connect(verb);
+    // The horn: a triangle with a little square for its edge, both swept by
+    // one LFO. Police: a sine sweep between ~640 and ~1460 Hz every ~3.4 s.
+    // Ambulance: a square stepping between 770 and 960 Hz every 1.1 s.
+    const centre = police ? 1050 : 865, depth = police ? 410 : 95;
+    const lfo = c.createOscillator(), lg = c.createGain();
+    lfo.type = police ? 'sine' : 'square'; lfo.frequency.value = police ? 0.29 + Math.random() * 0.04 : 0.9;
+    lg.gain.value = depth; lfo.connect(lg);
+    const oscs = [];
+    for (const [type, amt] of [['triangle', 1], ['square', 0.22]]) {
+      const o = c.createOscillator(), og = c.createGain();
+      o.type = type; o.frequency.value = centre; lg.connect(o.frequency);
+      og.gain.value = amt; o.connect(og); og.connect(tone); o.start(t0); oscs.push(o);
+    }
+    lfo.start(t0); oscs.push(lfo);
+    siren = { ref: v.ref, kind: v.kind, x: v.x, y: v.y, t0, seen: t0, hold, nodes: { g, lp, pan, send, tone, tail }, oscs, ending: false };
+    _sirenPlace();
+  }
+  // Level, tone and pan from where the vehicle is in the view now.
+  function _sirenPlace() {
+    const s = siren, v = _view(), now = c.currentTime;
+    const dx = clamp((s.x - v.cx) / (v.w / 2), -4, 4) || 0, dy = clamp((s.y - v.cy) / (v.h / 2), -4, 4) || 0;
+    const d = clamp(Math.hypot(dx, dy) / 1.6, 0, 1);
+    const fade = clamp((now - s.t0) / SIREN.fadeIn, 0, 1);
+    s.nodes.g.gain.setTargetAtTime((SIREN.vol[s.kind] || SIREN.vol.police) * (1 - 0.55 * d) * fade, now, 0.12);
+    s.nodes.lp.frequency.setTargetAtTime(6000 * (1 - 0.6 * d) + 900, now, 0.12);
+    s.nodes.send.gain.setTargetAtTime(0.12 + 0.35 * d, now, 0.12);
+    if (s.nodes.pan) s.nodes.pan.pan.setTargetAtTime(clamp(dx * 0.75, -0.85, 0.85), now, 0.12);
+  }
+  function _sirenStop() {
+    const s = siren; if (!s || s.ending) return;
+    s.ending = true;
+    const now = c.currentTime;
+    s.nodes.g.gain.cancelScheduledValues(now);
+    s.nodes.g.gain.setTargetAtTime(0, now, SIREN.fadeOut / 3);
+    for (const o of s.oscs) { try { o.stop(now + SIREN.fadeOut + 0.3); } catch (_e) {} }
+    setTimeout(() => { try { for (const n of Object.values(s.nodes)) n && n.disconnect(); } catch (_e) {} }, (SIREN.fadeOut + 3) * 1000);
+    siren = null;
+    sirenNext = now + SIREN.gap * (0.8 + Math.random() * 0.4);
+  }
+  function _sirens() {
+    const now = c.currentTime;
+    const list = typeof ZoneLife !== 'undefined' && ZoneLife.emergency ? ZoneLife.emergency() : [];
+    if (siren) {
+      if (siren.hold) { if (now - siren.t0 > siren.hold) _sirenStop(); else _sirenPlace(); return; }   // dev: a fixed one
+      const me = list.find(v => v.ref === siren.ref);
+      if (me) { siren.x = me.x; siren.y = me.y; siren.seen = now; }
+      if (now - siren.seen > 0.5 || now - siren.t0 > SIREN.maxFor) _sirenStop();
+      else _sirenPlace();
+      return;
+    }
+    if (now < sirenNext || !list.length) return;
+    // The one nearest the middle of the view that is on a call.
+    const v = _view();
+    let best = null, bd = Infinity;
+    for (const e of list) {
+      if (!_onCall.has(e.ref)) _onCall.set(e.ref, Math.random() < SIREN.chance);
+      if (!_onCall.get(e.ref)) continue;
+      const d = Math.hypot(e.x - v.cx, e.y - v.cy);
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (best) _sirenStart(best);
+  }
+
   return {
     tick() {
       const nowMs = performance.now();
@@ -728,6 +820,7 @@ const OutdoorAmbience = (() => {
       // Level: the player's sound volume, and quieter seen from high up.
       const lvl = MASTER * (typeof SFX.getVolume === 'function' ? SFX.getVolume() : 1) * (0.45 + 0.55 * s.zoomT) * (s.away ? 0.5 : 1);
       master.gain.setTargetAtTime(lvl, c.currentTime, 0.5);
+      _sirens();
 
       // Fewer calls from high up.
       const busy = _busy(c.currentTime);
@@ -760,6 +853,17 @@ const OutdoorAmbience = (() => {
       master.gain.setTargetAtTime(MASTER, c.currentTime, 0.05);
       return _play(name, { x: scene.view.cx, y: scene.view.cy }, ...args);
     },
+    // Dev: a siren ('police' or 'ambulance') for `secs` from the middle of the view.
+    siren(kind = 'police', secs = 6) {
+      if (!_setup() || typeof Camera === 'undefined') return false;
+      if (siren) _sirenStop();
+      master.gain.setTargetAtTime(MASTER * (typeof SFX.getVolume === 'function' ? SFX.getVolume() : 1), c.currentTime, 0.05);
+      const v = _view();
+      _sirenStart({ ref: null, kind, x: v.cx, y: v.cy }, secs);
+      return true;
+    },
+    // Dev: the siren sounding now, if any.
+    sirenNow: () => siren && c ? { kind: siren.kind, secs: +(c.currentTime - siren.t0).toFixed(1), x: Math.round(siren.x), y: Math.round(siren.y) } : null,
     CALLS: Object.keys(CALLS),
     recent: () => recent.slice(),
     // Dev: calls a minute each would make here and now, before the zoom.
