@@ -952,11 +952,7 @@ const NationalProject = (() => {
     window.addEventListener('keydown', S.onKey, true);
     window.addEventListener('keyup', S.onKey, true);
     window.addEventListener('resize', resize);
-    // Spool-up: a rising machine note over a climbing hiss.
-    const spool = c.release - 0.6;
-    _sweep(32, i === 3 ? 150 : 120, spool, i === 3 ? 0.22 : 0.17, 'sawtooth');
-    _sweep(64, i === 3 ? 420 : 300, spool, 0.05, 'square');
-    _noise(spool, i === 3 ? 0.09 : 0.06, 180, 4200, 0.95, 0.7);
+    _drawSpool(c.release, i === 3);
     _loadHum();
     S.raf = requestAnimationFrame(_sceneFrame);
   }
@@ -1013,10 +1009,7 @@ const NationalProject = (() => {
     for (let k = S.boomed; k < c.waves; k++) {
       if (t < R + k * 0.42) break;
       S.boomed = k + 1;
-      const w = k === 0 ? 1 : 0.6;
-      _impact(0.85 * w, k === 0 ? 1.8 : 1.2);                                   // the blow, ringing out in the hall
-      _noise(2.6, 0.4 * w, 140, 32, 0.015, 0.7);                               // and the rumble rolling after it
-      if (k === 0) _shimmer(c.pull ? 5 : 3.5, c.pull ? 0.06 : 0.04, 0.15);
+      _drawRelease(k, c.pull);
       try { Camera.shake?.(k === 0 ? (c.pull ? 46 : 32) : 22); } catch (_e) {}
     }
   }
@@ -2805,6 +2798,56 @@ const NationalProject = (() => {
       o.connect(lp); o.start(t0); o.stop(t0 + dur + 0.02);
     }
   }
+  // The draw scene's build, from the stage reaching 100% to the release `R`
+  // seconds later: the whole station charging. A riser of low detuned saws
+  // through an opening filter, a deep sine sub swelling up under it, a low
+  // throb of the draw that pulses faster and faster as the charge builds,
+  // and a rush of air climbing over the top with a breath in just before
+  // the release. Bigger, lower and longer at full draw. (It used to be a
+  // bare sawtooth and a square wave sliding up from 32 and 64 Hz, loudest
+  // at their start, which sounded farty and cheesy.)
+  function _drawSpool(R, final, delay = 0) {
+    const c = _ac(); if (!c) return;
+    const t0 = c.currentTime + delay, mv = _mv(), out = _send(c, 0.45);
+    // Kept under the release, and everything drops away in its last third
+    // of a second (the riser cuts, the air breathes in, the sub and the
+    // throb fall away), so the blow lands into a hush: the scene's limiter
+    // would squash it level with a build as loud as it.
+    const k = final ? 0.5 : 0.42, top = R - 0.32, gap = R - 0.04;   // peak, then a breath in
+    if (!delay) {
+      _riser(R - 0.3, 0.05 * k, final ? 0.75 : 0.85, final ? 1.68 : 1.5);
+      _whooshIn(R, 0.07 * k, final, 0.85);
+    }
+    // The sub: a clean sine climbing from the floor, swelling to the release.
+    const s = c.createOscillator(), sg = c.createGain();
+    s.type = 'sine'; s.frequency.setValueAtTime(final ? 26 : 30, t0); s.frequency.exponentialRampToValueAtTime(final ? 46 : 48, t0 + R);
+    sg.gain.setValueAtTime(0.0001, t0); sg.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.24 * k * mv), t0 + top); sg.gain.exponentialRampToValueAtTime(0.0001, t0 + gap);
+    s.connect(sg); sg.connect(out); s.start(t0); s.stop(t0 + R + 0.02);
+    // The throb: a low filtered tone pulsed by an LFO that speeds up from a
+    // slow heave to a fast flutter as the charge builds.
+    const lp = c.createBiquadFilter(), tg = c.createGain(), pg = c.createGain(), lfo = c.createOscillator(), lg = c.createGain();
+    lp.type = 'lowpass'; lp.Q.value = 0.7; lp.frequency.setValueAtTime(140, t0); lp.frequency.exponentialRampToValueAtTime(final ? 520 : 440, t0 + R);
+    lfo.type = 'sine'; lfo.frequency.setValueAtTime(1.2, t0); lfo.frequency.exponentialRampToValueAtTime(final ? 11 : 9, t0 + R);
+    lg.gain.value = 0.5; tg.gain.value = 0.5;                                  // the pulse swings 0..1
+    lfo.connect(lg); lg.connect(tg.gain);
+    pg.gain.setValueAtTime(0.0001, t0); pg.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.07 * k * mv), t0 + top); pg.gain.exponentialRampToValueAtTime(0.0001, t0 + gap);
+    lp.connect(tg); tg.connect(pg); pg.connect(out);
+    for (const [f, type] of [[final ? 49 : 55, 'triangle'], [final ? 73.5 : 82.5, 'sine']]) {
+      const o = c.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t0); o.frequency.exponentialRampToValueAtTime(f * 1.26, t0 + R);
+      o.connect(lp); o.start(t0); o.stop(t0 + R + 0.02);
+    }
+    lfo.start(t0); lfo.stop(t0 + R + 0.02);
+  }
+  // The release, wave k (full draw has three): the blow ringing out in the
+  // hall, a clean sine sub dropping away under it, the rumble rolling after
+  // it, and on the first a long shimmer.
+  function _drawRelease(k, final, delay = 0) {
+    const w = k === 0 ? 1 : 0.6;
+    _impact(0.85 * w, k === 0 ? 1.8 : 1.2, delay);
+    _sweep(k === 0 ? (final ? 88 : 78) : 70, 22, k === 0 ? (final ? 2.6 : 2) : 1.4, 0.3 * w, 'sine', delay);
+    _noise(2.6, 0.4 * w, 140, 32, 0.015, 0.7, delay);
+    if (k === 0) _shimmer(final ? 5 : 3.5, final ? 0.06 : 0.04, delay + 0.15);
+  }
   // A machine spooling down: the riser's low detuned saws run backwards,
   // falling through a filter that closes, eased in (no hard edge) and dying
   // away, with a sine sub falling under them. Into the hall.
@@ -3112,6 +3155,13 @@ const NationalProject = (() => {
     // Dev: hear the station's surge (final: the full-draw one) or the export
     // switching on/off, wherever the camera is.
     devSurge: (final = true) => _surgeHit(3.2, 1.2, final),
+    // Dev: a stage reaching 100% (final: Hyperion at full draw), the build
+    // and the release without the scene.
+    devDrawSound: (final = true) => {
+      const c = SCENE[final ? 3 : 2];
+      _drawSpool(c.release, final);
+      for (let k = 0; k < c.waves; k++) _drawRelease(k, final, c.release + k * 0.42);
+    },
     devExportSound: (on = true) => { let st = null; try { st = station(); } catch (_e) {} _xSound(on, st || { col: 0, row: 0, width: 1, height: 1 }); },
     devFirework: (kind) => { const z = Camera.zoom, x0 = Camera.x, y0 = Camera.y; _fwLaunch(x0, y0, x0 + innerWidth / z, y0 + innerHeight / z, false, kind); },
     // The same sky, for another scene to run on its own canvas (CompanyHQ's unveiling).

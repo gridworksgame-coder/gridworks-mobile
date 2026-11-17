@@ -1485,6 +1485,104 @@ const RainAudio = makeWeatherBedAudio('audio/sfx/rain.mp3', 0.21);
 // ── Heavy Wind Audio (storm) ───────────────────────────────────────
 const HeavyWindAudio = makeWeatherBedAudio('audio/sfx/heavywind.mp3', 0.5);
 
+// ── Blizzard Wind Audio ────────────────────────────────────────────
+// A blizzard's own wind, synthesised, on top of the storm's wind bed:
+//   • the howl: dark noise through a resonant band that wanders 280-850 Hz,
+//     moaning as the gusts come and go;
+//   • a thin whistle higher up (gaps, wires, eaves), only in the gusts;
+//   • a deep roar under it that swells with each gust;
+//   • the hiss of driven snow.
+// Gusts are a random walk with now and then a big one, re-aimed every
+// quarter second; the howl and whistle drift left and right. Fades in over
+// four seconds and out over five, like the beds. Through SFX.bus(), with
+// the other weather (heard over the ashes too).
+const BlizzardWindAudio = (() => {
+  // A little under the storm's wind bed (about -39 dB RMS against its -36
+  // at full volume, measured 2026-11-17): character on top, not a wall.
+  const LEVEL = 0.1;
+  let v = null, timer = null, gust = 0.5, gustTo = 0.5, howlF = 450, pan = 0;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function _noise(c) {
+    // 4 s of brownish noise (white through a leaky integrator): darker than
+    // white, so the bands sound like air rather than static.
+    const len = c.sampleRate * 4, b = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = b.getChannelData(ch); let y = 0;
+      for (let i = 0; i < len; i++) { y = 0.985 * y + 0.15 * (Math.random() * 2 - 1); d[i] = y; }
+      let m = 0; for (let i = 0; i < len; i++) m = Math.max(m, Math.abs(d[i]));
+      for (let i = 0; i < len; i++) d[i] /= m || 1;
+    }
+    return b;
+  }
+  function _layer(c, buf, out, type, f, q, panned) {
+    const s = c.createBufferSource(); s.buffer = buf; s.loop = true;
+    const fl = c.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    const g = c.createGain(); g.gain.value = 0;
+    s.connect(fl); fl.connect(g);
+    let p = null;
+    if (panned && c.createStereoPanner) { p = c.createStereoPanner(); g.connect(p); p.connect(out); } else g.connect(out);
+    s.start(0, Math.random() * buf.duration);
+    return { s, fl, g, p };
+  }
+  function _step() {
+    if (!v) return;
+    const c = v.c, t = c.currentTime;
+    // The gust: drift towards a target, a new target now and then, and
+    // sometimes a big one.
+    if (Math.abs(gust - gustTo) < 0.05 || Math.random() < 0.04) gustTo = Math.random() < 0.12 ? rnd(0.9, 1) : rnd(0.3, 0.75);
+    gust += (gustTo - gust) * 0.18;
+    howlF = Math.max(280, Math.min(850, howlF + rnd(-60, 60) + (gust - 0.6) * 40));
+    pan = Math.max(-0.6, Math.min(0.6, pan + rnd(-0.08, 0.08)));
+    const k = v.fade, T = 0.35;
+    v.howl.g.gain.setTargetAtTime(k * (0.35 + 0.65 * gust) * 0.9, t, T);
+    v.howl.fl.frequency.setTargetAtTime(howlF * (0.85 + 0.3 * gust), t, T);
+    if (v.howl.p) v.howl.p.pan.setTargetAtTime(pan, t, 0.8);
+    v.howl2.g.gain.setTargetAtTime(k * (0.25 + 0.5 * gust) * 0.55, t, T);
+    v.howl2.fl.frequency.setTargetAtTime(howlF * 1.5, t, T);
+    if (v.howl2.p) v.howl2.p.pan.setTargetAtTime(-pan * 0.8, t, 0.8);
+    const w = Math.max(0, gust - 0.6) / 0.4;                                  // the whistle only in the gusts
+    v.whistle.g.gain.setTargetAtTime(k * w * w * 0.22, t, T);
+    v.whistle.fl.frequency.setTargetAtTime(1500 + 900 * gust + rnd(-80, 80), t, T);
+    if (v.whistle.p) v.whistle.p.pan.setTargetAtTime(pan * -0.5, t, 0.8);
+    v.roar.g.gain.setTargetAtTime(k * (0.4 + 0.6 * gust), t, T);
+    v.roar.fl.frequency.setTargetAtTime(180 + 260 * gust, t, T);
+    v.hiss.g.gain.setTargetAtTime(k * (0.2 + 0.3 * gust) * 0.5, t, T);
+  }
+  return {
+    start() {
+      const c = typeof SFX !== 'undefined' && SFX.context ? SFX.context() : null;
+      if (!c || !SFX.bus) return;
+      if (v && !v.stopping) return;
+      if (v) { clearTimeout(v.kill); v.stopping = false; }
+      else {
+        const buf = _noise(c), out = c.createGain(); out.gain.value = 0; out.connect(SFX.bus());
+        v = { c, out, fade: 1, stopping: false,
+              howl: _layer(c, buf, out, 'bandpass', 450, 7, true),
+              howl2: _layer(c, buf, out, 'bandpass', 680, 9, true),
+              whistle: _layer(c, buf, out, 'bandpass', 1900, 18, true),
+              roar: _layer(c, buf, out, 'lowpass', 300, 0.7, false),
+              hiss: _layer(c, buf, out, 'highpass', 4500, 0.5, false) };
+        gust = 0.5; gustTo = 0.6;
+      }
+      v.out.gain.setTargetAtTime(LEVEL, c.currentTime, 4 / 3);
+      if (!timer) timer = setInterval(_step, 250);
+      _step();
+    },
+    stop() {
+      if (!v || v.stopping) return;
+      const s = v; s.stopping = true;
+      s.out.gain.setTargetAtTime(0, s.c.currentTime, 5 / 3);
+      s.kill = setTimeout(() => {
+        clearInterval(timer); timer = null;
+        for (const l of [s.howl, s.howl2, s.whistle, s.roar, s.hiss]) { try { l.s.stop(); } catch (_e) {} }
+        try { s.out.disconnect(); } catch (_e) {}
+        if (v === s) v = null;
+      }, 7000);
+    },
+    isOn: () => !!v && !v.stopping,
+  };
+})();
+
 // ── Geomagnetic storm bed ──────────────────────────────────────────
 // Synthesized, no samples, and kept to what a grid under a geomagnetic
 // storm really sounds like rather than a sci-fi sky. Induced current pushes
@@ -1652,9 +1750,13 @@ const MusicSystem = (() => {
     { src: 'audio/music/Sleepless.mp3',          vol: 0.210 },
     { src: 'audio/music/Falling as Water Does.mp3', vol: 0.367 },
     { src: 'audio/music/Lurking.mp3',            vol: 0.263 },
-    // Not in the rotation, on purpose: Electron.mp3 scores the apocalypse
-    // (apocalypse_system.js) and Rope to the Sky.mp3 is Operation Hyperion's
-    // victory song (national_project.js) — each is saved for its moment.
+    // Every MP3 in audio/music is in the rotation, these two included
+    // (2026-11-17): Electron.mp3 also scores the apocalypse
+    // (apocalypse_system.js) and Rope to the Sky.mp3 is also Operation
+    // Hyperion's victory song (national_project.js). Levels measured the
+    // same way as the rest (-27 dB mean after `vol`).
+    { src: 'audio/music/Electron.mp3',           vol: 0.148 },
+    { src: 'audio/music/Rope to the Sky.mp3',    vol: 0.155 },
   ];
   // Shuffle bag: every track plays once before any comes round again, and
   // the bag is kept in localStorage so a new session carries on through it.

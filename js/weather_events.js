@@ -402,9 +402,10 @@ const WeatherEventSystem = (() => {
                 () => WindStreakSystem, () => StormDebrisSystem],
     rainfall:  [() => RainSystem, () => RainAudio, () => GroundSplashSystem],
     // Snow is RainSystem in its snow mode (set in _startVisuals): no splashes
-    // and no rain on the roof. A blizzard adds the storm's wind.
+    // and no rain on the roof. A blizzard adds the storm's wind, and its own
+    // howling, whistling wind and driven snow over it (BlizzardWindAudio).
     snowfall:  [() => RainSystem],
-    blizzard:  [() => RainSystem, () => WindStreakSystem, () => HeavyWindAudio],
+    blizzard:  [() => RainSystem, () => WindStreakSystem, () => HeavyWindAudio, () => BlizzardWindAudio],
     storm:     [() => WindStreakSystem, () => HeavyWindAudio, () => StormDebrisSystem],
     heatwave:  [() => HeatSystem],
     dust:      [() => DustSystem, () => HeavyWindAudio, () => StormDebrisSystem],
