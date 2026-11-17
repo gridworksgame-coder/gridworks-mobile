@@ -2,9 +2,10 @@
    GRAPHICS QUALITY
    One knob the renderers read to decide how much to draw per frame:
      2 = high    everything, every frame
-     1 = medium  no canvas shadow blur, zone life under a figure budget
-     0 = low     as medium, with zone life thinned right down to simple
-                 silhouettes
+     1 = medium  no canvas shadow blur, 85% of the people and cars
+     0 = low     as medium, with 70% of the people and cars
+   People and cars are always drawn in full detail, at every level: only
+   how many are out changes.
 
    Separately, "Smooth Building Animation" (on by default) decides how
    zone buildings are drawn below high quality. Turned off, they are always

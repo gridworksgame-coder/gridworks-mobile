@@ -681,9 +681,11 @@ const ZoneMoments = (() => {
     if (typeof ZoneLife === 'undefined' || !ZoneLife.drawPerson || typeof ZoneSystem === 'undefined') return;
     L = ZoneLife;
     const lv = typeof GfxQuality !== 'undefined' ? GfxQuality.level() : 2;
-    if (Camera.zoom < (lv === 0 ? 0.8 : 0.45)) return;
-    _detail = lv !== 0 && Camera.zoom > 0.7;
-    _budget = lv === 2 ? 500 : lv === 1 ? 300 : 100;
+    // Fully drawn at every graphics level, like ZoneLife's people; lower
+    // levels only get a smaller per-frame budget.
+    if (Camera.zoom < 0.45) return;
+    _detail = Camera.zoom > 0.7;
+    _budget = lv === 2 ? 500 : lv === 1 ? 400 : 250;
     _stats = {};
     _t = t;
     _dark = DayNight.darkness();

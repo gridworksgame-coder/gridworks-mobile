@@ -1694,16 +1694,17 @@ const ZoneLife = (() => {
   function render(ctx, t, cStart, cEnd, rStart, rEnd) {
     _people = _peopleNext; _peopleNext = []; _peopleT = performance.now();
     if (typeof _zoneGroundPlan !== 'function' || typeof ZoneSystem === 'undefined') return;
-    // Graphics quality (gfx_quality.js). Medium draws exactly what high does,
-    // under a tighter per-frame figure budget (only reached with a very busy
-    // city filling the screen). Low drops figures to their two-rect
-    // silhouettes, thins them out and stops drawing them at a closer zoom.
+    // Graphics quality (gfx_quality.js). Every level draws the same people,
+    // in full, at the same zooms: the figures are cheap (about 0.6 ms a
+    // frame on a busy street, measured 2026-11-17) next to the buildings.
+    // Medium and low only show fewer of them (_density), under a smaller
+    // per-frame budget (only reached with a very busy city filling the screen).
     const lv = typeof GfxQuality !== 'undefined' ? GfxQuality.level() : 2;
-    if (Camera.zoom < (lv === 0 ? 0.8 : 0.4)) return;
+    if (Camera.zoom < 0.4) return;
     const T = TILE;
-    const detail = lv === 0 ? false : Camera.zoom > 0.7;
-    _density = lv === 0 ? 0.4 : 1;
-    _budget  = lv === 2 ? 1200 : lv === 1 ? 700 : 200;
+    const detail = Camera.zoom > 0.7;
+    _density = lv === 2 ? 1 : lv === 1 ? 0.85 : 0.7;
+    _budget  = lv === 2 ? 1200 : lv === 1 ? 900 : 600;
     const hr = DayNight.hour();
     const dark = DayNight.darkness();
     _sampleWeather();
@@ -1769,6 +1770,7 @@ const ZoneLife = (() => {
             const slots = Math.max(1, Math.floor(lenT / 4));
             for (let j = 0; j < slots && _budget > 0; j++) {
               const gs = run.id * 131 + j * 17;
+              if (_density < 1 && _hash(gs, 29) > _density) continue;   // fewer at lower quality
               const gkind = pickKind(Z.groupKinds, _hash(gs, 20));
               // How long a group stays: a vendor's pitch the best part of an
               // hour of game clock, a chat a minute or so.
@@ -1940,13 +1942,15 @@ const ZoneLife = (() => {
   function renderRoads(ctx, t, cStart, cEnd, rStart, rEnd) {
     if (typeof EntityRegistry === 'undefined') return;
     const lv = typeof GfxQuality !== 'undefined' ? GfxQuality.level() : 2;
-    if (Camera.zoom < (lv === 0 ? 0.5 : 0.25)) return;
+    // Same as the people: every car fully drawn at every level, fewer of
+    // them at medium and low.
+    if (Camera.zoom < 0.25) return;
     const runs = _roadRunsNow();
     if (!runs.length) return;
     const T = TILE;
-    const detail = lv === 0 ? false : Camera.zoom > 0.35;
-    const density = lv === 0 ? 0.5 : 1;
-    let budget = lv === 2 ? 400 : lv === 1 ? 250 : 80;
+    const detail = Camera.zoom > 0.35;
+    const density = lv === 2 ? 1 : lv === 1 ? 0.85 : 0.7;
+    let budget = lv === 2 ? 400 : lv === 1 ? 300 : 200;
     _updateWeather(t);
     const activity = roadActivity(DayNight.hour()) * _wxCar;
     const dark = DayNight.darkness();
