@@ -130,7 +130,6 @@ const WorldMapSystem = (() => {
     { key: 'gridworks.worldmap.showZones', label: 'Zones', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showPowerLines', label: 'Power Towers / Poles', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showNetworks', label: 'Pipes & Conveyors', group: 'layer', defaultOn: true, offered: () => true },
-    { key: 'gridworks.worldmap.showTrees', label: 'Trees & Vegetation', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showTrucks', label: 'Trucks', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showDrones', label: 'Drones', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showAlerts', label: 'Status Alerts', group: 'layer', defaultOn: true, offered: () => true },
@@ -410,7 +409,7 @@ const WorldMapSystem = (() => {
       for (const e of EntityRegistry.getByType(T.WATER)) {
         if (e.col >= 0 && e.col < COLS && e.row >= 0 && e.row < ROWS) water[e.row * COLS + e.col] = e._reservoirId !== undefined ? 2 : 1;
       }
-      if (_layer('Trees')) for (const e of EntityRegistry.getByType(T.TREE)) {
+      for (const e of EntityRegistry.getByType(T.TREE)) {
         if (e.col >= 0 && e.col < COLS && e.row >= 0 && e.row < ROWS) trees[e.row * COLS + e.col] = 1;
       }
     }
@@ -674,7 +673,7 @@ const WorldMapSystem = (() => {
     // which change as the player builds (placing clears trees), so rebuild
     // when their counts differ from the last bake — otherwise reuse it.
     const sig = (typeof EntityRegistry !== 'undefined')
-      ? EntityRegistry.getByType(T.TREE).size * 1000003 + EntityRegistry.getByType(T.WATER).size + ':' + TerrainSystem.version() + (_layer('Trees') ? '' : ':notrees') : 0;
+      ? EntityRegistry.getByType(T.TREE).size * 1000003 + EntityRegistry.getByType(T.WATER).size + ':' + TerrainSystem.version() : 0;
     if (!_terrainValid || sig !== _terrainSig) { _buildTerrain(); _terrainSig = sig; }
     _ctx.save();
     _ctx.translate(ox, oy);
@@ -825,6 +824,7 @@ const WorldMapSystem = (() => {
         if (!list || list.size === 0) continue;
 
         if (!_typeShown(type)) continue;   // VIEW dropdown
+        if (type === T.TRUCK) continue;     // drawn after every building, below
         const isLegendMatch = _isHL('building', type);
         const isExtractor = EXTRACTOR_TYPES.has(type);
 
@@ -970,6 +970,14 @@ const WorldMapSystem = (() => {
             else if ((type === T.DRONEPORT || type === T.DRONECHARGER) && e !== _selectedPort && !_showDroneNets()) label += ': click to show network';
             _hoverInfo = { label, sx: _mouseSX, sy: _mouseSY };
           }
+        }
+      }
+      // Trucks over every building, so one parked in an industrial block or
+      // driving past a plant is never hidden under it. Brighter than their
+      // legend swatch so they stand out on the terrain.
+      if (_layer('Trucks')) {
+        for (const e of EntityRegistry.getByType(T.TRUCK)) {
+          if (e.col != null && e.row != null) _drawTruckMarker(e, es, '#b8ff50');
         }
       }
     }
@@ -1200,6 +1208,43 @@ const WorldMapSystem = (() => {
   // Positions are world pixels, updated every frame by DroneSystem.frameTick,
   // and the map redraws every frame while open, so they fly live.
   const DRONE_JOB_LABELS = { repair: 'repair run', wire: 'line service', waste: 'waste haul', cargo: 'cargo run' };
+  // A truck on the world map: a 1-tile rectangle was a speck at most zooms,
+  // so each one is a marker big enough to spot, a rounded body pointing the
+  // way it is heading, at its live position on the road (trucks move between
+  // tiles; col/row is only the tile they started on). White with a dark
+  // keyline and a soft halo, so it reads against any building colour; the
+  // cab is the truck's own green.
+  function _drawTruckMarker(e, es, color) {
+    const wx = (e._wx !== undefined ? e._wx : e.col * TILE) + TILE / 2;
+    const wy = (e._wy !== undefined ? e._wy : e.row * TILE) + TILE * 1.5;
+    const { x: cx, y: cy } = _tileToScreen(wx / TILE, wy / TILE);
+    const len = Math.max(15, Math.min(28, es * 3));
+    const wid = Math.max(8, Math.min(14, es * 1.5));
+    const ang = e._visAngle ?? e._angle ?? 0;   // 0 = heading up (north)
+    const hl = _isHL('building', T.TRUCK) || _hlEntities.has(e);
+    _ctx.save();
+    _ctx.translate(cx, cy);
+    _ctx.rotate(ang);
+    // Halo, dark keyline, body, then the cab at the front.
+    _ctx.shadowColor = hl ? '#ffffff' : 'rgba(255,255,255,0.55)';
+    _ctx.shadowBlur = hl ? 14 : 7;
+    _ctx.fillStyle = 'rgba(4,10,16,0.9)';
+    _ctx.beginPath(); _ctx.roundRect(-wid / 2 - 2, -len / 2 - 2, wid + 4, len + 4, 4); _ctx.fill();
+    _ctx.shadowBlur = 0; _ctx.shadowColor = 'transparent';
+    _ctx.fillStyle = '#ffffff';
+    _ctx.beginPath(); _ctx.roundRect(-wid / 2, -len / 2, wid, len, 2.5); _ctx.fill();
+    const cab = Math.max(4, len * 0.32);
+    _ctx.fillStyle = color;
+    _ctx.beginPath(); _ctx.roundRect(-wid / 2 + 1.5, -len / 2 + 1.5, wid - 3, cab, 2); _ctx.fill();
+    _ctx.restore();
+    // Hover: name it, like a building.
+    const r = len / 2 + 2;
+    if (_mouseSX >= cx - r && _mouseSX <= cx + r && _mouseSY >= cy - r && _mouseSY <= cy + r) {
+      const label = e.businessName || e._name || (typeof EntityDefs !== 'undefined' && EntityDefs[T.TRUCK]?.label) || 'Truck';
+      _hoverInfo = { label, sx: _mouseSX, sy: _mouseSY };
+    }
+  }
+
   function _drawDrones(es) {
     if (typeof DroneSystem === 'undefined' || typeof EntityRegistry === 'undefined') return;
     const accent = typeof droneAccent === 'function' ? droneAccent : () => '#5ad8ff';
