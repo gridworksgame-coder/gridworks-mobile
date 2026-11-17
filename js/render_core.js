@@ -4419,7 +4419,10 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       PerfMonitor.record('BG grid lines', performance.now() - _gridT0);
     }
 
-    // Zone overlays — drawn before entities, in world space
+    // Zone overlays — drawn before entities, in world space. Skipped while
+    // the VIEW dropdown hides zones (MapView); the zones flag is part of the
+    // cache's version key, so toggling it rebuilds this layer.
+    if (typeof MapView === 'undefined' || MapView.show('zones')) {
     // Zone cobblestone fills — draw before entities, after ground
     {
       const _stoneT0 = performance.now();
@@ -4577,6 +4580,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       const _quayT0 = performance.now();
       drawZoneQuays(targetCtx, cStart, cEnd, rStart, rEnd, 1 - _dark * 0.24, _dark);
       PerfMonitor.record('Zone quay wall', performance.now() - _quayT0);
+    }
     }
   }
 

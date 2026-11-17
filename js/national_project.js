@@ -1298,6 +1298,9 @@ const NationalProject = (() => {
     const sp = (now % c.surge) / Math.min(c.surge, 3.2);
     const surgeR = sp < 1 ? L.rMax * 1.05 * (1 - sp * sp) : -1, surgeBand = Math.max(TILE * 4, L.rMax * 0.05);
     try { _liveSound(e, c, phase === 'stage4', wave(TILE * 4), _surgeNear(e), now, sp, F); } catch (_e) {}
+    // The VIEW dropdown hid the towers or the buildings this lights up: keep
+    // the sound, draw nothing over the gaps.
+    if (typeof MapView !== 'undefined' && (!MapView.show('poles') || !MapView.show('buildings'))) return;
     const spr = _liveSprite(c.rgb), hot = _liveSprite(c.hot);
     ctx.save();
     // The sky takes the station's colour: a wash over everything, brightest

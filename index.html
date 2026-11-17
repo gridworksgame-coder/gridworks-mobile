@@ -2074,7 +2074,7 @@
   /* The contract checklist sits above most of the HUD (z-index 820) but goes
      under any top-bar panel while one is open. Below #hud's 40, because GRID,
      WEATHER, PROGRESS and the stat panels stack inside #hud. */
-  body:has(#grid-panel.open, #weather-panel.open, #progress-tracker.visible, #population-panel.visible,
+  body:has(#grid-panel.open, #weather-panel.open, #view-panel.open, #progress-tracker.visible, #population-panel.visible,
            #income-breakdown.visible, #score-panel.visible, #gov-panel.visible, #achievements-panel.visible,
            #trucks-panel.visible, #drones-panel.visible, #compendium-panel.visible, #advisor-panel.visible,
            #np-dossier.visible) #contract-checklist { z-index: 39 !important; }
@@ -2122,6 +2122,61 @@
     box-shadow: var(--shadow-lg), var(--glow-accent);
   }
   #weather-panel.open { display: flex; animation: panelIn 0.18s var(--ease); }
+
+  /* ── VIEW dropdown: what is shown on the map (MapView) ─────────── */
+  #view-panel {
+    position: fixed; top: 52px; right: auto;
+    background: rgba(8,12,20,0.97);
+    border: 1px solid var(--ui-border-b);
+    padding: 10px 0 8px;
+    display: none; flex-direction: column;
+    width: 232px; z-index: 80; pointer-events: all;
+    backdrop-filter: blur(20px);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg), var(--glow-accent);
+    font-family: 'Inter', sans-serif;
+  }
+  #view-panel.open { display: flex; animation: panelIn 0.18s var(--ease); }
+  #view-panel .vp-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--ui-border);
+  }
+  #view-panel .vp-title { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; color: #80c8ff; text-transform: uppercase; }
+  #view-panel .vp-all {
+    background: none; border: none; padding: 2px 0; cursor: pointer;
+    font: 500 10px 'Inter', sans-serif; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent); opacity: 0.85; transition: opacity 0.16s var(--ease);
+  }
+  #view-panel .vp-all:hover { opacity: 1; text-decoration: underline; }
+  #view-panel .vp-all[disabled] { color: var(--text-dim); opacity: 0.5; cursor: default; text-decoration: none; }
+  #view-panel .vp-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 6px 14px; background: none; border: none; cursor: pointer; text-align: left;
+    font: 500 12px 'Inter', sans-serif; color: #c8dcec;
+    transition: background 0.14s var(--ease), color 0.14s var(--ease);
+  }
+  #view-panel .vp-row:hover, #view-panel .vp-row:focus-visible { background: rgba(0,212,255,0.06); outline: none; }
+  #view-panel .vp-row .vp-label { flex: 1; }
+  #view-panel .vp-row.off { color: var(--text-dim); }
+  #view-panel .vp-row svg { width: 15px; height: 15px; flex: none; color: #5aa8d8; transition: color 0.14s var(--ease); }
+  #view-panel .vp-row.off svg { color: #3a5060; }
+  /* The switch */
+  #view-panel .vp-switch {
+    position: relative; flex: none; width: 28px; height: 16px; border-radius: 8px;
+    background: #14202e; border: 1px solid #24384c; transition: background 0.16s var(--ease), border-color 0.16s var(--ease);
+  }
+  #view-panel .vp-switch::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%;
+    background: #4a6878; transition: transform 0.16s var(--ease), background 0.16s var(--ease);
+  }
+  #view-panel .vp-row:not(.off) .vp-switch { background: rgba(0,212,255,0.18); border-color: rgba(0,212,255,0.55); }
+  #view-panel .vp-row:not(.off) .vp-switch::after { transform: translateX(12px); background: var(--accent); box-shadow: 0 0 6px rgba(0,212,255,0.6); }
+  /* The VIEW tab shows how many layers are hidden */
+  #view-tab-btn .view-tab-count {
+    display: none; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 7px;
+    background: #ffb040; color: #1a1000; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center;
+  }
+  #view-tab-btn.has-hidden .view-tab-count { display: inline-block; }
 
   /* Government / City Score dropdowns — mirror #grid-panel's open animation (display is toggled inline via JS) */
   #score-panel.visible { animation: panelIn 0.18s var(--ease); }
@@ -6535,6 +6590,13 @@ const StudioIntro = (() => {
         <span class="grid-tab-label">WEATHER</span>
         <span class="grid-tab-caret" id="weather-tab-caret">▾</span>
       </button>
+      <!-- Map view toggle (MapView, map_view.js) -->
+      <button class="grid-tab" id="view-tab-btn" title="Choose what is shown on the map">
+        <span class="grid-tab-icon">👁</span>
+        <span class="grid-tab-label">VIEW</span>
+        <span class="view-tab-count" id="view-tab-count"></span>
+        <span class="grid-tab-caret">▾</span>
+      </button>
       <!-- Progress tracker toggle -->
       <button id="btn-progress">
         <span>📈</span>
@@ -6663,6 +6725,15 @@ const StudioIntro = (() => {
   </div>
 
   <!-- Weather dropdown panel -->
+  <!-- Map view dropdown: rows built by ui_bootstrap.js from MapView.LAYERS -->
+  <div id="view-panel">
+    <div class="vp-head">
+      <span class="vp-title">Show on Map</span>
+      <button class="vp-all" id="view-show-all">Show all</button>
+    </div>
+    <div id="view-rows"></div>
+  </div>
+
   <div id="weather-panel">
     <div class="gp-row">
       <span class="gp-label">Temperature</span>
@@ -7172,6 +7243,7 @@ const StudioIntro = (() => {
 <script src="js/satisfaction_system.js"></script>
 <script src="js/pollution_system.js"></script>
 <script src="js/weather_canvas.js"></script>
+<script src="js/map_view.js"></script>
 <script src="js/rain_system.js"></script>
 <script src="js/puddle_system.js"></script>
 <script src="js/wind_streak_system.js"></script>
