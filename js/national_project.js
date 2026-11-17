@@ -1202,7 +1202,7 @@ const NationalProject = (() => {
   // station, so the pull is heard in step with what is seen; at full draw a
   // fifth and a high glassy partial join it and it opens up. Each surge is a
   // whoosh climbing as its ring sweeps in, landing on a thud. Louder near
-  // the station and zoomed in, faint anywhere on the map. Every frame re-arms
+  // the station and zoomed in, gone out of earshot (_earshot). Every frame re-arms
   // a fade half a second out, so when the draw stops being drawn (the stage
   // ends, a scene takes over, the window is hidden) the drone dies away.
   const LS = { vox: null, surge: -1 };
@@ -1218,8 +1218,8 @@ const NationalProject = (() => {
       };
       LS.vox = [mk('sawtooth', 49, 220, 4), mk('sawtooth', 98.6, 340, 2), mk('square', 147, 500, 1), mk('sine', 1568, 4000, 0.5)];
     }
-    const t = ctx.currentTime, vol = SFX.getVolume ? SFX.getVolume() : 1;
-    const base = (0.035 + 0.13 * near) * vol * F;
+    const t = ctx.currentTime, vol = SFX.getVolume ? SFX.getVolume() : 1, ear = _earshot(e);
+    const base = (0.035 + 0.13 * near) * ear * vol * F;
     const levels = final ? [1, 0.7, 0.35, 0.05] : [1, 0.55, 0, 0];
     LS.vox.forEach((v, k) => {
       const lv = base * levels[k] * (k === 3 ? 0.4 + 0.6 * swell : 0.45 + 0.55 * swell);
@@ -1233,26 +1233,30 @@ const NationalProject = (() => {
     if (idx !== LS.surge) {
       const first = LS.surge < 0;
       LS.surge = idx;
-      if (!first && sp < 0.2 && F > 0.6) {
-        const dur = Math.min(c.surge, 3.2), v = (0.35 + 0.65 * near) * (final ? 1.2 : 1);
-        if (final) {
-          // Full draw: a filtered riser of low detuned saws building into the
-          // landing and cut dead on it, then a deep hit with the clang of big
-          // contactors and the rumble rolling off it. (It used to be a bare
-          // sawtooth sliding up from 70 Hz, loudest at its start, which buzzed
-          // like a raspberry.)
-          _riser(dur, 0.045 * v);
-          _impact(0.32 * v, 1.25, dur);
-          _clank(0.1 * v, dur);
-          _noise(1.6, 0.14 * v, 180, 38, 0.02, 0.8, dur);
-          _shimmer(2.2, 0.02 * v, dur);
-          return;
-        }
-        _sweep(70, 360, dur, 0.07 * v, 'sawtooth');
-        _noise(dur, 0.06 * v, 250, final ? 5200 : 3600, 0.92, 0.9);
-        _tone(final ? 31 : 36, 1.8, 0.22 * v, 'sine', dur);
-        _noise(1.1, 0.16 * v, 220, 45, 0.02, 0.8, dur);
-        _noise(0.18, 0.08 * v, 4200, 1400, 0.02, 1.2, dur);
+      if (!first && sp < 0.2 && F > 0.6 && ear > 0.02) {
+        // Its loudness for distance is the station gain's (_atStation), which
+        // keeps following the camera while the surge plays out.
+        const dur = Math.min(c.surge, 3.2), v = (0.35 + 0.65 * _zoomK()) * (final ? 1.2 : 1);
+        _atStation(e, () => {
+          if (final) {
+            // Full draw: a filtered riser of low detuned saws building into the
+            // landing and cut dead on it, then a deep hit with the clang of big
+            // contactors and the rumble rolling off it. (It used to be a bare
+            // sawtooth sliding up from 70 Hz, loudest at its start, which buzzed
+            // like a raspberry.)
+            _riser(dur, 0.045 * v);
+            _impact(0.32 * v, 1.25, dur);
+            _clank(0.1 * v, dur);
+            _noise(1.6, 0.14 * v, 180, 38, 0.02, 0.8, dur);
+            _shimmer(2.2, 0.02 * v, dur);
+            return;
+          }
+          _sweep(70, 360, dur, 0.07 * v, 'sawtooth');
+          _noise(dur, 0.06 * v, 250, 3600, 0.92, 0.9);
+          _tone(36, 1.8, 0.22 * v, 'sine', dur);
+          _noise(1.1, 0.16 * v, 220, 45, 0.02, 0.8, dur);
+          _noise(0.18, 0.08 * v, 4200, 1400, 0.02, 1.2, dur);
+        });
       }
     }
   }
@@ -1277,6 +1281,7 @@ const NationalProject = (() => {
   }
 
   function renderLive(ctx, W, H) {
+    _stationGain(station());                                          // the station's one-shots follow the camera
     const e0 = (phase === 'stage3' || phase === 'stage4') && !S && !V ? station() : null;
     const live = !!(e0 && e0.powered && isExporting());
     const F = _liveFade(live);
@@ -2519,7 +2524,7 @@ const NationalProject = (() => {
   }
   // Everything the scene synthesises goes out through one limiter, so a
   // volley of fireworks over the boom of the interconnect can't clip.
-  let _out = null;
+  let _out = null, _route = null;
   function _bus(c) {
     if (!_out || _out.context !== c) {
       const lim = c.createDynamicsCompressor();
@@ -2527,7 +2532,30 @@ const NationalProject = (() => {
       _out = c.createGain(); _out.gain.value = 0.85;
       _out.connect(lim); lim.connect(c.destination);
     }
-    return _out;
+    return _route && _route.context === c ? _route : _out;
+  }
+  // The station's one-shots in normal play (the surges' whoosh and boom)
+  // go out through a gain of their own that follows the camera every frame
+  // (_stationGain, from renderLive), so a surge that starts while you are
+  // near fades as you pan away, instead of playing out at the level it
+  // started at. _atStation routes whatever the callback plays through it,
+  // hall included.
+  let _stOut = null;
+  function _stationOut(c) {
+    if (!_stOut || _stOut.context !== c) { _stOut = c.createGain(); _stOut.gain.value = 0; _stOut.connect(_bus(c)); }
+    return _stOut;
+  }
+  function _stationGain(e) {
+    if (!_stOut || !e) return;
+    _stOut.gain.setTargetAtTime(_earshot(e), _stOut.context.currentTime, 0.08);
+  }
+  function _atStation(e, fn) {
+    const c = typeof SFX !== 'undefined' && SFX.context ? SFX.context() : null;
+    if (!c) return;
+    const o = _stationOut(c), t = c.currentTime;
+    o.gain.cancelScheduledValues(t); o.gain.setValueAtTime(_earshot(e), t);
+    _route = o;
+    try { fn(); } finally { _route = null; }
   }
   // The station's sound in the scene, the same two voices it has in normal
   // play (MACHINE_BEDS in audio.js): the Fusion Reactor's sound pitched
@@ -2659,9 +2687,12 @@ const NationalProject = (() => {
   const _ac = () => typeof SFX !== 'undefined' && SFX.context ? SFX.context() : null;
   const _mv = () => typeof SFX !== 'undefined' && SFX.getVolume ? SFX.getVolume() : 1;
   // The hall: two channels of decaying noise, darker as it dies, ~4.5 s.
-  let _hallIn = null;
+  // One hall per output (the limiter, or the station's own gain), so a
+  // routed sound's tail fades with it.
+  const _halls = new Map();
   function _hall(c) {
-    if (_hallIn && _hallIn.context === c) return _hallIn;
+    const dest = _bus(c);
+    if (_halls.has(dest)) return _halls.get(dest);
     const sr = c.sampleRate, len = Math.round(sr * 4.5), ir = c.createBuffer(2, len, sr);
     for (let ch = 0; ch < 2; ch++) {
       const d = ir.getChannelData(ch);
@@ -2674,9 +2705,10 @@ const NationalProject = (() => {
     }
     const conv = c.createConvolver();
     conv.buffer = ir;
-    _hallIn = c.createGain(); _hallIn.gain.value = 0.6;
-    _hallIn.connect(conv); conv.connect(_bus(c));
-    return _hallIn;
+    const hallIn = c.createGain(); hallIn.gain.value = 0.6;
+    hallIn.connect(conv); conv.connect(dest);
+    _halls.set(dest, hallIn);
+    return hallIn;
   }
   // An output for one sound: dry to the limiter, `wet` of it into the hall.
   function _send(c, wet) {
@@ -2803,13 +2835,25 @@ const NationalProject = (() => {
   // second out, so a paused game or a stalled tick lets the held voices die
   // away instead of droning on.
   const _SV = { spin: null, buzz: null, firing: false, spinning: false, nextTick: 0, nextCrack: 0 };
-  function _surgeNear(e) {
+  // How much of the station's sound reaches the camera: all of it anywhere
+  // over the site, fading out to nothing HEAR_K times the station's size
+  // from its centre (64×40: about 192 tiles), the same curve as the fusion
+  // campus's bed (FusionLabAudio in audio.js). It used to be 150 tiles from
+  // the centre, and the live line's drone and surges kept a floor on top of
+  // that, so they were heard all over the map.
+  const HEAR_K = 3;
+  function _earshot(e) {
     if (typeof Camera === 'undefined') return 0;
-    const zoomT = Math.max(0, Math.min(1, (Camera.zoom - 0.31) / (3 - 0.31)));
     const cx = (Camera.x + window.innerWidth / 2 / Camera.zoom) / TILE, cy = (Camera.y + window.innerHeight / 2 / Camera.zoom) / TILE;
-    const R = 150, d = Math.hypot(e.col + (e.width || 1) / 2 - cx, e.row + (e.height || 1) / 2 - cy);
-    return d >= R ? 0 : (0.45 + 0.55 * zoomT) * (1 - d / R);
+    const w = e.width || 1, h = e.height || 1, S = Math.max(w, h);
+    const R = HEAR_K * S - S / 2;                                   // measured from the fence
+    const dx = Math.max(e.col - cx, 0, cx - (e.col + w));
+    const dy = Math.max(e.row - cy, 0, cy - (e.row + h));
+    const d = Math.hypot(dx, dy);
+    return d >= R ? 0 : (1 - d / R) ** 1.5;
   }
+  const _zoomK = () => typeof Camera === 'undefined' ? 0 : 0.45 + 0.55 * Math.max(0, Math.min(1, (Camera.zoom - 0.31) / (3 - 0.31)));
+  function _surgeNear(e) { return _zoomK() * _earshot(e); }
   // A held voice: two detuned oscillators through a low-pass, with an
   // optional tremolo, into a gain the caller moves.
   function _voice(c, type, f, cutoff, trem) {
@@ -2863,11 +2907,14 @@ const NationalProject = (() => {
 
     // The shot.
     if (firing && !_SV.firing && near > 0.02) {
-      _sweep(120, 26, 3.2, 0.7 * near, 'sine');                      // the boom
-      _sweep(260, 45, 1.4, 0.28 * near, 'triangle');
-      _noise(0.3, 0.7 * near, 7000, 2200, 0.01, 0.5);                 // the crack
-      _noise(2.4, 0.4 * near, 2400, 160, 0.02, 0.7);                  // and the roll after it
-      _sweep(2400, 300, 0.4, 0.12 * near, 'sawtooth');
+      const zk = _zoomK();                                            // distance: the station gain's
+      _atStation(e, () => {
+        _sweep(120, 26, 3.2, 0.7 * zk, 'sine');                       // the boom
+        _sweep(260, 45, 1.4, 0.28 * zk, 'triangle');
+        _noise(0.3, 0.7 * zk, 7000, 2200, 0.01, 0.5);                  // the crack
+        _noise(2.4, 0.4 * zk, 2400, 160, 0.02, 0.7);                   // and the roll after it
+        _sweep(2400, 300, 0.4, 0.12 * zk, 'sawtooth');
+      });
       if (typeof Camera !== 'undefined' && near > 0.25) Camera.shake?.(2 + 5 * near);
     }
     if (firing) {
@@ -2884,23 +2931,25 @@ const NationalProject = (() => {
   }
   // How a surge ended, called the tick it's scored.
   function _surgeEndSound(e, ok) {
-    const near = _surgeNear(e);
-    if (near < 0.02) return;
-    if (ok) {
-      // Held: the main contactors slam shut on the converters, a deep hit
-      // lands under them, the banks wind down, and a dark low power chord
-      // (D, A, D) swells in the hall. (Was a bright major-arpeggio chime,
-      // which read as a UI jingle rather than 10 MW going home.)
-      _clank(0.55 * near);
-      _impact(0.7 * near, 1.15, 0.1);
-      _sweep(260, 30, 3.0, 0.2 * near, 'triangle');                  // the banks running down
-      _noise(2.0, 0.13 * near, 900, 80, 0.05, 0.8);
-      _pad([36.71, 55.0, 73.42], 3.4, 0.11 * near, 0.18);
-    } else {
-      for (let i = 0; i < 5; i++) _noise(0.06 + 0.05 * Math.random(), 0.35 * near, 900 + 700 * Math.random(), 300, 0.05, 1, i * 0.11 + Math.random() * 0.05);
-      _sweep(140, 28, 1.1, 0.45 * near, 'sawtooth');
-      for (let i = 0; i < 3; i++) { _tone(880, 0.2, 0.08 * near, 'square', 0.5 + i * 0.5); _tone(660, 0.2, 0.08 * near, 'square', 0.75 + i * 0.5); }
-    }
+    if (_surgeNear(e) < 0.02) return;
+    const near = _zoomK();                                            // distance: the station gain's
+    _atStation(e, () => {
+      if (ok) {
+        // Held: the main contactors slam shut on the converters, a deep hit
+        // lands under them, the banks wind down, and a dark low power chord
+        // (D, A, D) swells in the hall. (Was a bright major-arpeggio chime,
+        // which read as a UI jingle rather than 10 MW going home.)
+        _clank(0.55 * near);
+        _impact(0.7 * near, 1.15, 0.1);
+        _sweep(260, 30, 3.0, 0.2 * near, 'triangle');                  // the banks running down
+        _noise(2.0, 0.13 * near, 900, 80, 0.05, 0.8);
+        _pad([36.71, 55.0, 73.42], 3.4, 0.11 * near, 0.18);
+      } else {
+        for (let i = 0; i < 5; i++) _noise(0.06 + 0.05 * Math.random(), 0.35 * near, 900 + 700 * Math.random(), 300, 0.05, 1, i * 0.11 + Math.random() * 0.05);
+        _sweep(140, 28, 1.1, 0.45 * near, 'sawtooth');
+        for (let i = 0; i < 3; i++) { _tone(880, 0.2, 0.08 * near, 'square', 0.5 + i * 0.5); _tone(660, 0.2, 0.08 * near, 'square', 0.75 + i * 0.5); }
+      }
+    });
   }
 
   // ── Save / load ─────────────────────────────────────────────────
