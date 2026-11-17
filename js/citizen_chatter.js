@@ -480,6 +480,122 @@ const CitizenChatter = (() => {
     }
   }
 
+  // The National Government Zone: ministers, scientists, travellers,
+  // soldiers, launch crews and Hyperion's engineers. Shared situations as
+  // for the other zones, plus 'places': what the people of each landmark
+  // say, keyed by its type.
+  LINES.national = {
+    outage: [
+      "The Ministry's gone dark. In the middle of a briefing.", "Backup generators, now, please.", "Who cut the power to the capital?!",
+      "Cabinet's meeting by torchlight.", "This will be in tomorrow's papers.", "Secure line's down. Use a carrier pigeon.",
+      "The national grid's own capital, in the dark. Embarrassing.", "Somebody call {co}. Urgently.",
+    ],
+    longOutage: [
+      "The Prime Minister wants answers on the outages.", "Questions being asked in Parliament.", "National embarrassment, frankly.",
+      "Foreign delegation saw the blackout. Lovely.", "Emergency COBRA meeting about the power.", "{co} is summoned to the Ministry.",
+    ],
+    smog: ["The Environment Minister is NOT happy.", "Smog over the capital. On the news, obviously.", "Air quality report for the PM's desk."],
+    happy: [
+      "Grid's never been more reliable. Minister's thrilled.", "Ratings are up for the government.", "The capital runs like clockwork.",
+      "Best-powered capital in the world, apparently.", "Foreign visitors are impressed by our grid.", "Budget's balanced, lights are on.",
+    ],
+    weather: {
+      heatwave: ["Suits in a heatwave. Torture.", "Ties are optional today, says the Minister.", "Fans in every office of the Ministry."],
+      coldsnap: ["The ceremonial guard is frozen solid.", "Heating the whole capital is costing a fortune."],
+      snowfall: ["Snowball fight on the Ministry lawn!", "Snow on the flags along the promenade."],
+      blizzard: ["The capital's snowed in.", "State of emergency declared."],
+      rainstorm: ["The press pack is soaked.", "Rain's hammering the Ministry roof."],
+      storm: ["Storm briefing for the PM.", "Flags are straining on their poles."],
+      rainfall: ["Umbrellas at the press conference.", "Grey day in the capital."],
+      fog: ["Can't see the end of the promenade.", "Fog over the capital, very moody."],
+      smog: ["Masks for the honour guard."],
+      geomag: ["Satellites are glitching, the aurora's out.", "Comms are a mess with this solar storm."],
+      icing: ["Steps of the Ministry are like glass."],
+    },
+    season: {
+      Spring: ["Budget season. The Treasury is sweating.", "State visit in the spring sunshine."],
+      Summer: ["Parliament's off for the summer. Bliss.", "Summer garden party at the Ministry."],
+      Autumn: ["Party conference season.", "The new session opens next week."],
+      Winter: ["Holiday reception at the Ministry.", "Year-end figures for the PM."],
+    },
+    morning: ["Morning briefing in ten minutes.", "Early start for the capital."],
+    evening: ["Late sitting in the chamber tonight.", "Long day in the capital."],
+    night: ["Lights on in the Ministry all night.", "The capital's quiet tonight."],
+    hyperion: [
+      "Hyperion is the pride of the nation.", "The whole country's watching our station.", "World leaders keep asking about Hyperion.",
+      "History's being made, right here.", "We're on every front page because of Hyperion.",
+    ],
+    flavour: [
+      "Leaked memo. Again.", "Off the record? Everything's off the record.", "The spin doctors are spinning.",
+      "Photo op at two, smile please.", "Who's briefing the press today?", "Another inquiry. Into the last inquiry.",
+      "The Minister's lost his speech notes.", "Diplomatic incident at the canapés.", "Security's doubled for the summit.",
+    ],
+    places: {
+      nationalgov: [
+        "Cabinet meeting's overrunning again.", "The Minister wants the grid figures by noon.", "Press conference in five. Where's the Minister?",
+        "Another reshuffle rumour.", "Treaty signing at three!", "The PM's motorcade is here.", "Red tape, as far as the eye can see.",
+        "Opposition's calling for a vote.", "Our approval rating is printed on the wall. Ominous.", "The tea trolley is the real power here.",
+        "Briefing paper's 400 pages. Summary, please.", "Foreign secretary's jet-lagged again.",
+      ],
+      fusionlab: [
+        "Plasma held for 4.2 seconds! Champagne!", "Who put a sandwich in the cryo fridge?", "Magnets are humming nicely today.",
+        "The tokamak's warming up.", "Peer review is brutal this week.", "Grant funding renewed! Phew.",
+        "Someone wrote 'E=mc²' on the coffee machine.", "Stable plasma! For once!", "Night shift at the lab, more data.",
+        "Lab coats, safety glasses, more coffee.", "The deuterium delivery is late.", "Breakthrough? Maybe. Check the numbers again.",
+      ],
+      airport: [
+        "Gate change. Of course.", "Flight's delayed, grab a coffee.", "Last call for the 18:40 to the coast.",
+        "Lost luggage desk is busy.", "Duty free, here I come!", "Window seat, finally.", "Security queue's a mile long.",
+        "Welcome to {city}! Enjoy your stay.", "Planespotters are out on the fence.", "Boarding pass? It was right here…",
+        "Tower, we are cleared for take-off.", "Jet lag's real.",
+      ],
+      militarybase: [
+        "Drill at 0600. Again.", "Base is on backup power, that's not ideal.", "Boots polished, sir!", "Inspection's tomorrow, scrub everything.",
+        "Mess hall's serving mystery stew.", "Radar's clear, all quiet.", "Leave starts Friday!", "The sergeant's in a mood.",
+        "Hangar doors stuck again.", "Jets on the flight line.", "Parade rehearsal at noon.",
+      ],
+      launchcomplex: [
+        "T-minus whenever the coffee's ready.", "Countdown paused: grid wobble.", "Fuelling the rocket now.", "Go for launch!",
+        "Weather's green, range is clear.", "Payload's secured.", "Mission control's buzzing.", "Scrub. Again. Tomorrow, then.",
+        "Watch the sky at six!", "Engines tested, all nominal.", "Astronauts are suiting up.", "That rocket's taller than the Ministry.",
+      ],
+      nationalgrid: [
+        "Surge three held! Did you see that?!", "Whole country's watching us now.", "Switchyard's singing tonight.", "Interconnector is live!",
+        "Load's climbing, hold steady…", "Hyperion's running hot. Good hot.", "Export meter's spinning!", "Every home in the country, through here.",
+        "Pylons all the way to the horizon.", "Engineers on every shift now.", "The spire's glowing again.", "Hold the frequency, team!",
+      ],
+    },
+    // The same landmarks by weather and by hour (only theirs say these).
+    placeWeather: {
+      airport: {
+        heatwave: ["The runway's shimmering.", "Tarmac's too hot to stand on."], snowfall: ["Runway's being cleared of snow.", "De-icing queue's an hour long."],
+        blizzard: ["Every flight's cancelled.", "Passengers sleeping in the terminal."], storm: ["All flights holding till the storm passes.", "Bumpy landing, that one."],
+        fog: ["Fog's grounded every flight.", "Can't see the tower from the gate."], icing: ["De-icing every plane on the apron."], rainstorm: ["Planes are taxiing through puddles."],
+        geomag: ["Pilots are reporting the aurora."],
+      },
+      launchcomplex: {
+        storm: ["Launch scrubbed: weather.", "Lightning near the pad. Hold, hold."], fog: ["Can't see the launch tower in this."], icing: ["Ice on the gantry, launch delayed."],
+        rainstorm: ["Range is red, rain's too heavy."], geomag: ["Solar storm! Satellites are glitching.", "Telemetry's full of noise, it's the aurora."],
+        heatwave: ["Keep the fuel cool, it's baking."], blizzard: ["Rocket's wrapped up like a present."],
+      },
+      militarybase: {
+        rainstorm: ["Puddles on the parade ground.", "Drill in the rain. Character building, apparently."], snowfall: ["Clearing the runway with shovels. All of us."],
+        heatwave: ["Drill in full kit, in this heat?!"], storm: ["Jets in the hangars till it blows over."], fog: ["Radar's fine, eyes aren't."],
+      },
+      fusionlab: { heatwave: ["Cooling loop's working overtime."], coldsnap: ["The cryo plant loves this weather."], geomag: ["Solar storm's messing with our sensors."] },
+      nationalgrid: { storm: ["Lightning near the switchyard, hold tight!"], icing: ["Ice on the national lines, watch the sag."], heatwave: ["Lines are running warm today."] },
+      nationalgov: { rainstorm: ["The Minister's umbrella blew inside out on camera."], heatwave: ["Air conditioning in the chamber has failed. Of course."] },
+    },
+    placeTime: {
+      airport: { morning: ["First flight's boarding.", "Early check-in queue's out the door."], evening: ["Last flight of the day."], night: ["Night flights only, quiet now."] },
+      militarybase: { morning: ["Reveille on the base.", "Morning run, all of you!"], evening: ["Lights out at the barracks soon."], night: ["Night watch at the base."] },
+      launchcomplex: { morning: ["Range opens at dawn."], night: ["Night launch tonight, look up!"] },
+      fusionlab: { night: ["Night shift at the lab, more data."], morning: ["Overnight results are in!"] },
+      nationalgov: { morning: ["Today's papers are on the Minister's desk.", "Red boxes on the desk at dawn."] },
+      nationalgrid: { night: ["The spire lights the whole valley at night."] },
+    },
+  };
+
   // More for each kind of weather, added to the lists above so a long
   // stretch of one weather doesn't run through them all in a few minutes.
   const WEATHER_MORE = {
@@ -642,6 +758,7 @@ const CitizenChatter = (() => {
     commercial: ["Grand opening today!", "First customers through the door!", "We're open! Come on in!"],
     industrial: ["First shift at the new works!", "Machines are in, let's go!"],
     government: ["Doors open to the public today!"],
+    national: ["Official opening! Ribbon, scissors, cameras.", "The Minister cut the ribbon. Badly.", "First day at the new site!"],
   };
 
   // What a placed building is, for the lines above; null when it is not news
@@ -724,16 +841,19 @@ const CitizenChatter = (() => {
   }
 
   // ── Who can speak ──────────────────────────────────────────────────
-  const GOV_TYPES = ['TOWNHALL', 'CIVICCENTER', 'COURTHOUSE', 'EMS', 'HOSPITAL', 'UNIVERSITY', 'TRANSPORTHUB', 'NATIONALGOV'];
+  const GOV_TYPES = ['TOWNHALL', 'CIVICCENTER', 'COURTHOUSE', 'EMS', 'HOSPITAL', 'UNIVERSITY', 'TRANSPORTHUB'];
+  // The National Government Zone's landmarks: their own voice (LINES.national).
+  const NATIONAL_TYPES = ['NATIONALGOV', 'FUSIONLAB', 'AIRPORT', 'MILITARYBASE', 'LAUNCHCOMPLEX', 'NATIONALGRID'];
   function zoneOf(e) {
     if (!e) return null;
     if (e.isIndustrial || e.type === T.INDUSTRIAL) return 'industrial';
     if (e.type === T.COMMERCIAL) return 'commercial';
     if (e.type === T.HOUSE || e.type === T.CABIN) return 'residential';
     for (const n of GOV_TYPES) if (T[n] !== undefined && e.type === T[n]) return 'government';
+    for (const n of NATIONAL_TYPES) if (T[n] !== undefined && e.type === T[n]) return 'national';
     return null;
   }
-  const SPEAKER_TYPES = () => ['HOUSE', 'CABIN', 'COMMERCIAL', 'INDUSTRIAL', ...GOV_TYPES].map(n => T[n]).filter(v => v !== undefined);
+  const SPEAKER_TYPES = () => ['HOUSE', 'CABIN', 'COMMERCIAL', 'INDUSTRIAL', ...GOV_TYPES, ...NATIONAL_TYPES].map(n => T[n]).filter(v => v !== undefined);
 
   // ── State ──────────────────────────────────────────────────────────
   const bubbles = [];             // { e, text, born }
@@ -764,6 +884,22 @@ const CitizenChatter = (() => {
         const pool = [...(set.any || []), ...((zone === 'residential' ? set.res : set.work) || [])];
         const label = (typeof EntityDefs !== 'undefined' && EntityDefs[news.e.type]?.label) || 'building';
         add(6, pool, { name: label });
+      }
+    }
+    // A national landmark's own people (or, for a walker, the nearest one's):
+    // their own lines, and their own take on the weather and the hour.
+    if (zone === 'national' && L.places) {
+      const id = String(e.type), own = L.places[id];
+      if (own) add(asPerson ? 3 : 5, own);
+      let ev2 = null;
+      try { ev2 = typeof WeatherEventSystem !== 'undefined' ? WeatherEventSystem.getActiveEvent() : null; } catch (_e) {}
+      const pw = L.placeWeather && L.placeWeather[id];
+      if (ev2 && pw && pw[ev2.type]) add(3.5, pw[ev2.type]);
+      const pt = L.placeTime && L.placeTime[id];
+      if (pt) {
+        const hh = typeof DayNight !== 'undefined' ? DayNight.hour() : 12;
+        const slot = hh >= 6 && hh < 9.5 ? 'morning' : hh >= 17.5 && hh < 21 ? 'evening' : (hh >= 22 || hh < 5) ? 'night' : null;
+        if (slot && pt[slot]) add(1.5, pt[slot]);
       }
     }
     // Its own opening.
@@ -849,6 +985,16 @@ const CitizenChatter = (() => {
       && !bubbles.some(b => b.pid === p.id));
   }
 
+  // ZoneLife counts the national zone as government; its people are national.
+  function _personZone(p) {
+    if (p.zone !== 'government' || typeof ZoneSystem === 'undefined') return p.zone;
+    try {
+      const z = ZoneSystem.getZoneAt(Math.floor(p.x / TILE), Math.floor(p.y / TILE));
+      if (z && z.zone && z.zone.label === ZoneSystem.NATIONAL_ZONE_LABEL) return 'national';
+    } catch (_e) {}
+    return p.zone;
+  }
+
   // A person speaks about the street they're on: the nearest building of
   // their zone stands in for it (no power there, it's dark for them too).
   // Out of reach of one, they still talk about the weather, news, life.
@@ -874,8 +1020,9 @@ const CitizenChatter = (() => {
     // are any on screen.
     if (folk.length && (!list.length || Math.random() < 0.5)) {
       const p = folk[Math.floor(Math.random() * folk.length)];
-      bubbles.push({ pid: p.id, zone: p.zone, x: p.x, y: p.y, standing: p.standing,
-                     text: _chooseLine(_proxyFor(p), p.zone, true), born: now() });
+      const pz = _personZone(p);
+      bubbles.push({ pid: p.id, zone: pz, x: p.x, y: p.y, standing: p.standing,
+                     text: _chooseLine(_proxyFor({ ...p, zone: pz }), pz, true), born: now() });
       return;
     }
     // Buildings with something on their minds are likelier to be the ones heard.

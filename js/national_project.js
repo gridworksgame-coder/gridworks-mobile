@@ -1971,7 +1971,7 @@ const NationalProject = (() => {
   // `hqOnly`: the headquarters' own show (its unveiling, and the hours after
   // it). Every rocket goes up from the headquarters itself, wherever the
   // player is looking, and none from the rest of the city.
-  function _fwLaunch(x0, y0, x1, y1, hqOnly) {
+  function _fwLaunch(x0, y0, x1, y1, hqOnly, forceKind) {
     // They are up in the sky, nearer the eye than the ground is, so they
     // don't shrink with the map: `big` scales a shell for the zoom it is
     // launched at, to about the same size on screen however far out.
@@ -1985,7 +1985,7 @@ const NationalProject = (() => {
       if (y1 - top < TILE) return;                                    // shot too tight to fit one
       site = { x: x0 + (x1 - x0) * (0.1 + 0.8 * Math.random()), y: top + (y1 - top) * (0.45 + 0.55 * Math.random()) };
     }
-    const kind = FW_KINDS[Math.floor(Math.random() * FW_KINDS.length)];
+    const kind = forceKind || FW_KINDS[Math.floor(Math.random() * FW_KINDS.length)];
     const c1 = kind === 'willow' || kind === 'kamuro' ? FW_GOLD : Math.floor(Math.random() * FW_COLS.length);
     let c2 = Math.floor(Math.random() * FW_COLS.length); if (c2 === c1) c2 = (c2 + 3) % FW_COLS.length;
     FW.rockets.push({ x0: site.x, y0: site.y, x: site.x, y: site.y, tx: site.x + (Math.random() - 0.5) * TILE * 3, ty: site.y - rise,
@@ -2004,9 +2004,9 @@ const NationalProject = (() => {
   //   strobe        white stars that flash on and off before they go
   //   crackle       stars that pop into white sparks as they die
   //   multibreak    one burst, then a ring of small shells bursting round it
-  //   heart         a heart in red and pink
+  //   bolt          a lightning bolt in gold and white, crackling as it fades
   const FW_KINDS = ['peony', 'peony', 'chrysanthemum', 'chrysanthemum', 'double', 'ring', 'willow', 'kamuro',
-                    'palm', 'crossette', 'strobe', 'crackle', 'multibreak', 'heart'];
+                    'palm', 'crossette', 'strobe', 'crackle', 'multibreak', 'bolt'];
   // Phones: a third of the stars at once and half as many per shell, the
   // show's drawing cost (additive sprites, thousands at a time) cut to fit.
   const FW_CAP = window.GW_MOBILE ? 900 : 3200;
@@ -2037,12 +2037,29 @@ const NationalProject = (() => {
     } else if (k === 'crossette') {
       const n = 14;
       for (let i = 0; i < n; i++) star(i / n * 6.283 + Math.random() * 0.2, S * 0.75, r.c1, 0.75 + Math.random() * 0.15, { split: true, c2: r.c2, tail: 0.18 });
-    } else if (k === 'heart') {
-      const n = 60, s = S * 0.07, tilt = (Math.random() - 0.5) * 0.5, ct = Math.cos(tilt), st = Math.sin(tilt);
+    } else if (k === 'bolt') {
+      // The game's own symbol: a lightning bolt, its outline laid out in gold
+      // stars that open from the burst point so the shape grows as it flies,
+      // and a scatter of white sparks inside that pop as they die. Leaning a
+      // little either way, never upside down.
+      const P = [[0.18, -1], [-0.42, 0.08], [-0.02, 0.08], [-0.2, 1], [0.44, -0.16], [0.04, -0.16]];
+      const tilt = (Math.random() - 0.5) * 0.45, ct = Math.cos(tilt), st = Math.sin(tilt), sc = S * 0.95;
+      let per = 0; const seg = [];
+      for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], d = Math.hypot(b[0] - a[0], b[1] - a[1]); seg.push([a, b, d]); per += d; }
+      const n = 72;
       for (let i = 0; i < n; i++) {
-        const t = i / n * 6.283;
-        const hx = 16 * Math.pow(Math.sin(t), 3), hy = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
-        if (room()) FW.stars.push({ x: r.x, y: r.y, vx: (hx * ct - hy * st) * s, vy: (hx * st + hy * ct) * s, life: 0, max: life(), c: i % 3 ? 1 : 6, tw: Math.random() * 6.283, big: r.big, g: 0.9 });
+        let u = i / n * per, j = 0;
+        while (j < seg.length - 1 && u > seg[j][2]) { u -= seg[j][2]; j++; }
+        const [a, b, d] = seg[j], f = d ? Math.min(1, u / d) : 0;
+        const px = a[0] + (b[0] - a[0]) * f, py = a[1] + (b[1] - a[1]) * f;
+        if (room()) FW.stars.push({ x: r.x, y: r.y, vx: (px * ct - py * st) * sc, vy: (px * st + py * ct) * sc, life: 0, max: life() + 0.2,
+                                    c: i % 4 ? FW_GOLD : FW_WHITE, tw: Math.random() * 6.283, big: r.big, g: 0.7, drag: 1.2 });
+      }
+      for (let i = 0; i < 14; i++) {
+        const q = seg[Math.floor(Math.random() * seg.length)], f = Math.random();
+        const px = (q[0][0] + (q[1][0] - q[0][0]) * f) * 0.6, py = (q[0][1] + (q[1][1] - q[0][1]) * f) * 0.6;
+        if (room()) FW.stars.push({ x: r.x, y: r.y, vx: (px * ct - py * st) * sc, vy: (px * st + py * ct) * sc, life: 0, max: 0.9 + Math.random() * 0.4,
+                                    c: FW_WHITE, tw: Math.random() * 6.283, big: r.big, g: 0.6, pop: true });
       }
     } else {
       const n = k === 'chrysanthemum' ? 80 : 95;
@@ -2072,7 +2089,7 @@ const NationalProject = (() => {
                       rad: TILE * (1.2 + Math.random()) * (r.big || 1), life: 0, max: 5 + Math.random() * 3 });
     if (vol > 0) {
       _firework(vol * (r.small ? 0.45 : 1));
-      if (k === 'crackle' || k === 'kamuro' || k === 'willow') for (let i = 0; i < 9; i++)   // the crackle as the stars go
+      if (k === 'crackle' || k === 'kamuro' || k === 'willow' || k === 'bolt') for (let i = 0; i < 9; i++)   // the crackle as the stars go
         _noise(0.035, vol * 0.08 * (0.5 + Math.random()), 3500, 6500, 0.1, 1.5, 1 + Math.random() * 1.2);
       if (k === 'strobe' || k === 'palm') _noise(1.4, vol * 0.025, 6000, 4000, 0.15, 0.7, 0.2);       // glitter fizz
     }
@@ -2946,6 +2963,8 @@ const NationalProject = (() => {
 
   return {
     tick, demandKW, surge, incomeNow, stationDue, named, visual, renderWorld, renderFireworks, setFestiveFireworks, openDossier, closeDossier,
+    // Dev / tests: send up one shell of a given kind over the middle of the view.
+    devFirework: (kind) => { const z = Camera.zoom, x0 = Camera.x, y0 = Camera.y; _fwLaunch(x0, y0, x0 + innerWidth / z, y0 + innerHeight / z, false, kind); },
     // The same sky, for another scene to run on its own canvas (CompanyHQ's unveiling).
     fw: { step: _fwStep, draw: _fwDraw, load: _loadPops, reset() { FW.rockets.length = 0; FW.stars.length = 0; FW.smoke.length = 0; FW.flare = 0; FW.sites = null; FW.next = 0; } },
     padFrame, isActive: () => !!V, phase: () => phase, reached: at, station, jumpToSite: _jumpSite,
