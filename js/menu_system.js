@@ -1287,6 +1287,8 @@ const MenuSystem = (() => {
     _showControlsTab(typeof GamepadInput !== 'undefined' && GamepadInput.connected ? 'pad' : 'kb');
     const tutToggle = document.getElementById('opt-tutorial-toggle');
     if (tutToggle) tutToggle.checked = !TutorialSystem.isSkipped();
+    const chatterToggle = document.getElementById('opt-chatter-toggle');
+    if (chatterToggle && typeof CitizenChatter !== 'undefined') chatterToggle.checked = CitizenChatter.isEnabled();
     const clockToggle = document.getElementById('opt-24hr-toggle');
     if (clockToggle) clockToggle.checked = DayNight.isUse24Hour();
     const fahrenheitToggle = document.getElementById('opt-fahrenheit-toggle');
@@ -1794,6 +1796,10 @@ const MenuSystem = (() => {
     const _optTutorial = document.getElementById('opt-tutorial-toggle');
     if (_optTutorial) _optTutorial.addEventListener('change', e => {
       SFX.click(); TutorialSystem.setEnabled(e.target.checked);
+    });
+    const _optChatter = document.getElementById('opt-chatter-toggle');
+    if (_optChatter) _optChatter.addEventListener('change', e => {
+      SFX.click(); if (typeof CitizenChatter !== 'undefined') CitizenChatter.setEnabled(e.target.checked);
     });
     const _optClock = document.getElementById('opt-24hr-toggle');
     if (_optClock) _optClock.addEventListener('change', e => {

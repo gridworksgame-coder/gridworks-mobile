@@ -2838,6 +2838,12 @@ RenderSystem.render = function (t, inputState) {
         Camera.resetTransform(ctx);
         NationalProject.renderLive(ctx, W, H);
       }
+      // What the people in the buildings on screen are saying (citizen_chatter.js):
+      // over the world and the night, under the banners and the HUD.
+      if (typeof CitizenChatter !== 'undefined') {
+        Camera.resetTransform(ctx);
+        CitizenChatter.render(ctx);
+      }
       if (typeof ContractSystem !== 'undefined') {
         Camera.resetTransform(ctx);
         ContractSystem.renderBanner(ctx, W, H);
