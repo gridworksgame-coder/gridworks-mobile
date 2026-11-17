@@ -403,6 +403,45 @@ const MenuSystem = (() => {
     downloadSlotRaw(SaveSystem.exportSlotRaw(id), meta);
   }
 
+  // An import that has to be opened on a different map size is carried across
+  // the reload here. sessionStorage and localStorage are both capped at about
+  // 5 MB, under a real city; IndexedDB is not. One record, taken on the next
+  // boot and deleted as it is read.
+  const IMPORT_DB = 'gridworks-import', IMPORT_STORE = 'pending', IMPORT_KEY = 'save';
+  function _importDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(IMPORT_DB, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore(IMPORT_STORE);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function stashImport(record) {
+    const db = await _importDb();
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMPORT_STORE, 'readwrite');
+        tx.objectStore(IMPORT_STORE).put(record, IMPORT_KEY);
+        tx.oncomplete = resolve;
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      });
+    } finally { db.close(); }
+  }
+  async function takeStashedImport() {
+    const db = await _importDb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(IMPORT_STORE, 'readwrite');
+        const st = tx.objectStore(IMPORT_STORE);
+        const get = st.get(IMPORT_KEY);
+        let rec = null;
+        get.onsuccess = () => { rec = get.result || null; st.delete(IMPORT_KEY); };
+        tx.oncomplete = () => resolve(rec);
+        tx.onerror = tx.onabort = () => reject(tx.error);
+      });
+    } finally { db.close(); }
+  }
+
   // Import must not be able to fail on a file that is a real save. It copies
   // the file into the player's saves so it appears in the list; if that copy
   // cannot be made (the folder write keeps failing, or browser storage is too
@@ -432,19 +471,36 @@ const MenuSystem = (() => {
         await SaveSystem.importSlot(parsed.text, file.name);
       } catch (err) {
         console.warn('Import could not be stored; opening the file directly:', err);
-        // Opening it directly is only safe on a map of the save's own size:
-        // switching size needs a reload that re-reads the stored copy, and
-        // loading a bigger world onto this map would trim it.
-        const size = worldSizeForDims(parsed.data.vegMigratedCols || 0, parsed.data.vegMigratedRows || 0);
-        const fits = size === WORLD_SIZE || !parsed.data.vegMigratedCols;
-        if (gameStarted || !fits) {
+        if (gameStarted) {
           showToast('Import failed: ' + ((err && err.message) || 'could not store the save'), '#ff4444', '#0a0000', '#3a0000');
           return;
         }
         const city = (parsed.data.cityInfo && parsed.data.cityInfo.cityName) || 'Imported City';
-        showToast('Could not copy the save into your saves; opening it directly. Save in game to keep it', '#ffd060', '#1a1400', '#5a4400');
+        const slotId = SaveSystem.newSlotIdFor(city, SaveSystem.importName(file.name));
+        const openMsg = 'Could not copy the save into your saves; opening it directly. Save in game to keep it';
+        // The grid is sized when the page loads, so a save made on another map
+        // size is opened after a reload at that size (loading it onto this map
+        // would trim it). The save rides across in IndexedDB.
+        const size = worldSizeForDims(parsed.data.vegMigratedCols || 0, parsed.data.vegMigratedRows || 0);
+        if (parsed.data.vegMigratedCols && size !== WORLD_SIZE) {
+          try {
+            await stashImport({ text: parsed.text, slotId });
+            sessionStorage.setItem('gw_world_size', size);
+            sessionStorage.setItem('gw_import_pending', '1');
+            if (sessionStorage.getItem('gw_world_size') !== size) throw new Error('session storage unavailable');
+          } catch (stashErr) {
+            console.warn('Import hand-off across reload failed:', stashErr);
+            try { sessionStorage.removeItem('gw_import_pending'); } catch (_e) {}
+            showToast('Import failed: ' + ((err && err.message) || 'could not store the save'), '#ff4444', '#0a0000', '#3a0000');
+            return;
+          }
+          showToast(openMsg, '#ffd060', '#1a1400', '#5a4400');
+          setTimeout(() => location.reload(), 600);
+          return;
+        }
+        showToast(openMsg, '#ffd060', '#1a1400', '#5a4400');
         pendingLoadText = parsed.text;
-        startGame(true, SaveSystem.newSlotIdFor(city, SaveSystem.importName(file.name)));
+        startGame(true, slotId);
         return;
       }
       showToast('Save imported ✓', '#50e890', '#001a08', '#003018');
@@ -2085,7 +2141,22 @@ const MenuSystem = (() => {
     // storage instead — where a folder save does not exist. That is what made
     // "load failed" appear for perfectly good files, and (before load failures
     // stopped autosaves) what let an empty world overwrite them.
-    folderReady.then(() => {
+    folderReady.then(async () => {
+      // An imported save too big for browser storage, made on another map
+      // size: the page was reloaded at that size to open it (importSave).
+      if (sessionStorage.getItem('gw_import_pending') === '1') {
+        sessionStorage.removeItem('gw_import_pending');
+        let rec = null;
+        try { rec = await takeStashedImport(); } catch (err) { console.warn('[menu] stashed import unreadable:', err); }
+        if (rec && rec.text) {
+          pendingLoadText = rec.text;
+          startGame(true, rec.slotId);
+          // A failed load drops back to the menu, which still needs wiring.
+          if (!gameStarted && typeof ScenarioSystem !== 'undefined') ScenarioSystem.menuReady();
+          return;
+        }
+        showToast('Import failed: the save could not be carried over to the new map size', '#ff4444', '#0a0000', '#3a0000');
+      }
       // Auto-load a slot chosen from the in-game pause menu. Loading mid-session
       // can't just call startGame() — it early-returns once gameStarted is set,
       // and every subsystem still holds the old world's state — so the pause menu
