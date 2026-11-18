@@ -1750,14 +1750,18 @@ const MusicSystem = (() => {
     { src: 'audio/music/Sleepless.mp3',          vol: 0.210 },
     { src: 'audio/music/Falling as Water Does.mp3', vol: 0.367 },
     { src: 'audio/music/Lurking.mp3',            vol: 0.263 },
-    // Every MP3 in audio/music is in the rotation, these two included
-    // (2026-11-17): Electron.mp3 also scores the apocalypse
-    // (apocalypse_system.js) and Rope to the Sky.mp3 is also Operation
-    // Hyperion's victory song (national_project.js). Levels measured the
-    // same way as the rest (-27 dB mean after `vol`).
-    { src: 'audio/music/Electron.mp3',           vol: 0.148 },
-    { src: 'audio/music/Rope to the Sky.mp3',    vol: 0.155 },
+    // `scene: true` keeps a song out of the shuffle (2026-11-18): it plays
+    // only in the scenes it belongs to, each with its own player. Electron.mp3
+    // scores the apocalypse (apocalypse_system.js); Rope to the Sky.mp3 is the
+    // main menu's theme (MenuTheme, index.html) and Operation Hyperion's
+    // victory song (national_project.js). They stay listed for the dev
+    // panel's song picker. Levels measured the same way as the rest
+    // (-27 dB mean after `vol`).
+    { src: 'audio/music/Electron.mp3',           vol: 0.148, scene: true },
+    { src: 'audio/music/Rope to the Sky.mp3',    vol: 0.155, scene: true },
   ];
+  // The songs the shuffle draws from.
+  const ROTATION = TRACKS.filter(t => !t.scene);
   // Shuffle bag: every track plays once before any comes round again, and
   // the bag is kept in localStorage so a new session carries on through it.
   // The old picker only remembered the last six plays, and only until the
@@ -1779,14 +1783,15 @@ const MusicSystem = (() => {
   function _nextTrackIdx() {
     let st = null;
     try { st = JSON.parse(localStorage.getItem(QUEUE_KEY) || 'null'); } catch (_e) {}
-    // Stored by file so adding or reordering TRACKS can't mis-map old entries.
-    const known = src => TRACKS.some(t => t.src === src);
+    // Stored by file so adding or reordering TRACKS can't mis-map old entries;
+    // a scene song left in a bag saved before it came out is dropped here.
+    const known = src => ROTATION.some(t => t.src === src);
     let queue  = (st && Array.isArray(st.queue)  ? st.queue  : []).filter(known);
     let recent = (st && Array.isArray(st.recent) ? st.recent : []).filter(known);
     if (!queue.length) {
-      const hold  = Math.min(NO_REPEAT, TRACKS.length - 1);
+      const hold  = Math.min(NO_REPEAT, ROTATION.length - 1);
       const held  = recent.slice(-hold);
-      const fresh = _shuffled(TRACKS.map(t => t.src).filter(src => !held.includes(src)));
+      const fresh = _shuffled(ROTATION.map(t => t.src).filter(src => !held.includes(src)));
       // The opening `hold` slots take only songs outside the held set; the
       // held ones are shuffled in with whatever is left after that.
       queue = [...fresh.slice(0, hold), ..._shuffled([...fresh.slice(hold), ...held])];
@@ -1799,7 +1804,7 @@ const MusicSystem = (() => {
     // queued or just heard goes back in.
     else {
       const seen = st && Array.isArray(st.seen) ? st.seen : null;
-      for (const t of TRACKS) {
+      for (const t of ROTATION) {
         if (queue.includes(t.src) || recent.includes(t.src) || (seen && seen.includes(t.src))) continue;
         queue.splice(Math.floor(Math.random() * (queue.length + 1)), 0, t.src);
       }
@@ -1807,7 +1812,7 @@ const MusicSystem = (() => {
     const src = queue.shift();
     recent.push(src);
     if (recent.length > NO_REPEAT) recent = recent.slice(-NO_REPEAT);
-    try { localStorage.setItem(QUEUE_KEY, JSON.stringify({ queue, recent, seen: TRACKS.map(t => t.src) })); } catch (_e) {}
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify({ queue, recent, seen: ROTATION.map(t => t.src) })); } catch (_e) {}
     return TRACKS.findIndex(t => t.src === src);
   }
   // A song put on by hand (play(): the intro's first song, a scene's) counts
@@ -1821,7 +1826,7 @@ const MusicSystem = (() => {
     let recent = (Array.isArray(st.recent) ? st.recent : []).filter(s => s !== src);
     recent.push(src);
     if (recent.length > NO_REPEAT) recent = recent.slice(-NO_REPEAT);
-    try { localStorage.setItem(QUEUE_KEY, JSON.stringify({ queue, recent, seen: st.seen || TRACKS.map(t => t.src) })); } catch (_e) {}
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify({ queue, recent, seen: st.seen || ROTATION.map(t => t.src) })); } catch (_e) {}
   }
 
   // First song of a session: 30s–8.5 min. Between songs: 4–14 min, so a
