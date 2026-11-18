@@ -310,7 +310,12 @@ const HaulSystem = (() => {
   // beside keeps the tight 2-tile rule, so it doesn't help itself on the way.
   const _wasteReach = (trk, ent) => {
     const desc = trk._autoDispatch && !trk._detourDesc && trk._destQueue && trk._destQueue[trk._queueIdx];
-    return desc && desc.col != null && GridManager.getEntity(desc.col, desc.row) === ent ? HAULER_DOCK : PICKUP_BUFFER;
+    if (!desc) return PICKUP_BUFFER;
+    // A waste facility stop names its type, not a building (the route goes
+    // to the first one of that type); anything else names its tile.
+    const sent = desc.kind === 'facility' ? ent.type === desc.facilityType
+               : desc.col != null && GridManager.getEntity(desc.col, desc.row) === ent;
+    return sent ? HAULER_DOCK : PICKUP_BUFFER;
   };
 
   // ── Hauler ──────────────────────────────────────────────────────
