@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm80';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm81';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -1020,15 +1020,43 @@
   // ── 3. Generic drag surface (world map, small canvases) ────────────
   // Converts one finger to mouse down/move/up on the element (+ click and
   // dblclick on taps) and two fingers to wheel events for zoom.
+  // The world map's list (its legend) scrolls under a finger like any phone
+  // list: a drag that starts on it scrolls it, with a little momentum, and a
+  // tap still picks the row. On PC it scrolls with the wheel or its thin
+  // scrollbar, and a finger drag there used to land on the map instead.
+  function wmList(x, y, dy) {
+    try { const W = gameGlobal('WorldMapSystem'); return !!(W && W.scrollLegendAt && W.scrollLegendAt(x, y, dy)); } catch (_) { return false; }
+  }
+  let _wmFling = 0;
+  function wmFling(x, y, v) {
+    cancelAnimationFrame(_wmFling);
+    let last = performance.now();
+    const step = (now) => {
+      const dt = Math.min(50, now - last); last = now;
+      v *= Math.pow(0.0035, dt / 1000);                 // eases out over about a second
+      if (Math.abs(v) < 0.02 || !wmList(x, y, v * dt)) return;
+      _wmFling = requestAnimationFrame(step);
+    };
+    _wmFling = requestAnimationFrame(step);
+  }
+
   function bindDragSurface(el) {
     if (el._gwmBound) return; el._gwmBound = true;
     let one = null, two = null, lastTap = 0;
     el.addEventListener('touchstart', (e) => {
       if (e.target.closest('button, input, select, textarea, a')) return;   // leave real controls alone
       e.preventDefault();
+      cancelAnimationFrame(_wmFling);
       const ts = e.touches;
       if (ts.length === 1) {
         const t = ts[0];
+        // On the world map's list: scroll it (touchmove), mouse events only for a tap.
+        if (el.id === 'worldmap-overlay' && wmList(t.clientX, t.clientY, 0)) {
+          // A tap goes to the map overlay itself (it handles the list's
+          // clicks), not whatever element sits topmost at the point.
+          one = { sx: t.clientX, sy: t.clientY, x: t.clientX, y: t.clientY, moved: false, list: true, ly: t.clientY, lt: performance.now(), v: 0, tgt: el };
+          return;
+        }
         one = { sx: t.clientX, sy: t.clientY, x: t.clientX, y: t.clientY, moved: false, tgt: document.elementFromPoint(t.clientX, t.clientY) || el };
         mouse(one.tgt, 'mousemove', one.x, one.y, 0);
         mouse(one.tgt, 'mousedown', one.x, one.y, 0);
@@ -1057,6 +1085,16 @@
       const t = ts[0];
       one.x = t.clientX; one.y = t.clientY;
       if (Math.hypot(one.x - one.sx, one.y - one.sy) > TAP_SLOP) one.moved = true;
+      if (one.list) {
+        // The list follows the finger: drag up, it scrolls down.
+        if (one.moved) {
+          const dy = one.ly - t.clientY, now = performance.now(), dt = Math.max(1, now - one.lt);
+          wmList(one.sx, one.sy, dy);
+          one.v = 0.7 * one.v + 0.3 * (dy / dt);
+          one.ly = t.clientY; one.lt = now;
+        }
+        return;
+      }
       mouse(window, 'mousemove', one.x, one.y, 0, { held: true });
     }, { passive: false });
     const end = (e) => {
@@ -1064,6 +1102,19 @@
       e.preventDefault();
       if (e.touches.length === 0) two = null;
       if (!one) return;
+      if (one.list) {
+        if (one.moved) {
+          if (performance.now() - one.lt < 80 && Math.abs(one.v) > 0.15) wmFling(one.sx, one.sy, one.v);
+        } else {
+          // A tap on a row: what a click there does on PC.
+          mouse(one.tgt, 'mousemove', one.x, one.y, 0);
+          mouse(one.tgt, 'mousedown', one.x, one.y, 0);
+          mouse(one.tgt, 'mouseup', one.x, one.y, 0);
+          mouse(one.tgt, 'click', one.x, one.y, 0);
+        }
+        one = null;
+        return;
+      }
       mouse(one.tgt, 'mouseup', one.x, one.y, 0);
       if (!one.moved) {
         mouse(one.tgt, 'click', one.x, one.y, 0);
