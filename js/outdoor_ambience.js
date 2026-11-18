@@ -724,9 +724,26 @@ const OutdoorAmbience = (() => {
   // like any call here) until it drives out of sight. Kept rare and low:
   // one at a time, not every one of them on a call, a long gap after each,
   // and none longer than SIREN.maxFor.
-  // vol: per kind, so each sits about 5 dB under a car horn in the middle
-  // of the view (measured: horn -38 dB, both sirens about -43.5).
-  const SIREN = { vol: { police: 0.08, ambulance: 0.063 }, chance: 0.6, gap: 25, maxFor: 14, fadeIn: 0.8, fadeOut: 1.2 };
+  //
+  // The voice is an electronic siren's: a square with a slightly detuned
+  // saw beside it, driven into a saturating driver and out through a horn
+  // speaker (resonant bands, the harshest top rolled off), with a slap back
+  // off the shopfronts across the street and a long street-canyon reverb of
+  // its own. Police: a wail, broken every few cycles by a couple of seconds
+  // of yelp. Ambulance: a hi-lo. Its pitch rises a little while it closes on
+  // the middle of the view and drops as it pulls away (Doppler).
+  //
+  // Level: it swells with the zoom on the same line as the commercial city
+  // bed (audio.js ZONE_AMBIENCE_LEVEL, 0.10 + 0.22 zoomT: about 10 dB from
+  // fully out to fully in), not the flatter one the other calls here follow,
+  // and stays under that bed at every zoom. vol: per kind, so each peaks
+  // ~2 dB under the city bed's average and ~3 under a car horn in the
+  // middle of the view fully zoomed in (measured, K-weighted, reverb in:
+  // city bed -37.6 dB average, horn peak -36.4, both sirens' peaks -39.5;
+  // fully zoomed out, bed -47.7, sirens -49.5, horn -40).
+  const SIREN = { vol: { police: 0.02, ambulance: 0.023 }, chance: 0.6, gap: 25, maxFor: 14, fadeIn: 0.8, fadeOut: 1.2,
+                  sound: 1140,   // the speed of sound in world px/s (a car is 15 px, ~4.5 m)
+                  ear: 60 };     // how high over the middle of the view it is heard from, px
   const _onCall = new WeakMap();   // vehicle -> whether it is running its siren
   let siren = null, sirenNext = 0;
   function _view() {
@@ -735,43 +752,143 @@ const OutdoorAmbience = (() => {
     const z = Camera.zoom || 1, w = Math.max(1, window.innerWidth) / z, h = Math.max(1, window.innerHeight) / z;
     return { cx: Camera.x + w / 2, cy: Camera.y + h / 2, w, h };
   }
+  // The siren's own zoom line over the one master already gives everything
+  // here (0.45 + 0.55 zoomT, read from the last scene sample): together, the
+  // city bed's line, at 1 fully zoomed in. Read live, so it follows the wheel.
+  function _sirenZoom() {
+    const ZMIN = Camera.ZOOM_MIN || 0.31, ZMAX = Camera.ZOOM_MAX || 3;
+    const z = clamp(((Camera.zoom || 1) - ZMIN) / (ZMAX - ZMIN), 0, 1), zs = scene ? scene.zoomT : z;
+    return (0.10 + 0.22 * z) / 0.32 / (0.45 + 0.55 * zs);
+  }
+  // The driver's saturation: soft clipping, a touch lopsided (a real one is).
+  let _driverCurve = null;
+  function _sirenDriver() {
+    if (_driverCurve) return _driverCurve;
+    const n = 1024; _driverCurve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; _driverCurve[i] = Math.tanh(x * 1.6 + 0.08) - Math.tanh(0.08); }
+    return _driverCurve;
+  }
+  // The street a siren is heard down: longer and brighter than the open-air
+  // tail the other calls share, with a few early slaps off the buildings
+  // either side. Built the first time a siren sounds; feeds master.
+  let sirenVerb = null;
+  function _sirenVerb() {
+    if (sirenVerb && sirenVerb.context === c) return sirenVerb;
+    const len = Math.round(c.sampleRate * 3.2), ir = c.createBuffer(2, len, c.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        lp += ((Math.random() * 2 - 1) * Math.pow(1 - t, 2.4 + ch * 0.3) - lp) * (0.75 - 0.55 * t);
+        d[i] = lp * 0.8 * Math.min(1, i / (c.sampleRate * 0.02));
+      }
+      // Early reflections: the facades across the street and down the block.
+      for (const [ms, a] of [[23, 0.5], [41, 0.38], [67, 0.3], [94, 0.22], [131, 0.16], [178, 0.1]]) {
+        const at = Math.round(c.sampleRate * (ms + (ch ? 6 : 0) + rand(-3, 3)) / 1000);
+        for (let k = 0; k < 24 && at + k < len; k++) d[at + k] += a * (Math.random() * 2 - 1) * (1 - k / 24);
+      }
+    }
+    sirenVerb = c.createConvolver(); sirenVerb.buffer = ir; sirenVerb.connect(master);
+    return sirenVerb;
+  }
+  // The pitch, Hz, `secs` long from a random point in its pattern, as a
+  // curve for setValueCurveAtTime (200 points a second).
+  function _sirenPitch(police, secs) {
+    const R = 200, N = Math.ceil(secs * R) + 1, out = new Float32Array(N);
+    // One sweep, u 0..1: spinning up quickly, then running down more slowly.
+    const sweep = (u, lo, hi) => u < 0.4 ? lo + (hi - lo) * (1 - (1 - u / 0.4) ** 2) : hi - (hi - lo) * ((u - 0.4) / 0.6) ** 1.5;
+    if (police) {
+      // [start, length, period, lo, hi]: two or three wails (~4 s each), then
+      // a yelp (seven to ten ~0.3 s sweeps), over again. Both start and end low.
+      const segs = [], P = rand(3.6, 4.4);
+      let t = -rand(0, 2 * P);
+      while (t < secs) {
+        for (let k = irand(2, 3); k > 0; k--) { segs.push([t, P, P, 650, 1450]); t += P; }
+        const n = irand(7, 10), Y = rand(0.27, 0.32);
+        segs.push([t, n * Y, Y, 720, 1380]); t += n * Y;
+      }
+      let j = 0;
+      for (let i = 0; i < N; i++) {
+        const tt = i / R;
+        while (j < segs.length - 1 && tt >= segs[j][0] + segs[j][1]) j++;
+        const [s0, , per, lo, hi] = segs[j];
+        out[i] = sweep(((tt - s0) % per + per) % per / per, lo, hi);
+      }
+    } else {
+      // Hi-lo: 960 and 770 Hz, 0.55 s each, gliding 30 ms between them.
+      const HALF = 0.55, off = rand(0, 2 * HALF);
+      for (let i = 0; i < N; i++) {
+        const q = (i / R + off) / HALF, k = Math.floor(q), s = Math.min(1, (q - k) * HALF / 0.03);
+        const to = k % 2 ? 770 : 960, from = k % 2 ? 960 : 770;
+        out[i] = from + (to - from) * s * s * (3 - 2 * s);
+      }
+    }
+    return out;
+  }
   function _sirenStart(v, hold = 0) {
     const t0 = c.currentTime, police = v.kind !== 'ambulance';
-    const tone = c.createBiquadFilter(); tone.type = 'bandpass'; tone.frequency.value = 1150; tone.Q.value = 0.6;
-    const g = c.createGain(); g.gain.value = 0;
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 6000;
-    tone.connect(g); g.connect(lp);
-    let tail = lp, pan = null;
-    if (c.createStereoPanner) { pan = c.createStereoPanner(); lp.connect(pan); tail = pan; }
-    tail.connect(master);
-    const send = c.createGain(); send.gain.value = 0.2; tail.connect(send); send.connect(verb);
-    // The horn: a triangle with a little square for its edge, both swept by
-    // one LFO. Police: a sine sweep between ~640 and ~1460 Hz every ~3.4 s.
-    // Ambulance: a square stepping between 770 and 960 Hz every 1.1 s.
-    const centre = police ? 1050 : 865, depth = police ? 410 : 95;
-    const lfo = c.createOscillator(), lg = c.createGain();
-    lfo.type = police ? 'sine' : 'square'; lfo.frequency.value = police ? 0.29 + Math.random() * 0.04 : 0.9;
-    lg.gain.value = depth; lfo.connect(lg);
-    const oscs = [];
-    for (const [type, amt] of [['triangle', 1], ['square', 0.22]]) {
-      const o = c.createOscillator(), og = c.createGain();
-      o.type = type; o.frequency.value = centre; lg.connect(o.frequency);
-      og.gain.value = amt; o.connect(og); og.connect(tone); o.start(t0); oscs.push(o);
+    const all = [];   // every node, to disconnect at the end
+    const node = n => (all.push(n), n);
+    // Pitch (Hz) and the Doppler bend (cents), each one source driving every oscillator.
+    const pitch = node(c.createConstantSource()), bend = node(c.createConstantSource());
+    pitch.offset.value = 0; bend.offset.value = 0;
+    pitch.offset.setValueCurveAtTime(_sirenPitch(police, Math.max(hold, SIREN.maxFor) + SIREN.fadeOut + 1), t0, Math.max(hold, SIREN.maxFor) + SIREN.fadeOut + 1);
+    // The driver, pushed into saturation as a real one is, then the horn
+    // speaker: resonant bands around 1.7 and 3 kHz, nothing much below
+    // 400 Hz, the top rolled off past ~4.5 kHz.
+    const drive = node(c.createGain()); drive.gain.value = 2.2;
+    const shaper = node(c.createWaveShaper()); shaper.curve = _sirenDriver(); shaper.oversample = '2x';
+    const hp = node(c.createBiquadFilter()); hp.type = 'highpass'; hp.frequency.value = 400; hp.Q.value = 0.7;
+    const horn = node(c.createBiquadFilter()); horn.type = 'peaking'; horn.frequency.value = 1700; horn.Q.value = 1.1; horn.gain.value = 6;
+    const horn2 = node(c.createBiquadFilter()); horn2.type = 'peaking'; horn2.frequency.value = 3000; horn2.Q.value = 1.6; horn2.gain.value = 3;
+    const top = node(c.createBiquadFilter()); top.type = 'lowpass'; top.frequency.value = 4500; top.Q.value = 0.5;
+    drive.connect(shaper); shaper.connect(hp); hp.connect(horn); horn.connect(horn2); horn2.connect(top);
+    const oscs = [pitch, bend];
+    for (const [type, amt, cents] of [['square', 0.5, 0], ['sawtooth', 0.28, 9], ['triangle', 0.45, -4]]) {
+      const o = node(c.createOscillator()), og = node(c.createGain());
+      o.type = type; o.frequency.value = 0; o.detune.value = cents;
+      pitch.connect(o.frequency); bend.connect(o.detune);
+      og.gain.value = amt; o.connect(og); og.connect(drive); oscs.push(o);
     }
-    lfo.start(t0); oscs.push(lfo);
-    siren = { ref: v.ref, kind: v.kind, x: v.x, y: v.y, t0, seen: t0, hold, nodes: { g, lp, pan, send, tone, tail }, oscs, ending: false };
+    const g = node(c.createGain()); g.gain.value = 0;
+    top.connect(g);
+    // The slap off the far side of the street: late, quieter and duller.
+    const slap = node(c.createDelay(0.2)); slap.delayTime.value = rand(0.07, 0.1);
+    const slapLp = node(c.createBiquadFilter()); slapLp.type = 'lowpass'; slapLp.frequency.value = 2400;
+    const slapG = node(c.createGain()); slapG.gain.value = 0.22;
+    top.connect(slap); slap.connect(slapLp); slapLp.connect(slapG); slapG.connect(g);
+    const lp = node(c.createBiquadFilter()); lp.type = 'lowpass'; lp.frequency.value = 6000;
+    g.connect(lp);
+    let tail = lp, pan = null;
+    if (c.createStereoPanner) { pan = node(c.createStereoPanner()); lp.connect(pan); tail = pan; }
+    tail.connect(master);
+    const send = node(c.createGain()); send.gain.value = 0.35; tail.connect(send); send.connect(_sirenVerb());
+    for (const o of oscs) o.start(t0);
+    siren = { ref: v.ref, kind: v.kind, x: v.x, y: v.y, t0, seen: t0, hold, nodes: { g, lp, pan, send, bend }, all, oscs, ending: false,
+              r: null, rT: 0, vr: 0 };
     _sirenPlace();
   }
-  // Level, tone and pan from where the vehicle is in the view now.
+  // Level, tone, pan and Doppler from where the vehicle is in the view now.
   function _sirenPlace() {
     const s = siren, v = _view(), now = c.currentTime;
     const dx = clamp((s.x - v.cx) / (v.w / 2), -4, 4) || 0, dy = clamp((s.y - v.cy) / (v.h / 2), -4, 4) || 0;
     const d = clamp(Math.hypot(dx, dy) / 1.6, 0, 1);
     const fade = clamp((now - s.t0) / SIREN.fadeIn, 0, 1);
-    s.nodes.g.gain.setTargetAtTime((SIREN.vol[s.kind] || SIREN.vol.police) * (1 - 0.55 * d) * fade, now, 0.12);
+    s.nodes.g.gain.setTargetAtTime((SIREN.vol[s.kind] || SIREN.vol.police) * (1 - 0.55 * d) * fade * _sirenZoom(), now, 0.12);
     s.nodes.lp.frequency.setTargetAtTime(6000 * (1 - 0.6 * d) + 900, now, 0.12);
-    s.nodes.send.gain.setTargetAtTime(0.12 + 0.35 * d, now, 0.12);
+    s.nodes.send.gain.setTargetAtTime(0.35 + 0.45 * d, now, 0.12);
     if (s.nodes.pan) s.nodes.pan.pan.setTargetAtTime(clamp(dx * 0.75, -0.85, 0.85), now, 0.12);
+    // Doppler: how fast it is closing on (or leaving) the listener, high
+    // over the middle of the view. Capped at a fast car's speed, so
+    // scrolling the view doesn't bend it wildly.
+    const r = Math.hypot(s.x - v.cx, s.y - v.cy, SIREN.ear);
+    if (s.r === null) { s.r = r; s.rT = now; }
+    else if (now - s.rT >= 0.05) {
+      const vr = clamp((r - s.r) / (now - s.rT), -50, 50) || 0;
+      s.vr += (vr - s.vr) * 0.5; s.r = r; s.rT = now;
+      s.nodes.bend.offset.setTargetAtTime(1200 * Math.log2(SIREN.sound / (SIREN.sound + s.vr)), now, 0.25);
+    }
   }
   function _sirenStop() {
     const s = siren; if (!s || s.ending) return;
@@ -780,7 +897,7 @@ const OutdoorAmbience = (() => {
     s.nodes.g.gain.cancelScheduledValues(now);
     s.nodes.g.gain.setTargetAtTime(0, now, SIREN.fadeOut / 3);
     for (const o of s.oscs) { try { o.stop(now + SIREN.fadeOut + 0.3); } catch (_e) {} }
-    setTimeout(() => { try { for (const n of Object.values(s.nodes)) n && n.disconnect(); } catch (_e) {} }, (SIREN.fadeOut + 3) * 1000);
+    setTimeout(() => { for (const n of s.all) { try { n.disconnect(); } catch (_e) {} } }, (SIREN.fadeOut + 3) * 1000);
     siren = null;
     sirenNext = now + SIREN.gap * (0.8 + Math.random() * 0.4);
   }
