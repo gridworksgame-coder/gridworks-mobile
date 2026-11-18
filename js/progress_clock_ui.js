@@ -150,148 +150,123 @@ function updateProgressTracker() {
     else rows.push(row('Research Station', val('needs 125 biofuel', 'dim')));
   }
 
+  // Each row's figure is Progression.progressFor: the Research Station
+  // list's own readout, at 100% ("Ready!") only once the unlock is READY.
+  // These rows used to carry their own copy of every requirement, and the
+  // copies drifted (the Cell Tower read Ready at 20 homes; it needs 25).
   const NEXT_UNLOCKS = [
-    { type: T.WIRE,           label: 'Wire',              pct: () => Math.min(1, (BiofuelSystem.getTotalCollected?.() || 0) / 50) },
-    { type: T.RESEARCH,       label: 'Research Station MK1', pct: () => Math.min(1, BiofuelSystem.getTotalCollected() / 125) },
-    { type: T.POLE,           label: 'Power Pole',      pct: () => (HouseRequestSystem.getHousesAccepted() >= 1 || HouseRequestSystem.getCommercialsAccepted() >= 1 || HouseRequestSystem.getCabinCleared()) ? 1 : 0 },
-    { type: T.CELLTOWER,      label: 'Cell Tower',      pct: () => { const hPct = Math.min(1, HouseRequestSystem.getHousesAccepted() / 20); const rPct = Progression.isUnlocked(T.RESEARCH2) ? 1 : 0; return hPct * 0.5 + rPct * 0.5; } },
-    { type: T.CIRCUITSWITCH,  label: 'Circuit Switch',  pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH2) ? 1 : 0; const wPct = Math.min(1, (PowerNetwork.stats.totalConsumed || 0) / 1000); return rPct * 0.5 + wPct * 0.5; } },
-    { type: T.CIRCUITSWITCH2, label: 'Circuit Switch MK2', pct: () => { const gPct = Math.min(1, PowerNetwork.stats.totalGenerated / 7500); const rPct = EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? 1 : 0; return gPct * 0.5 + rPct * 0.5; } },
-    { type: T.FIBERHUB,       label: 'Fiber Hub',       pct: () => Progression.progressFor(T.FIBERHUB) },
-    { type: T.GEOWELL,        label: 'Geothermal Well', pct: () => GeothermalSystem.hasDeposits() ? 1 : 0 },
-    { type: T.GEOTURBINE,     label: 'Geothermal Turbine', pct: () => EntityRegistry.getByType(T.GEOWELL).size > 0 ? 1 : 0 },
-    { type: T.COALSCAN,       label: 'Coal Scan',       pct: () => Progression.progressFor(T.COALSCAN) },
-    { type: T.COALMINE,       label: 'Coal Mine',       pct: () => (Progression.isUnlocked(T.COALSCAN) && CoalSystem.hasDeposits()) ? 1 : 0 },
-    { type: T.CONVEYOR,       label: 'Conveyor Belt',   pct: () => Progression.progressFor(T.CONVEYOR) },
-    { type: T.UNDERGNDCONVEYOR, label: 'Underground Belt', pct: () => Progression.progressFor(T.UNDERGNDCONVEYOR) },
-    ...(CONVEYOR_SPLITTER_ARCHIVED ? [] : [{ type: T.CONVEYORSPLITTER, label: 'Conveyor Splitter', pct: () => Progression.progressFor(T.CONVEYORSPLITTER) }]),
-    { type: T.PROTECTOR,      label: 'Surge Protector', pct: () => PowerNetwork.redlineProgress() },
-    { type: T.PROTECTOR2,     label: 'Surge Protector MK2', pct: () => Progression.progressFor(T.PROTECTOR2) },
-    { type: T.LIGHTNINGROD3,  label: 'Lightning Rod MK3', pct: () => { const iPct = Math.min(1, Math.max(0, Economy.income) / LIGHTNINGROD3_INCOME); const rPct = EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? 1 : 0; return iPct * 0.5 + rPct * 0.5; } },
-    { type: T.PROTECTOR3,     label: 'Surge Protector MK3', pct: () => { const cPct = Math.min(1, PowerNetwork.stats.totalConsumed / 5000); const rPct = EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? 1 : 0; return cPct * 0.5 + rPct * 0.5; } },
-    { type: T.PIPE,           label: 'Pipe',            pct: () => Progression.progressFor(T.PIPE) },
-    // Both of these used to carry their own copy of the unlock gate, and both
-    // copies were wrong: Underground Pipe watched the Coal Generator when the
-    // real gate is the Liquid Storage Tank, and Oil Scan divided coal by 10,000
-    // when the real threshold is 300,000. Each therefore reported "Ready!" long
-    // before the unlock existed. Delegating to progression.js means there is one
-    // definition of each gate instead of three that can drift apart.
-    { type: T.UNDERGNDPIPE,   label: 'Underground Pipe', pct: () => Progression.progressFor(T.UNDERGNDPIPE) },
-    { type: T.OILSCAN,        label: 'Oil Scan',        pct: () => Progression.progressFor(T.OILSCAN) },
-    { type: T.URANIUMSCAN,    label: 'Uranium Scan',    pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const runtime = (typeof ReservoirSystem !== 'undefined') ? ReservoirSystem.getTotalTurbineRuntime() : 0; const tPct = Math.min(1, runtime / 3000); return rPct * 0.5 + tPct * 0.5; } },
-    { type: T.SULFURSCAN,     label: 'Sulfur Scan',     pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const runtime = (typeof ReservoirSystem !== 'undefined') ? ReservoirSystem.getTotalTurbineRuntime() : 0; const tPct = Math.min(1, runtime / 3000); return rPct * 0.5 + tPct * 0.5; } },
-    { type: T.URANIUMMINE,    label: 'Uranium Mine',    pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const dPct = UraniumSystem.hasDeposits?.() ? 1 : 0; return rPct * 0.5 + dPct * 0.5; } },
-    { type: T.SULFURMINE,     label: 'Sulfur Mine',     pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const dPct = SulfurSystem.hasDeposits?.() ? 1 : 0; return rPct * 0.5 + dPct * 0.5; } },
-    { type: T.SULFURMINE2,    label: 'Sulfur Mine MK2', pct: () => Progression.progressFor(T.SULFURMINE2) },
-    { type: T.LITHIUMSCAN,    label: 'Lithium Scan',    pct: () => Progression.progressFor(T.LITHIUMSCAN) },
-    { type: T.LITHIUMMINE,    label: 'Lithium Mine',    pct: () => { const sPct = Progression.isUnlocked(T.LITHIUMSCAN) ? 1 : 0; const dPct = (typeof LithiumSystem !== 'undefined' && LithiumSystem.hasDeposits?.()) ? 1 : 0; return sPct * 0.5 + dPct * 0.5; } },
-    { type: T.SOLAR,          label: 'Solar Panel MK1',   dayGate: 54, pct: () => Math.min(1, (DayNight.day() * 24 + (DayNight.day() >= 2 ? DayNight.hour() : 0)) / 54) },
-    { type: T.FISHINGPOLE,    label: 'Fishing Pole',     pct: () => Progression.isUnlocked(T.RESEARCH) ? Math.min(1, Progression.totalWs / 5000) : Math.min(0.49, (BiofuelSystem.getTotalCollected() / 125) * 0.49) },
-    { type: T.MONITOR,        label: 'Monitor Stn',     pct: () => Math.min(1, EntityRegistry.getByType(T.WIND).size / 5) },
-    { type: T.MONITOR2,       label: 'Monitor Stn MK2', pct: () => Progression.progressFor(T.MONITOR2) },
-    { type: T.ENGOFFICE,      label: 'Engineering Office', pct: () => Progression.progressFor(T.ENGOFFICE) },
-    { type: T.BEACON,         label: 'Comms Beacon',    pct: () => Math.min(1, PowerNetwork.stats.totalGenerated / 150) },
-    { type: T.SUBSTATION,     label: 'Substation MK1',  pct: () => Math.min(1, PowerNetwork.stats.totalGenerated / 200) },
-    { type: T.SUBSTATION3,    label: 'Substation MK3',  pct: () => { const wPct = Math.min(1, PowerNetwork.stats.totalGenerated / 3500); const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; return wPct * 0.5 + rPct * 0.5; } },
-    { type: T.SUBSTATION4,    label: 'Substation MK4',  pct: () => { const wPct = Math.min(1, PowerNetwork.stats.totalGenerated / 10000); const rPct = EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? 1 : 0; return wPct * 0.5 + rPct * 0.5; } },
-    { type: T.SUBSTATION5,    label: 'Substation MK5',  pct: () => Progression.progressFor(T.SUBSTATION5) },
-    { type: T.SUBSTATION2,    label: 'Substation MK2',  pct: () => Progression.progressFor(T.SUBSTATION2) },
-    { type: T.TRUCK,          label: 'Waste Truck',      pct: () => { let maxAsh = 0; for (const e of EntityRegistry.getByType(T.COALGENERATOR)) maxAsh = Math.max(maxAsh, e._ashWaste || 0); return Math.min(1, maxAsh / 60); } },
-    { type: T.HAULER,         label: 'Hauler',           pct: () => Math.min(1, beltTileCount() / HAULER_BELT_TILES) },
-    { type: T.ROAD,           label: 'Road',             pct: () => Progression.isUnlocked(T.TRUCK) ? 1 : 0 },
-    { type: T.BRIDGE,         label: 'Bridge',           pct: () => Progression.isUnlocked(T.TRUCK) ? 1 : 0 },
-    { type: T.PATHTOOL,       label: 'Path Tool',        pct: () => Progression.isUnlocked(T.TRUCK) ? 1 : 0 },
-    { type: T.WIND,           label: 'Wind Turbine',    dayGate: 96, pct: () => { const wPct = Math.min(1, PowerNetwork.stats.totalConsumed / 25); const dPct = Math.min(1, (DayNight.day() * 24 + DayNight.hour()) / 96); return wPct * 0.25 + dPct * 0.75; } },
-    // Mirrors progression.js's actual check: 500 kW consumed AND a Research
-    // Station MK2 physically placed. This used to report Research MK2 *unlock*
-    // progress, which is a different thing entirely — the bar could sit at
-    // 100% while the turbine stayed locked, or vice versa.
-    { type: T.WIND2,          label: 'Wind Turbine MK2', pct: () => {
-        const wPct = Math.min(1, PowerNetwork.stats.totalConsumed / 500);
-        const rPct = EntityRegistry.getByType(T.RESEARCH2).size > 0 ? 1 : 0;
-        return wPct * 0.5 + rPct * 0.5;
-      } },
-    { type: T.WIND3,          label: 'Wind Turbine MK3', pct: () => {
-        const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0;
-        const wPct = Math.min(1, PowerNetwork.stats.totalConsumed / 2500);
-        return rPct * 0.5 + wPct * 0.5;
-      } },
-    { type: T.SOLAR3,         label: 'Solar Array', pct: () => {
-        const rPct = EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? 1 : 0;
-        const nPct = Math.min(1, (EntityRegistry.getByType(T.SOLAR).size + EntityRegistry.getByType(T.SOLAR2).size) / SOLAR3_PANELS);
-        return rPct * 0.5 + nPct * 0.5;
-      } },
-    { type: T.BATTERY,        label: 'Battery Block',   dayGate: 78, pct: () => { const wPct = Math.min(1, PowerNetwork.stats.totalGenerated / 50); const dPct = Math.min(1, (DayNight.day() * 24 + DayNight.hour()) / 78); return wPct * 0.25 + dPct * 0.75; } },
-    { type: T.RESEARCH2,      label: 'Research MK2',    pct: () => CoalSystem.hasDeposits() ? 1 : 0 },
-    { type: T.RESEARCH3,      label: 'Research MK3',    pct: () => Progression.progressFor(T.RESEARCH3) },
-    { type: T.SOLAR2,         label: 'Solar MK2',       pct: () => Progression.progressFor(T.SOLAR2) },
-    { type: T.SURVEY,         label: 'Survey Stn',      pct: () => Math.min(1, PowerNetwork.stats.totalConsumed / 200) },
-    { type: T.SURVEY2,        label: 'Survey Stn MK2',  pct: () => Progression.progressFor(T.SURVEY2) },
-    { type: T.COALMINE2,      label: 'Coal Mine MK2',   pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const cPct = Math.min(1, (CoalSystem.getTotalMined?.() || 0) / COALMINE2_COAL_MINED); return rPct * 0.5 + cPct * 0.5; } },
-    { type: T.COALGENERATOR,  label: 'Coal Generator',  pct: () => Progression.progressFor(T.COALGENERATOR) },
-    { type: T.WATEREXTRACTOR, label: 'Water Extractor', pct: () => Progression.progressFor(T.WATEREXTRACTOR) },
-    { type: T.POWERTOWER,          label: 'Wire MK2',        pct: () => Progression.checkPowerTowerReady() ? 1 : 0 },
-    { type: T.BLUEPRINT,      label: 'Blueprints',      pct: () => EntityRegistry.getByType(T.RESEARCH3).size > 0 ? 1 : 0 },
-    { type: T.DAM,             label: 'Dam',              pct: () => EntityRegistry.getByType(T.RESEARCH3).size > 0 ? 1 : 0 },
-    { type: T.HYDROTURBINE,    label: 'Hydro Turbine',    pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const dPct = (typeof ReservoirSystem !== 'undefined' && ReservoirSystem.hasDams()) ? 1 : 0; return rPct * 0.5 + dPct * 0.5; } },
-    { type: T.SHAFT,           label: 'Drive Shaft',      pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const runtime = (typeof ReservoirSystem !== 'undefined') ? ReservoirSystem.getTotalTurbineRuntime() : 0; const tPct = Math.min(1, runtime / (3 * 300)); return rPct * 0.5 + tPct * 0.5; } },
-    { type: T.HYDROGENERATOR,  label: 'Hydro Generator',  pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const runtime = (typeof ReservoirSystem !== 'undefined') ? ReservoirSystem.getTotalTurbineRuntime() : 0; const tPct = Math.min(1, runtime / (3 * 300)); return rPct * 0.5 + tPct * 0.5; } },
-    { type: T.PUMPJACK,       label: 'Pump Jack',        pct: () => { const oPct = Progression.isUnlocked(T.OILSCAN) ? 1 : 0; const dPct = OilSystem.hasDeposits() ? 1 : 0; return oPct * 0.5 + dPct * 0.5; } },
-    { type: T.PUMPJACK2,      label: 'Pump Jack MK2',    pct: () => Progression.progressFor(T.PUMPJACK2) },
-    { type: T.SOLIDSTORAGE,   label: 'Storage Container', pct: () => Progression.progressFor(T.SOLIDSTORAGE) },
-    { type: T.OILSTORAGE,     label: 'Liquid Storage Tank', pct: () => Math.min(1, OilSystem.getTotalCrude() / OILSTORAGE_CRUDE) },
-    { type: T.REFINERY,       label: 'Oil Refinery',     pct: () => Math.min(1, OilSystem.getTotalCrude() / REFINERY_CRUDE) },
-    { type: T.GOVERNOR,       label: 'Throttle Governor', pct: () => Progression.progressFor(T.GOVERNOR) },
-    { type: T.CARBONCAPTURE,  label: 'Carbon Capture Plant', pct: () => Progression.progressFor(T.CARBONCAPTURE) },
-    { type: T.FUELGEN,        label: 'Fuel Power Gen',   pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH2) ? 1 : 0; const fPct = Math.min(1, (OilSystem.getTotalFuelOil?.() || 0) / 2000); return rPct * 0.5 + fPct * 0.5; } },
-    { type: T.CHEMICALPLANT,  label: 'Chemical Plant',   pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const sPct = Math.min(1, (SulfurSystem.getTotalMined?.() || 0) / 1000); return rPct * 0.5 + sPct * 0.5; } },
-    { type: T.FUELPLANT,      label: 'Fuel Plant',        pct: () => Progression.progressFor(T.FUELPLANT) },
-    { type: T.NUCLEARREACTOR, label: 'Nuclear Reactor',    pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const fPct = Math.min(1, (typeof FuelPlantSystem !== 'undefined' ? FuelPlantSystem.getTotalRods?.() || 0 : 0) / 800); return rPct * 0.5 + fPct * 0.5; } },
-    { type: T.COOLINGTOWER,   label: 'Cooling Tower',      pct: () => { const rPct = Progression.isUnlocked(T.RESEARCH3) ? 1 : 0; const nPct = EntityRegistry.getByType(T.NUCLEARREACTOR).size > 0 ? 1 : 0; return rPct * 0.5 + nPct * 0.5; } },
-    { type: T.STEAMTURBINE,   label: 'Steam Turbine',      pct: () => Progression.progressFor(T.STEAMTURBINE) },
-    { type: T.LITHIUMPROCESSPLANT, label: 'Lithium Processing Plant', pct: () => Progression.progressFor(T.LITHIUMPROCESSPLANT) },
-    { type: T.MK4RESEARCH,    label: 'MK4 Research Stn',   pct: () => Progression.progressFor(T.MK4RESEARCH) },
-    { type: T.SPENTFUELPOOL,  label: 'Spent Fuel Pool',    pct: () => Progression.progressFor(T.SPENTFUELPOOL) },
-    { type: T.REPROCESSOR,    label: 'Reprocessing Plant', pct: () => Progression.progressFor(T.REPROCESSOR) },
-    { type: T.MOXPLANT,       label: 'Adv. Fuel Processing', pct: () => Progression.progressFor(T.MOXPLANT) },
-    { type: T.COOLINGTOWER2,  label: 'Cryogenic Cooling Tower', pct: () => Progression.progressFor(T.COOLINGTOWER2) },
-    { type: T.ADVREACTOR,     label: 'Advanced Reactor',   pct: () => Progression.progressFor(T.ADVREACTOR) },
-    { type: T.COKEOVEN,       label: 'Coke Oven Battery',  pct: () => Progression.progressFor(T.COKEOVEN) },
-    { type: T.GRAPHITEFURNACE, label: 'Graphitization Furnace', pct: () => Progression.progressFor(T.GRAPHITEFURNACE) },
-    { type: T.DRONEPORT,      label: 'Drone Port',         pct: () => Progression.progressFor(T.DRONEPORT) },
-    { type: T.DRONECHARGER,   label: 'Drone Charging Port', pct: () => Progression.progressFor(T.DRONECHARGER) },
-    { type: T.MK5RESEARCH,    label: 'MK5 Research Stn',   pct: () => Progression.progressFor(T.MK5RESEARCH) },
-    { type: T.ELECTROLYZER,   label: 'Electrolyzer',       pct: () => Progression.progressFor(T.ELECTROLYZER) },
-    { type: T.ATMOSCOLLECTOR, label: 'Atmosphere Collector', pct: () => Progression.progressFor(T.ATMOSCOLLECTOR) },
-    { type: T.HABERBOSCH,     label: 'Haber-Bosch Complex', pct: () => Progression.progressFor(T.HABERBOSCH) },
-    { type: T.WASHTOWER,      label: 'Isotopic Wash Tower', pct: () => Progression.progressFor(T.WASHTOWER) },
-    { type: T.TRITIUMBREEDER, label: 'Tritium Breeding Facility', pct: () => Progression.progressFor(T.TRITIUMBREEDER) },
-    { type: T.FUSIONFUELPLANT, label: 'Fusion Fuel Plant', pct: () => Progression.progressFor(T.FUSIONFUELPLANT) },
-    { type: T.HELIUMSCAN,     label: 'Helium Scan',        pct: () => Progression.progressFor(T.HELIUMSCAN) },
-    { type: T.HELIUMWELL,     label: 'Helium Well',        pct: () => Progression.progressFor(T.HELIUMWELL) },
-    { type: T.CRYOPLANT,      label: 'Cryo Plant',         pct: () => Progression.progressFor(T.CRYOPLANT) },
-    { type: T.GASSTORAGE,     label: 'Gas Holder',         pct: () => Progression.progressFor(T.GASSTORAGE) },
-    { type: T.HULKINGFUSIONREACTOR, label: 'Fusion Reactor', pct: () => Progression.progressFor(T.HULKINGFUSIONREACTOR) },
-    { type: T.STEAMTURBINE2,  label: 'Steam Turbine MK2',     pct: () => Progression.progressFor(T.STEAMTURBINE2) },
-    { type: T.HE3SEPARATOR,   label: 'Helium-3 Separator',    pct: () => Progression.progressFor(T.HE3SEPARATOR) },
-    { type: T.ADVFUSIONREACTOR, label: 'Advanced Fusion Reactor', pct: () => Progression.progressFor(T.ADVFUSIONREACTOR) },
-    { type: T.MHDRING,        label: 'MHD Decelerator Ring',  pct: () => Progression.progressFor(T.MHDRING) },
-    { type: T.HELIUMWELL2,    label: 'Helium Well MK2',       pct: () => Progression.progressFor(T.HELIUMWELL2) },
-    { type: T.RAREEARTHSCAN,  label: 'Rare Earth Scan',       pct: () => Progression.progressFor(T.RAREEARTHSCAN) },
-    { type: T.RAREEARTHMINE,  label: 'Rare Earth Mine',       pct: () => Progression.progressFor(T.RAREEARTHMINE) },
-    { type: T.LEACHPLANT,     label: 'Leach Plant',           pct: () => Progression.progressFor(T.LEACHPLANT) },
-    { type: T.SCMILL,         label: 'Superconductor Mill',   pct: () => Progression.progressFor(T.SCMILL) },
-    { type: T.COREWORKS,      label: 'Core Works',            pct: () => Progression.progressFor(T.COREWORKS) },
-    { type: T.LAMP,           label: 'Street Lamp',     pct: () => Math.min(1, HouseRequestSystem.getHousesAccepted() / 5) },
-    { type: T.CAMERA,         label: 'Security Cam',    pct: () => Math.min(1, AmenityRequestSystem.getTotalFulfilled() / 5) },
-    { type: T.EVCHARGER,      label: 'EV Charger',      pct: () => {
-        const mk2Pct = Progression.isUnlocked(T.RESEARCH2) ? 1 : 0;
-        let factoryPct = 0;
-        for (const e of EntityRegistry.getByType(T.INDUSTRIAL)) {
-          if (e.fromRequest && e.commercialSubtype === 'evfactory') { factoryPct = 1; break; }
-        }
-        return mk2Pct * 0.5 + factoryPct * 0.5;
-      } },
+    { type: T.WIRE,          label: 'Wire' },
+    { type: T.RESEARCH,      label: 'Research Station MK1' },
+    { type: T.POLE,          label: 'Power Pole' },
+    { type: T.CELLTOWER,     label: 'Cell Tower' },
+    { type: T.CIRCUITSWITCH, label: 'Circuit Switch' },
+    { type: T.CIRCUITSWITCH2, label: 'Circuit Switch MK2' },
+    { type: T.FIBERHUB,      label: 'Fiber Hub' },
+    { type: T.GEOWELL,       label: 'Geothermal Well' },
+    { type: T.GEOTURBINE,    label: 'Geothermal Turbine' },
+    { type: T.COALSCAN,      label: 'Coal Scan' },
+    { type: T.COALMINE,      label: 'Coal Mine' },
+    { type: T.CONVEYOR,      label: 'Conveyor Belt' },
+    { type: T.UNDERGNDCONVEYOR, label: 'Underground Belt' },
+    ...(CONVEYOR_SPLITTER_ARCHIVED ? [] : [{ type: T.CONVEYORSPLITTER, label: 'Conveyor Splitter' }]),
+    { type: T.PROTECTOR,     label: 'Surge Protector' },
+    { type: T.PROTECTOR2,    label: 'Surge Protector MK2' },
+    { type: T.LIGHTNINGROD3, label: 'Lightning Rod MK3' },
+    { type: T.PROTECTOR3,    label: 'Surge Protector MK3' },
+    { type: T.PIPE,          label: 'Pipe' },
+    { type: T.UNDERGNDPIPE,  label: 'Underground Pipe' },
+    { type: T.OILSCAN,       label: 'Oil Scan' },
+    { type: T.URANIUMSCAN,   label: 'Uranium Scan' },
+    { type: T.SULFURSCAN,    label: 'Sulfur Scan' },
+    { type: T.URANIUMMINE,   label: 'Uranium Mine' },
+    { type: T.SULFURMINE,    label: 'Sulfur Mine' },
+    { type: T.SULFURMINE2,   label: 'Sulfur Mine MK2' },
+    { type: T.LITHIUMSCAN,   label: 'Lithium Scan' },
+    { type: T.LITHIUMMINE,   label: 'Lithium Mine' },
+    { type: T.SOLAR,         label: 'Solar Panel MK1', dayGate: 54 },
+    { type: T.FISHINGPOLE,   label: 'Fishing Pole' },
+    { type: T.MONITOR,       label: 'Monitor Stn' },
+    { type: T.MONITOR2,      label: 'Monitor Stn MK2' },
+    { type: T.ENGOFFICE,     label: 'Engineering Office' },
+    { type: T.BEACON,        label: 'Comms Beacon' },
+    { type: T.SUBSTATION,    label: 'Substation MK1' },
+    { type: T.SUBSTATION3,   label: 'Substation MK3' },
+    { type: T.SUBSTATION4,   label: 'Substation MK4' },
+    { type: T.SUBSTATION5,   label: 'Substation MK5' },
+    { type: T.SUBSTATION2,   label: 'Substation MK2' },
+    { type: T.TRUCK,         label: 'Waste Truck' },
+    { type: T.HAULER,        label: 'Hauler' },
+    { type: T.ROAD,          label: 'Road' },
+    { type: T.BRIDGE,        label: 'Bridge' },
+    { type: T.PATHTOOL,      label: 'Path Tool' },
+    { type: T.WIND,          label: 'Wind Turbine', dayGate: 96 },
+    { type: T.WIND2,         label: 'Wind Turbine MK2' },
+    { type: T.WIND3,         label: 'Wind Turbine MK3' },
+    { type: T.SOLAR3,        label: 'Solar Array' },
+    { type: T.BATTERY,       label: 'Battery Block', dayGate: 78 },
+    { type: T.RESEARCH2,     label: 'Research MK2' },
+    { type: T.RESEARCH3,     label: 'Research MK3' },
+    { type: T.SOLAR2,        label: 'Solar MK2' },
+    { type: T.SURVEY,        label: 'Survey Stn' },
+    { type: T.SURVEY2,       label: 'Survey Stn MK2' },
+    { type: T.COALMINE2,     label: 'Coal Mine MK2' },
+    { type: T.COALGENERATOR, label: 'Coal Generator' },
+    { type: T.WATEREXTRACTOR, label: 'Water Extractor' },
+    { type: T.POWERTOWER,    label: 'Wire MK2' },
+    { type: T.BLUEPRINT,     label: 'Blueprints' },
+    { type: T.DAM,           label: 'Dam' },
+    { type: T.HYDROTURBINE,  label: 'Hydro Turbine' },
+    { type: T.SHAFT,         label: 'Drive Shaft' },
+    { type: T.HYDROGENERATOR, label: 'Hydro Generator' },
+    { type: T.PUMPJACK,      label: 'Pump Jack' },
+    { type: T.PUMPJACK2,     label: 'Pump Jack MK2' },
+    { type: T.SOLIDSTORAGE,  label: 'Storage Container' },
+    { type: T.OILSTORAGE,    label: 'Liquid Storage Tank' },
+    { type: T.REFINERY,      label: 'Oil Refinery' },
+    { type: T.GOVERNOR,      label: 'Throttle Governor' },
+    { type: T.CARBONCAPTURE, label: 'Carbon Capture Plant' },
+    { type: T.FUELGEN,       label: 'Fuel Power Gen' },
+    { type: T.CHEMICALPLANT, label: 'Chemical Plant' },
+    { type: T.FUELPLANT,     label: 'Fuel Plant' },
+    { type: T.NUCLEARREACTOR, label: 'Nuclear Reactor' },
+    { type: T.COOLINGTOWER,  label: 'Cooling Tower' },
+    { type: T.STEAMTURBINE,  label: 'Steam Turbine' },
+    { type: T.LITHIUMPROCESSPLANT, label: 'Lithium Processing Plant' },
+    { type: T.MK4RESEARCH,   label: 'MK4 Research Stn' },
+    { type: T.SPENTFUELPOOL, label: 'Spent Fuel Pool' },
+    { type: T.REPROCESSOR,   label: 'Reprocessing Plant' },
+    { type: T.MOXPLANT,      label: 'Adv. Fuel Processing' },
+    { type: T.COOLINGTOWER2, label: 'Cryogenic Cooling Tower' },
+    { type: T.ADVREACTOR,    label: 'Advanced Reactor' },
+    { type: T.COKEOVEN,      label: 'Coke Oven Battery' },
+    { type: T.GRAPHITEFURNACE, label: 'Graphitization Furnace' },
+    { type: T.DRONEPORT,     label: 'Drone Port' },
+    { type: T.DRONECHARGER,  label: 'Drone Charging Port' },
+    { type: T.MK5RESEARCH,   label: 'MK5 Research Stn' },
+    { type: T.ELECTROLYZER,  label: 'Electrolyzer' },
+    { type: T.ATMOSCOLLECTOR, label: 'Atmosphere Collector' },
+    { type: T.HABERBOSCH,    label: 'Haber-Bosch Complex' },
+    { type: T.WASHTOWER,     label: 'Isotopic Wash Tower' },
+    { type: T.TRITIUMBREEDER, label: 'Tritium Breeding Facility' },
+    { type: T.FUSIONFUELPLANT, label: 'Fusion Fuel Plant' },
+    { type: T.HELIUMSCAN,    label: 'Helium Scan' },
+    { type: T.HELIUMWELL,    label: 'Helium Well' },
+    { type: T.CRYOPLANT,     label: 'Cryo Plant' },
+    { type: T.GASSTORAGE,    label: 'Gas Holder' },
+    { type: T.HULKINGFUSIONREACTOR, label: 'Fusion Reactor' },
+    { type: T.STEAMTURBINE2, label: 'Steam Turbine MK2' },
+    { type: T.HE3SEPARATOR,  label: 'Helium-3 Separator' },
+    { type: T.ADVFUSIONREACTOR, label: 'Advanced Fusion Reactor' },
+    { type: T.MHDRING,       label: 'MHD Decelerator Ring' },
+    { type: T.HELIUMWELL2,   label: 'Helium Well MK2' },
+    { type: T.RAREEARTHSCAN, label: 'Rare Earth Scan' },
+    { type: T.RAREEARTHMINE, label: 'Rare Earth Mine' },
+    { type: T.LEACHPLANT,    label: 'Leach Plant' },
+    { type: T.SCMILL,        label: 'Superconductor Mill' },
+    { type: T.COREWORKS,     label: 'Core Works' },
+    { type: T.LAMP,          label: 'Street Lamp' },
+    { type: T.CAMERA,        label: 'Security Cam' },
+    { type: T.EVCHARGER,     label: 'EV Charger' },
   ];
 
   // Ranked by how close each unlock is, EXCEPT that entries gated on a
@@ -300,7 +275,8 @@ function updateProgressTracker() {
   // requirement (watts consumed/generated), so a nearly-met secondary can
   // float a later unlock above an earlier one — Battery/Wind ahead of Solar,
   // which reads as wrong since Solar always becomes available first.
-  const pending = NEXT_UNLOCKS.filter(u => !Progression.isUnlocked(u.type)).sort((a, b) => b.pct() - a.pct());
+  const pct = u => Progression.progressFor(u.type);
+  const pending = NEXT_UNLOCKS.filter(u => !Progression.isUnlocked(u.type)).sort((a, b) => pct(b) - pct(a));
   const gatedSlots = [];
   const gated = [];
   pending.forEach((u, i) => { if (u.dayGate != null) { gatedSlots.push(i); gated.push(u); } });
@@ -327,7 +303,7 @@ function updateProgressTracker() {
     rows.push(div());
     rows.push(`<div class="pt-row"><span class="pt-label">Unlocks</span></div>`);
     nextUnlocks.forEach(u => {
-      const p = u.pct();
+      const p = pct(u);
       // Hovering a row spells out what the unlock actually needs, taken from
       // the same hint the Research Station shows — a bare percentage doesn't
       // say whether it wants watts, a day, a deposit, or a placed building.

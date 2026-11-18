@@ -156,6 +156,7 @@ const Progression = (() => {
   // panel and the clock read goalProgress()/requirementText(). New or changed
   // requirements should be written this way.
   const _n = v => Math.floor(v).toLocaleString('en-US');
+  let _progressSource = null;   // the research list's readout (setProgressSource)
   // Water Extractors on power and over water (hydro_system sets _waterRate
   // only then). Gate for the Coal Power Generator and Pipe.
   const waterExtractorsPumping = () => {
@@ -198,7 +199,7 @@ const Progression = (() => {
       tier:  1,
       label: 'Fishing Pole',
       check: () => Progression.totalWs >= 5000 && Progression.isUnlocked(T.RESEARCH),
-      hint:  'Generate 5000 Ws total and place a Research Station',
+      hint:  'Research Station unlocked · Generate 5,000 Ws total',
     },
     {
       id:    T.RESEARCH,
@@ -295,7 +296,7 @@ const Progression = (() => {
                    hasResearch3Placed() &&
                    (typeof LightningDamageSystem !== 'undefined') &&
                    LightningDamageSystem.hasStrikeAfterMk3(),
-      hint:  'Build a Research Station MK3 · Take a lightning strike after it is up',
+      hint:  'Lightning Rod unlocked · Build a Research Station MK3 · Take a lightning strike after it is up',
     },
     {
       id:    T.LIGHTNINGROD3,
@@ -1269,7 +1270,7 @@ const Progression = (() => {
       tier:  2,
       label: 'Fuel Power Generator',
       check: () => OilSystem.getTotalFuelOil() >= 2000 && Progression.isUnlocked(T.RESEARCH2),
-      hint:  'Refine 2,000 fuel oil units and build a Research Station MK2',
+      hint:  'Research MK2 unlocked · Refine 2,000 units of fuel oil',
     },
   ];
   UNLOCK_DEFS.forEach(d => { if (d.goals) _deriveFromGoals(d); });
@@ -1760,8 +1761,23 @@ const Progression = (() => {
       return d && d.goals ? d.requirementText() : null;
     },
 
-    // Progress toward next locked unlock (0–1) for a given type
+    // How far along a locked unlock is, 0–1. The one figure the Research
+    // Station list, the Progress tab and the stations' glow all show: the
+    // list registers its own progress readout as the source (so its bar,
+    // label and this can't disagree), and 1 is held back until the unlock is
+    // actually READY, so nothing reads 100% on a requirement that isn't met.
     progressFor(type) {
+      const d = UNLOCK_DEFS.find(d => d.id === type);
+      if (!d || unlocked.has(type) || ready.has(type)) return 1;
+      const p = _progressSource ? _progressSource(type) : null;
+      return Math.min(0.99, Math.max(0, p != null ? p : this.rawProgressFor(type)));
+    },
+    // The research list hands its progress readout in here (see progressFor).
+    setProgressSource(fn) { _progressSource = fn; },
+
+    // progressFor's own working, for an unlock the research list doesn't
+    // show (and for the list itself, where it borrows one of these).
+    rawProgressFor(type) {
       const d = UNLOCK_DEFS.find(d => d.id === type);
       if (!d || unlocked.has(type)) return 1;
       if (d.goals) return d.progress();

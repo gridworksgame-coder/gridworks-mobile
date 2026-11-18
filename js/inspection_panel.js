@@ -73,9 +73,12 @@ const InspectionPanel = (() => {
         {
           type: T.WIND3,
           name: 'Wind Turbine MK3',
-          desc: '4×4 utility-scale turbine, 28–49 kW variable output. $30,000, $16/s upkeep. Unlocks at 2.5 MW total consumption.',
+          desc: '4×4 utility-scale turbine, 28–49 kW variable output. $30,000, $16/s upkeep. Unlocks at 2.5 MW total consumption (Research MK3 required).',
           cost: 0,
-          getProgress() { return { current: Math.min(Math.floor(PowerNetwork.stats.totalConsumed), 2500), target: 2500, unit: 'W consumed' }; },
+          getProgress() {
+            if (!Progression.isUnlocked(T.RESEARCH3)) return { current: 0, target: 1, unit: 'Research MK3 needed' };
+            return { current: Math.min(Math.floor(PowerNetwork.stats.totalConsumed), 2500), target: 2500, unit: 'W consumed' };
+          },
         },
         {
           type: T.SOLAR3,
@@ -130,9 +133,12 @@ const InspectionPanel = (() => {
         {
           type: T.RESEARCH3,
           name: 'Research Station MK3',
-          desc: '3×3, 6× research speed. Gates all hydro tech. Unlocks after refining 20,000 fuel oil.',
+          desc: '3×3, 6× research speed. Gates all hydro tech. Unlocks after refining 20,000 fuel oil (Research MK2 required).',
           cost: 0,
-          getProgress() { return { current: Math.min(Math.floor(OilSystem.getTotalFuelOil()), 20000), target: 20000, unit: 'fuel oil refined' }; },
+          getProgress() {
+            if (!Progression.isUnlocked(T.RESEARCH2)) return { current: 0, target: 1, unit: 'Research MK2 needed' };
+            return { current: Math.min(Math.floor(OilSystem.getTotalFuelOil()), 20000), target: 20000, unit: 'fuel oil refined' };
+          },
         },
         {
           type: T.OILSCAN,
@@ -200,7 +206,7 @@ const InspectionPanel = (() => {
         {
           type: T.LITHIUMSCAN,
           name: 'Lithium Scan',
-          desc: 'Unlocks the ability to scan for lithium deposits at the Resource Survey Station. Requires the MK5 Research Station and 25,000 total Hydrogen Gas produced; bank it in Gas Holders.',
+          get desc() { return `Unlocks the ability to scan for lithium deposits at the Resource Survey Station. Requires the MK5 Research Station and ${_fmtGoal(FUSION_GOALS.hydrogen)} total Hydrogen Gas produced; bank it in Gas Holders.`; },
           cost: 180000,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
@@ -221,7 +227,7 @@ const InspectionPanel = (() => {
         {
           type: T.LITHIUMPROCESSPLANT,
           name: 'Lithium Processing Plant',
-          desc: '20×18. $480,000, 85 kW draw, $48/s upkeep. Converts Lithium Ore + Water into Lithium Compound, drawing 5 u/s of water from its pipe while it runs (a fifth of a Water Extractor). Unlocks after placing the MK5 Research Station and mining 5,000 cumulative units of Lithium Ore; bank it in Storage Containers.',
+          get desc() { return `20×18. $480,000, 85 kW draw, $48/s upkeep. Converts Lithium Ore + Water into Lithium Compound, drawing 5 u/s of water from its pipe while it runs (a fifth of a Water Extractor). Unlocks after placing the MK5 Research Station and mining ${_fmtGoal(FUSION_GOALS.lithium)} cumulative units of Lithium Ore; bank it in Storage Containers.`; },
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
@@ -232,30 +238,36 @@ const InspectionPanel = (() => {
         {
           type: T.CONVEYOR,
           name: 'Conveyor Belt',
-          desc: 'Transports coal from mines to generators. Unlocks once a Coal Mine is placed.',
+          desc: 'Transports coal from mines to generators. Unlocks after mining 500t of coal.',
           cost: 0,
-          getProgress() { return { current: (EntityRegistry.getByType(T.COALMINE).size > 0 || EntityRegistry.getByType(T.COALMINE2).size > 0) ? 1 : 0, target: 1, unit: 'Coal Mine placed' }; },
+          getProgress() { return { current: Math.min(Math.floor(CoalSystem.getTotalMined()), 500), target: 500, unit: 't coal mined' }; },
         },
         {
           type: T.UNDERGNDCONVEYOR,
           name: 'Underground Belt',
-          desc: 'Tunnels a belt up to 8 tiles along one axis. Place one at each end; the pair links up, and anything between them, including a crossing belt, is left alone. Unlocks with the Conveyor Belt.',
+          desc: 'Tunnels a belt up to 8 tiles along one axis. Place one at each end; the pair links up, and anything between them, including a crossing belt, is left alone. Unlocks with the Conveyor Belt, after mining 500t of coal.',
           cost: 0,
-          getProgress() { return { current: (EntityRegistry.getByType(T.COALMINE).size > 0 || EntityRegistry.getByType(T.COALMINE2).size > 0) ? 1 : 0, target: 1, unit: 'Coal Mine placed' }; },
+          getProgress() { return { current: Math.min(Math.floor(CoalSystem.getTotalMined()), 500), target: 500, unit: 't coal mined' }; },
         },
         {
           type: T.COALMINE,
           name: 'Coal Mine',
-          desc: 'Extracts coal from deposits. Unlocks on first coal discovery.',
+          desc: 'Extracts coal from deposits. Unlocks on first coal discovery (Coal Scan required).',
           cost: 0,
-          getProgress() { return { current: CoalSystem.hasDeposits() ? 1 : 0, target: 1, unit: 'deposit found' }; },
+          getProgress() {
+            if (!Progression.isUnlocked(T.COALSCAN)) return { current: 0, target: 1, unit: 'Coal Scan needed' };
+            return { current: CoalSystem.hasDeposits() ? 1 : 0, target: 1, unit: 'deposit found' };
+          },
         },
         {
           type: T.COALMINE2,
           name: 'Coal Mine MK2',
           desc: 'Higher output coal mine. Unlocks at 125,000t of coal mined in total (Research MK3 required).',
           cost: 0,
-          getProgress() { return { current: Math.min(Math.floor(CoalSystem.getTotalMined?.() || 0), COALMINE2_COAL_MINED), target: COALMINE2_COAL_MINED, unit: 't of coal mined' }; },
+          getProgress() {
+            if (!Progression.isUnlocked(T.RESEARCH3)) return { current: 0, target: 1, unit: 'Research MK3 needed' };
+            return { current: Math.min(Math.floor(CoalSystem.getTotalMined?.() || 0), COALMINE2_COAL_MINED), target: COALMINE2_COAL_MINED, unit: 't of coal mined' };
+          },
         },
         {
           type: T.PUMPJACK,
@@ -292,7 +304,7 @@ const InspectionPanel = (() => {
           desc: 'A belt junction that decides who gets what when a line is short. Even shares it out, Priority fills one way first, Ratio gives one way a set share. Drop it on any belt tile; R turns its favoured side. Unlocks with 150 conveyor tiles on the map.',
           cost: 0,
           getProgress() {
-            const n = Math.round(Progression.progressFor(T.CONVEYORSPLITTER) * 150);
+            const n = Math.round(Progression.rawProgressFor(T.CONVEYORSPLITTER) * 150);
             return { current: n, target: 150, unit: 'conveyor tiles on the map' };
           },
         }]),
@@ -317,7 +329,7 @@ const InspectionPanel = (() => {
           cost: 0,
           getProgress() {
             if (!Progression.isUnlocked(T.RESEARCH2)) return { current: 0, target: 1, unit: 'Research MK2 needed' };
-            return { current: Math.floor(OilSystem.getTotalFuelOil()), target: 2000, unit: 'fuel oil refined' };
+            return { current: Math.min(Math.floor(OilSystem.getTotalFuelOil()), 2000), target: 2000, unit: 'fuel oil refined' };
           },
         },
         {
@@ -447,9 +459,12 @@ const InspectionPanel = (() => {
         {
           type: T.MK4RESEARCH,
           name: 'MK4 Research Station',
-          desc: '4×4. The fusion-era laboratory, and the only place the MK5 can be researched. Unlocks after running 6 Steam Turbines simultaneously.',
+          desc: '4×4. The fusion-era laboratory, and the only place the MK5 can be researched. Unlocks after running 6 Steam Turbines simultaneously (Research MK3 required).',
           cost: 0,
           getProgress() {
+            if (!Progression.isUnlocked(T.RESEARCH3)) return { current: 0, target: 1, unit: 'Research MK3 needed' };
+            // Sticky, as in progression.js: six at once, once, is enough.
+            if (Progression.rawProgressFor(T.MK4RESEARCH) >= 1) return { current: 6, target: 6, unit: 'turbines running at once' };
             let n = 0;
             for (const e of EntityRegistry.getByType(T.STEAMTURBINE)) if (e._generating) n++;
             return { current: Math.min(n, 6), target: 6, unit: 'turbines running at once' };
@@ -525,11 +540,11 @@ const InspectionPanel = (() => {
         {
           type: T.DRONECHARGER,
           name: 'Drone Charging Port',
-          desc: '5×5. $90,000, $15/s upkeep, 10 kW idle and up to 160 kW with all five pads charging. The cheap way to stretch a drone network: it has no drones of its own, but it adds a 122×122 tile square of coverage to any network it touches, and drones crossing that network set down on its five pads to recharge. Needs at least one Drone Port in the network to be any use. Unlocks once you have 3 Drone Ports (MK4 Research Station required).',
+          desc: '5×5. $90,000, $15/s upkeep, 10 kW idle and up to 160 kW with all five pads charging. The cheap way to stretch a drone network: it has no drones of its own, but it adds a 122×122 tile square of coverage to any network it touches, and drones crossing that network set down on its five pads to recharge. Needs at least one Drone Port in the network to be any use. Unlocks once you have ' + DRONE_CHARGER_PORTS + ' Drone Ports (MK4 Research Station required).',
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK4RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK4 Research Station needed' };
-            return { current: Math.min(3, EntityRegistry.getByType(T.DRONEPORT).size), target: 3, unit: 'Drone Ports' };
+            return { current: Math.min(DRONE_CHARGER_PORTS, EntityRegistry.getByType(T.DRONEPORT).size), target: DRONE_CHARGER_PORTS, unit: 'Drone Ports' };
           },
         },
         {
@@ -573,13 +588,13 @@ const InspectionPanel = (() => {
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
-            return { current: Math.round(Progression.progressFor(T.GASSTORAGE) * 100), target: 100, unit: '% Electrolyzer buffer filled' };
+            return { current: Math.round(Progression.rawProgressFor(T.GASSTORAGE) * 100), target: 100, unit: '% Electrolyzer buffer filled' };
           },
         },
         {
           type: T.ATMOSCOLLECTOR,
           name: 'Atmosphere Collector',
-          desc: '14×14. $200,000, 30 kW draw, $30/s upkeep. Sucks air to extract pure Nitrogen Gas. Unlocks after placing the MK5 Research Station and producing 60,000 total Hydrogen Gas; bank it in Gas Holders.',
+          get desc() { return `14×14. $200,000, 30 kW draw, $30/s upkeep. Sucks air to extract pure Nitrogen Gas. Unlocks after placing the MK5 Research Station and producing ${_fmtGoal(FUSION_GOALS.hydrogenAtmos)} total Hydrogen Gas; bank it in Gas Holders.`; },
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
@@ -590,7 +605,7 @@ const InspectionPanel = (() => {
         {
           type: T.HABERBOSCH,
           name: 'Haber-Bosch Complex',
-          desc: '22×20. $650,000, 65 kW draw, $52/s upkeep. Synthesizes Nitrogen Gas + Hydrogen Gas into Ammonia Gas. Unlocks after placing the MK5 Research Station and extracting 12,000 cumulative units of Nitrogen Gas; bank it in Gas Holders.',
+          get desc() { return `22×20. $650,000, 65 kW draw, $52/s upkeep. Synthesizes Nitrogen Gas + Hydrogen Gas into Ammonia Gas. Unlocks after placing the MK5 Research Station and extracting ${_fmtGoal(FUSION_GOALS.nitrogen)} cumulative units of Nitrogen Gas; bank it in Gas Holders.`; },
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
@@ -601,7 +616,7 @@ const InspectionPanel = (() => {
         {
           type: T.WASHTOWER,
           name: 'Isotopic Wash Tower',
-          desc: '20×20. $425,000, 75 kW draw, $58/s upkeep. Rinses fresh Water using the Ammonia Gas catalyst to drop out concentrated Deuterium Gas. Unlocks after placing the MK5 Research Station and producing 20,000 cumulative units of Ammonia Gas; bank it in Gas Holders.',
+          get desc() { return `20×20. $425,000, 75 kW draw, $58/s upkeep. Rinses fresh Water using the Ammonia Gas catalyst to drop out concentrated Deuterium Gas. Unlocks after placing the MK5 Research Station and producing ${_fmtGoal(FUSION_GOALS.ammonia)} cumulative units of Ammonia Gas; bank it in Gas Holders.`; },
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
@@ -612,7 +627,7 @@ const InspectionPanel = (() => {
         {
           type: T.TRITIUMBREEDER,
           name: 'Tritium Breeding Facility',
-          desc: "38×22. $800,000, 125 kW draw, $52/s upkeep. A particle accelerator fires into a heavy-metal target, and the neutrons turn a lithium blanket into tritium. Belt Lithium Compound into LITHIUM IN and pipe TRITIUM OUT to a Fusion Fuel Plant; it starts the D-T loop before you have a Fusion Reactor, and idles once the reactor's blanket takes over. Unlocks after placing the MK5 Research Station and producing 4,000 units of Lithium Compound; bank it in Storage Containers.",
+          get desc() { return `38×22. $800,000, 125 kW draw, $52/s upkeep. A particle accelerator fires into a heavy-metal target, and the neutrons turn a lithium blanket into tritium. Belt Lithium Compound into LITHIUM IN and pipe TRITIUM OUT to a Fusion Fuel Plant; it starts the D-T loop before you have a Fusion Reactor, and idles once the reactor's blanket takes over. Unlocks after placing the MK5 Research Station and producing ${_fmtGoal(FUSION_GOALS.compound)} units of Lithium Compound; bank it in Storage Containers.`; },
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
@@ -623,7 +638,7 @@ const InspectionPanel = (() => {
         {
           type: T.FUSIONFUELPLANT,
           name: 'Fusion Fuel Plant',
-          desc: "24×22. $1,250,000, 100 kW draw, $110/s upkeep. Freezes Deuterium Gas with Tritium into D-T fuel pellets for the Fusion Reactor; pipe tritium in from a Tritium Breeding Facility to make the first ones. Later, with helium-3, it splits its output: one D-He3 pellet out of a second port for every three D-T. Unlocks after the Tritium Breeding Facility, and 3,600 cumulative units of Deuterium Gas produced.",
+          get desc() { return `24×22. $1,250,000, 100 kW draw, $110/s upkeep. Freezes Deuterium Gas with Tritium into D-T fuel pellets for the Fusion Reactor; pipe tritium in from a Tritium Breeding Facility to make the first ones. Later, with helium-3, it splits its output: one D-He3 pellet out of a second port for every three D-T. Unlocks after the Tritium Breeding Facility, and ${_fmtGoal(FUSION_GOALS.deuterium)} cumulative units of Deuterium Gas produced.`; },
           cost: 0,
           getProgress() {
             if (!Progression.isUnlocked(T.TRITIUMBREEDER)) return { current: 0, target: 1, unit: 'Tritium Breeding Facility needed' };
@@ -634,11 +649,13 @@ const InspectionPanel = (() => {
         {
           type: T.HELIUMSCAN,
           name: 'Helium Scan',
-          desc: 'Unlocks the ability to scan for helium gas fields at the Resource Survey Station ($400,000 per scan). The first step towards the Fusion Reactor, whose magnets need liquid helium. Unlocks after making 75 D-T fuel pellets.',
+          get desc() { return `Unlocks the ability to scan for helium gas fields at the Resource Survey Station ($400,000 per scan). The first step towards the Fusion Reactor, whose magnets need liquid helium. Unlocks after making ${_fmtGoal(FUSION_GOALS.pellets1)} D-T fuel pellets.`; },
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK5RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK5 Research Station needed' };
-            const p = (typeof FusionFuelPlantSystem !== 'undefined') ? FusionFuelPlantSystem.getTotalPlasmaProduced() : 0;
+            // A powered Fusion Reactor meets it too (progression.js).
+            const p = Progression.rawProgressFor(T.HELIUMSCAN) >= 1 ? FUSION_GOALS.pellets1
+              : (typeof FusionFuelPlantSystem !== 'undefined') ? FusionFuelPlantSystem.getTotalPlasmaProduced() : 0;
             return { current: Math.min(Math.floor(p), FUSION_GOALS.pellets1), target: FUSION_GOALS.pellets1, unit: 'Fuel Pellets' };
           },
         },
@@ -655,7 +672,7 @@ const InspectionPanel = (() => {
         {
           type: T.CRYOPLANT,
           name: 'Cryo Plant',
-          desc: '20×18. $800,000, 60 kW draw, $45/s upkeep. Liquefies helium gas into liquid helium (LHe) for the Fusion Reactor\'s magnets. Unlocks after extracting 4,000 cumulative units of Helium Gas (a well only holds 1,000, so bank it in Gas Holders). Once one is producing liquid helium, the Fusion Reactor unlocks.',
+          get desc() { return `20×18. $800,000, 60 kW draw, $45/s upkeep. Liquefies helium gas into liquid helium (LHe) for the Fusion Reactor's magnets. Unlocks after extracting ${_fmtGoal(FUSION_GOALS.helium)} cumulative units of Helium Gas (a well only holds 1,000, so bank it in Gas Holders). Once one is producing liquid helium, the Fusion Reactor unlocks.`; },
           cost: 0,
           getProgress() {
             const h = (typeof HeliumSystem !== 'undefined') ? HeliumSystem.getTotalExtracted() : 0;
@@ -683,17 +700,19 @@ const InspectionPanel = (() => {
         {
           type: T.HE3SEPARATOR,
           name: 'Helium-3 Separator',
-          desc: '18×18. $900,000, 45 kW draw, $40/s upkeep. Distils helium-3 out of Helium Well gas for D-He3 fuel. Unlocking it opens the Fusion Fuel Plant\'s D-He3 line: with helium-3 on HE-3 IN, one D-He3 pellet comes out of D-He3 OUT for every three D-T. Unlocks after burning 450 fuel pellets in a Fusion Reactor.',
+          get desc() { return `18×18. $900,000, 45 kW draw, $40/s upkeep. Distils helium-3 out of Helium Well gas for D-He3 fuel. Unlocking it opens the Fusion Fuel Plant's D-He3 line: with helium-3 on HE-3 IN, one D-He3 pellet comes out of D-He3 OUT for every three D-T. Unlocks after burning ${_fmtGoal(FUSION_GOALS.burned)} fuel pellets in a Fusion Reactor.`; },
           cost: 0,
           getProgress() {
-            const p = (typeof HulkingFusionReactorSystem !== 'undefined') ? HulkingFusionReactorSystem.getTotalPelletsBurned() : 0;
+            // An MHD Ring already standing meets it too (progression.js).
+            const p = EntityRegistry.getByType(T.MHDRING).size > 0 ? FUSION_GOALS.burned
+              : (typeof HulkingFusionReactorSystem !== 'undefined') ? HulkingFusionReactorSystem.getTotalPelletsBurned() : 0;
             return { current: Math.min(Math.floor(p), FUSION_GOALS.burned), target: FUSION_GOALS.burned, unit: 'fuel pellets burned' };
           },
         },
         {
           type: T.ADVFUSIONREACTOR,
           name: 'Advanced Fusion Reactor',
-          desc: "48×48. $6,000,000, 160 kW draw (12 MW startup surge), $260/s upkeep. A five-period stellarator: fifty twisted superconducting coils hold a D-He3 plasma far hotter than any tokamak could. Aneutronic, so no blanket and no steam; it streams ions out of two ION OUT ports to MHD Rings, through its own direct energy converters. Cooling is the price: its magnets boil off liquid helium (LHe) six times as fast as the Fusion Reactor's (two or three Cryo Plants on LHe IN), and the converters' waste heat needs two Cryogenic Cooling Towers on CRYO IN. Unlocks with the MHD Ring after making 60 D-He3 fuel pellets.",
+          get desc() { return `48×48. $6,000,000, 160 kW draw (12 MW startup surge), $260/s upkeep. A five-period stellarator: fifty twisted superconducting coils hold a D-He3 plasma far hotter than any tokamak could. Aneutronic, so no blanket and no steam; it streams ions out of two ION OUT ports to MHD Rings, through its own direct energy converters. Cooling is the price: its magnets boil off liquid helium (LHe) six times as fast as the Fusion Reactor's (two or three Cryo Plants on LHe IN), and the converters' waste heat needs two Cryogenic Cooling Towers on CRYO IN. Unlocks with the MHD Ring after making ${_fmtGoal(FUSION_GOALS.he3pellets)} D-He3 fuel pellets.`; },
           cost: 0,
           getProgress() {
             const h = typeof FusionFuelPlantSystem !== 'undefined' && FusionFuelPlantSystem.getTotalHe3PelletsProduced ? FusionFuelPlantSystem.getTotalHe3PelletsProduced() : 0;
@@ -703,7 +722,7 @@ const InspectionPanel = (() => {
         {
           type: T.MHDRING,
           name: 'MHD Decelerator Ring',
-          desc: "38×14. $750,000, $150/s upkeep. Turns an Advanced Fusion Reactor's ion stream straight into 4 MW, no turbines needed; the reactor feeds four. Pipe ION OUT into HIGH-BETA IN and wire it to the grid. Unlocks with the Advanced Fusion Reactor after making 60 D-He3 fuel pellets.",
+          get desc() { return `38×14. $750,000, $150/s upkeep. Turns an Advanced Fusion Reactor's ion stream straight into 4 MW, no turbines needed; the reactor feeds four. Pipe ION OUT into HIGH-BETA IN and wire it to the grid. Unlocks with the Advanced Fusion Reactor after making ${_fmtGoal(FUSION_GOALS.he3pellets)} D-He3 fuel pellets.`; },
           cost: 0,
           getProgress() {
             const h = typeof FusionFuelPlantSystem !== 'undefined' && FusionFuelPlantSystem.getTotalHe3PelletsProduced ? FusionFuelPlantSystem.getTotalHe3PelletsProduced() : 0;
@@ -723,7 +742,7 @@ const InspectionPanel = (() => {
         {
           type: T.RAREEARTHSCAN,
           name: 'Rare Earth Scan',
-          desc: 'Unlocks the ability to scan for rare earth deposits at the Resource Survey Station MK2 ($500,000 for the first scan, then 25% more each time). Monazite sand is the head of the Field Core chain. Unlocks after burning 100 D-He3 pellets in an Advanced Fusion Reactor, so the chain can be running before Stage III.',
+          get desc() { return `Unlocks the ability to scan for rare earth deposits at the Resource Survey Station MK2 ($500,000 for the first scan, then 25% more each time). Monazite sand is the head of the Field Core chain. Unlocks after burning ${_fmtGoal(FUSION_GOALS.dhe3burned)} D-He3 pellets in an Advanced Fusion Reactor, so the chain can be running before Stage III.`; },
           cost: 0,
           getProgress() {
             const p = (typeof AdvancedFusionReactorSystem !== 'undefined') ? AdvancedFusionReactorSystem.getTotalPelletsBurned() : 0;
@@ -743,7 +762,7 @@ const InspectionPanel = (() => {
         {
           type: T.LEACHPLANT,
           name: 'Leach Plant',
-          desc: `10×9. $565,000, 150 kW draw, $74/s upkeep. Leaches rare earth ore in sulfuric acid into rare earth oxide (0.66 ore + 0.28 acid → 0.4 oxide per second). Leaves thorium tailings that trucks or drones haul to the Nuclear Waste Processing Facility; a full store stops it. Unlocks once Operation Hyperion reaches Stage II and ${_fmtGoal(FUSION_GOALS.rareearth)} cumulative units of Rare Earth Ore have been mined; bank it in Storage Containers.`,
+          get desc() { return `10×9. $565,000, 150 kW draw, $74/s upkeep. Leaches rare earth ore in sulfuric acid into rare earth oxide (0.66 ore + 0.28 acid → 0.4 oxide per second). Leaves thorium tailings that trucks or drones haul to the Nuclear Waste Processing Facility; a full store stops it. Unlocks once Operation Hyperion reaches Stage II and ${_fmtGoal(FUSION_GOALS.rareearth)} cumulative units of Rare Earth Ore have been mined; bank it in Storage Containers.`; },
           cost: 0,
           getProgress() {
             if (typeof NationalProject === 'undefined' || !NationalProject.reached('stage1')) return { current: 0, target: 1, unit: 'Operation Hyperion Stage II needed' };
@@ -754,7 +773,7 @@ const InspectionPanel = (() => {
         {
           type: T.SCMILL,
           name: 'Superconductor Mill',
-          desc: `12×10. $1,150,000, 250 kW draw, $110/s upkeep. Grows high-temperature superconductor tape from rare earth oxide in a hydrogen atmosphere and tests it in liquid nitrogen (0.33 oxide + 30 hydrogen + 5 nitrogen → 0.1 tape per second). Unlocks once Operation Hyperion reaches Stage III and ${_fmtGoal(FUSION_GOALS.oxide)} cumulative units of Rare Earth Oxide have been made.`,
+          get desc() { return `12×10. $1,150,000, 250 kW draw, $110/s upkeep. Grows high-temperature superconductor tape from rare earth oxide in a hydrogen atmosphere and tests it in liquid nitrogen (0.33 oxide + 30 hydrogen + 5 nitrogen → 0.1 tape per second). Unlocks once Operation Hyperion reaches Stage III and ${_fmtGoal(FUSION_GOALS.oxide)} cumulative units of Rare Earth Oxide have been made.`; },
           cost: 0,
           getProgress() {
             if (typeof NationalProject === 'undefined' || !NationalProject.reached('stage2')) return { current: 0, target: 1, unit: 'Operation Hyperion Stage III needed' };
@@ -765,7 +784,7 @@ const InspectionPanel = (() => {
         {
           type: T.COREWORKS,
           name: 'Core Works',
-          desc: `12×10. $1,500,000, 100 kW idle / 800 kW charging, $147/s upkeep. Winds HTS tape into Field Cores (120 tape each) and charges them, 4 in-game hours a core; recharges spent cores for 28 tape. Four bays. Unlocks once Operation Hyperion reaches Stage IV and ${_fmtGoal(FUSION_GOALS.tape)} cumulative units of HTS Tape have been made: the Field Core chain is complete.`,
+          get desc() { return `12×10. $1,500,000, 100 kW idle / 800 kW charging, $147/s upkeep. Winds HTS tape into Field Cores (120 tape each) and charges them, 4 in-game hours a core; recharges spent cores for 28 tape. Four bays. Unlocks once Operation Hyperion reaches Stage IV and ${_fmtGoal(FUSION_GOALS.tape)} cumulative units of HTS Tape have been made: the Field Core chain is complete.`; },
           cost: 0,
           getProgress() {
             if (typeof NationalProject === 'undefined' || !NationalProject.reached('stage3')) return { current: 0, target: 1, unit: 'Operation Hyperion Stage IV needed' };
@@ -876,7 +895,7 @@ const InspectionPanel = (() => {
         {
           type: T.LIGHTNINGROD2,
           name: 'Lightning Rod MK2',
-          desc: '4×5 resonant capture tower, $38,000, $17/s upkeep. Intercepts 82% of strikes on its own (vs 62% for MK1) across a 13 tile radius, and banks 24 kW; up to 42 kW stacked; back into the grid over 1.5 in-game hours. Unlocks after taking a strike with a Research Station MK3 standing.',
+          desc: '4×5 resonant capture tower, $38,000, $17/s upkeep. Intercepts 82% of strikes on its own (vs 62% for MK1) across a 13 tile radius, and banks 24 kW; up to 42 kW stacked; back into the grid over 1.5 in-game hours. Unlocks once the Lightning Rod is unlocked, after taking a strike with a Research Station MK3 standing.',
           cost: 0,
           getProgress() {
             if (!Progression.isUnlocked(T.LIGHTNINGROD)) return { current: 0, target: 1, unit: 'Lightning Rod MK1 needed' };
@@ -936,6 +955,7 @@ const InspectionPanel = (() => {
           desc: '4×4 grid operations centre. Adds the Network Breakdown window (a full read-out of any one power network: lines, generators, storage, consumers, history and advice) the storage readout in the GRID panel, and early warnings: a card when the lines on a network run hot, its margin gets thin or it falls back on storage, before it goes dark, and a 24-hour forecast of when a network will run out. Does everything the MK1 does. Unlocks with a Research Station MK3 placed, a Monitoring Station on the grid and 2 MW total consumption.',
           cost: 0,
           getProgress() {
+            if (EntityRegistry.getByType(T.RESEARCH3).size === 0) return { current: 0, target: 1, unit: 'Research MK3 station placed' };
             if (EntityRegistry.getByType(T.MONITOR).size === 0) return { current: 0, target: 1, unit: 'Monitoring Station placed' };
             return { current: Math.min(Math.floor(PowerNetwork.stats.totalConsumed), 2000), target: 2000, unit: 'W consumed' };
           },
@@ -962,9 +982,7 @@ const InspectionPanel = (() => {
           desc: '2×2 storage node. 200 kWh capacity, 200 kW max discharge. Fills in ~20min at 30 kW surplus. Unlocks at 200 kW generated.',
           cost: 0,
           getProgress() {
-            const wMet = PowerNetwork.stats.totalGenerated >= 200;
-            if (!wMet) return { current: Math.floor(PowerNetwork.stats.totalGenerated), target: 200, unit: 'W generated' };
-            return { current: Math.min(DayNight.day(), 5), target: 5, unit: 'days survived' };
+            return { current: Math.min(Math.floor(PowerNetwork.stats.totalGenerated), 200), target: 200, unit: 'W generated' };
           },
         },
         {
@@ -1096,7 +1114,10 @@ const InspectionPanel = (() => {
           name: 'Survey Station MK2',
           desc: `6×6 geophysics observatory. Two dishes run two scans at once, every scan started here costs 25% less, and it is the only station that can run the Lithium, Helium and Rare Earth scans. $150,000. Unlocks with the MK4 Research Station placed and ${SURVEY2_SCANS} surveys run.`,
           cost: 0,
-          getProgress() { return { current: (EntityRegistry.getByType(T.MK4RESEARCH).size > 0 ? 1 : 0) + Math.min(SURVEY2_SCANS, CoalSystem.getAllSurveyCount()), target: 1 + SURVEY2_SCANS, unit: `of: MK4 Research placed, ${SURVEY2_SCANS} surveys run` }; },
+          getProgress() {
+            if (EntityRegistry.getByType(T.MK4RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK4 Research Station needed' };
+            return { current: Math.min(SURVEY2_SCANS, CoalSystem.getAllSurveyCount()), target: SURVEY2_SCANS, unit: 'surveys run' };
+          },
         },
       ],
     },
@@ -1133,6 +1154,7 @@ const InspectionPanel = (() => {
           desc: 'Largest satisfaction boost within 3 tiles. Unlocks after accepting an EV Battery Factory (Research MK2 required). Residential zones request one, same as Cell Towers.',
           cost: 0,
           getProgress() {
+            if (!Progression.isUnlocked(T.RESEARCH2)) return { current: 0, target: 1, unit: 'Research MK2 needed' };
             for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
               const e = GridManager.getEntity(c, r);
               if (e && e.col === c && e.row === r && e.fromRequest && e.commercialSubtype === 'evfactory') return { current: 1, target: 1, unit: 'EV Battery Factory' };
@@ -1143,7 +1165,7 @@ const InspectionPanel = (() => {
         {
           type: T.CIRCUITSWITCH,
           name: 'Circuit Switch',
-          desc: '4×4, $40k, -$12.5/s. A manual feeder breaker: assign up to 500 kW of peak load to its circuit, then open it to shed that load and keep the rest of the grid up. Draws no power, so it can be thrown during a blackout. Requires Research MK2.',
+          desc: '4×4, $40k, -$12.5/s. A manual feeder breaker: assign up to 500 kW of peak load to its circuit, then open it to shed that load and keep the rest of the grid up. Draws no power, so it can be thrown during a blackout. Unlocks at 1 MW total consumption (Research MK2 required).',
           cost: 0,
           getProgress() {
             if (!Progression.isUnlocked(T.RESEARCH2)) return { current: 0, target: 1, unit: 'Research MK2 needed' };
@@ -1174,13 +1196,11 @@ const InspectionPanel = (() => {
         {
           type: T.FISHINGPOLE,
           name: 'Fishing Pole',
-          desc: 'Cast over any water tile to fish for biofuel. Unlocks after placing a Research Station and generating 5000 Ws with biofuel generator.',
+          desc: 'Cast over any water tile to fish for biofuel. Unlocks once the Research Station is unlocked and 5,000 Ws have been generated.',
           cost: 0,
           getProgress() {
-            if (!Progression.isUnlocked(T.RESEARCH)) {
-              return { current: Math.floor(BiofuelSystem.getTotalCollected()), target: 125, unit: 'biofuel collected (Research Station)' };
-            }
-            return { current: Math.floor(Progression.totalWs), target: 5000, unit: 'Ws generated' };
+            if (!Progression.isUnlocked(T.RESEARCH)) return { current: 0, target: 1, unit: 'Research Station needed' };
+            return { current: Math.min(Math.floor(Progression.totalWs), 5000), target: 5000, unit: 'Ws generated' };
           },
         },
         {
@@ -1201,6 +1221,11 @@ const InspectionPanel = (() => {
 
   // Flat list for backward-compat lookups
   const RESEARCH_UNLOCKS = RESEARCH_UNLOCK_CATEGORIES.flatMap(c => c.items);
+  // The list's progress is THE progress: Progression.progressFor (the
+  // Progress tab, the stations' glow) reads it from here, so the two panels
+  // can't show different figures for the same unlock.
+  const _unlockByType = new Map(RESEARCH_UNLOCKS.map(u => [u.type, u]));
+  Progression.setProgressSource(type => { const u = _unlockByType.get(type); return u ? _fracOf(u) : null; });
 
   function panel()   { return document.getElementById('research-panel'); }
   function isOpen()  { return panel().classList.contains('visible'); }
@@ -1341,8 +1366,7 @@ const InspectionPanel = (() => {
     const tier = _stationTier(), items = [];
     RESEARCH_UNLOCK_CATEGORIES.forEach(cat => cat.items.forEach(u => {
       if (Progression.tierOf(u.type) !== tier) return;
-      const pg = _progressOf(u);
-      items.push({ u, cat, state: _stateOf(u.type), pct: Math.round(Math.min(1, pg.target ? pg.current / pg.target : 1) * 100) });
+      items.push({ u, cat, state: _stateOf(u.type), pct: Math.round(_fracOf(u) * 100) });
     }));
     if (!_frozenOrder || _frozenOrder.tier !== tier) {
       items.sort((a, b) => STATE_RANK[a.state] - STATE_RANK[b.state] || (a.state === 'progress' ? b.pct - a.pct : 0));
@@ -1561,6 +1585,13 @@ const InspectionPanel = (() => {
   function _progressOf(u) {
     return Progression.goalProgress?.(u.type) || u.getProgress();
   }
+  // How far along, 0–1, as the bar shows it: 100% only once the unlock is
+  // READY, so a readout can't fill on a requirement the real check hasn't met.
+  function _fracOf(u) {
+    if (Progression.isUnlocked(u.type) || Progression.isReady(u.type)) return 1;
+    const p = _progressOf(u);
+    return Math.min(0.99, Math.max(0, p.target ? p.current / p.target : 0));
+  }
   function _descOf(u) {
     const req = Progression.requirementText?.(u.type);
     return req ? `${u.desc} ${req}` : u.desc;
@@ -1606,7 +1637,7 @@ const InspectionPanel = (() => {
       const u = RESEARCH_UNLOCKS.find(u => u.type === row.dataset.type);
       if (!u) return;
       const p   = _progressOf(u);
-      const pct = Math.round(Math.min(1, p.current / p.target) * 100);
+      const pct = Math.round(_fracOf(u) * 100);
       row.querySelector('.rp-bar-fill').style.width = `${pct}%`;
       row.querySelector('.rp-pct').textContent = `${pct}%`;
       row.nextElementSibling.textContent = _progText(p);
