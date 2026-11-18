@@ -677,7 +677,7 @@ const ZoneSystem = (() => {
   function zoneCount(key) { return zoneRects[key]?.length || 0; }
   function getZoneRects(key) { return zoneRects[key] || []; }
 
-  return { noteFootprintChanged, PARK_REACH, GOV_RING_MIN, GOV_RING_MAX,
+  return { noteFootprintChanged, zoneFor, PARK_REACH, GOV_RING_MIN, GOV_RING_MAX,
            ZONE_MIN_GAP, ZONE_GROW_GAP, rectGap, crowdsZones, footprintCrowdsZones, addBuilding, removeBuilding, rebuild, setGovZone, expandGovZone, addGovZone, joinGovZone, planRect, NATIONAL_ZONE_LABEL, expandZoneRect, govZoneCentre, isInGovZone, onNationalLand, distToGovZone, render, getZoneAt, zoneLabel, setZoneName, buildZonePanel, hasZone, zoneCount, getZoneRects, getVersion, serialise, loadState };
 })();
 

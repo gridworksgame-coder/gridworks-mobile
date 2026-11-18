@@ -313,6 +313,51 @@ const SplitPhase = {
   },
 };
 
+// People drawn into a property's art (shoppers on a plaza, diners on a
+// terrace, residents in a garden) follow their zone's street crowd through
+// the day: at 3am a commercial block's pavements are nearly empty, so are
+// its shops' forecourts. renderEntityAt sets the share for each zone building
+// standing on the map; the sprites' person helpers ask ok() and leave out the
+// rest, the same figures every frame (a hash of the building and the order
+// they are drawn in). A business that is open keeps at least OPEN_FLOOR of
+// its people (a 24-hour place, a late diner), and the night spots that open
+// in the evening keep all of theirs: their own art already does the night.
+const PropPeople = {
+  share: 1, _seed: 0, _n: 0,
+  OPEN_FLOOR: 0.4,
+  NIGHT: new Set(['skycasino']),               // never shuts, but it is a night spot
+  shareFor(e) {
+    if (typeof ZoneLife === 'undefined' || !ZoneLife.peopleActivity || typeof ZoneSystem === 'undefined' || !ZoneSystem.zoneFor) return 1;
+    const zone = ZoneSystem.zoneFor(e);
+    // Only a building on the map: not a ghost, an icon, a blueprint or the old city.
+    if (!zone || typeof GridManager === 'undefined' || GridManager.getEntity(e.col, e.row) !== e) return 1;
+    const a = ZoneLife.peopleActivity(zone);
+    if (a >= 1 || zone !== 'commercial' || typeof DemandCurves === 'undefined') return Math.min(1, a);
+    const hr = DayNight.hour(), q = Math.floor(hr * 4), sub = e.commercialSubtype;
+    if (e._ppQ !== q || e._ppSub !== sub) {
+      // hours() is null for a business that never shuts (and one it has no hours for).
+      const h = DemandCurves.hours(sub, hr);
+      e._ppKeep = !h ? (this.NIGHT.has(sub) ? 1 : this.OPEN_FLOOR)
+                : !h.isOpenNow ? 0 : h.open >= 17 ? 1 : this.OPEN_FLOOR;
+      e._ppQ = q; e._ppSub = sub;
+    }
+    return Math.max(a, e._ppKeep);
+  },
+  begin(e) {
+    const prev = [this.share, this._seed, this._n];
+    this.share = this.shareFor(e);
+    this._seed = (e.col || 0) * 7.13 + (e.row || 0) * 3.71; this._n = 0;
+    return prev;
+  },
+  end(prev) { this.share = prev[0]; this._seed = prev[1]; this._n = prev[2]; },
+  // Draw this figure? Asked once per person by the sprites' person helpers.
+  ok() {
+    if (this.share >= 1) return true;
+    const n = ++this._n, v = Math.sin(this._seed * 12.9898 + n * 78.233) * 43758.5453;
+    return v - Math.floor(v) < this.share;
+  },
+};
+
 // Entity types with a static/animated split authored for them. Registered
 // from the render_* file that owns the renderer; read by the sprite cache.
 const RenderSplit = {

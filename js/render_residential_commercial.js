@@ -2673,6 +2673,7 @@ function renderCompanyTown(e, px, py, t) {
     const WORK = ['#3a5a8a', '#4a6a4a', '#8a5a2a', '#5a5a64', '#2d5f8c'];
     const SKIN = ['#f0d0b0', '#c89870', '#8a5a3a', '#e0b890', '#6a4630'];
     const worker = (x, y, i, stride = 0) => {
+      if (!PropPeople.ok()) return;
       dot(x + 0.5, y + 0.8, 1.5, 'rgba(0,0,0,0.25)');
       dot(x, y - stride, 1.7, WORK[i % WORK.length]);
       dot(x, y - 0.6 - stride, 1.05, SKIN[Math.floor(hash(i, 23)*SKIN.length)]);
@@ -3436,6 +3437,7 @@ function renderRetirementVillage(e, px, py, t) {
     const evening   = on && hr >= 17.5 && hr < 21.5;
     const lateNight = on && (hr >= 21.5 || hr < 6);
     const person = (x, y, top, hair) => {         // standing resident, feet at (x, y)
+      if (!PropPeople.ok()) return;
       R(x - 1.1, y - 1.6, 0.9, 1.6, '#4a4a54'); R(x + 0.2, y - 1.6, 0.9, 1.6, '#4a4a54');
       R(x - 1.4, y - 5, 2.8, 3.5, top);
       dot(x, y - 6.2, 1.25, '#eccdb0'); dot(x, y - 6.9, 1.05, hair);
@@ -4361,6 +4363,7 @@ function renderGlasswaterPavilion(e, px, py, t) {
       ctx.fillStyle = g; ctx.fillRect(X(x - r), Y(y - r), 2 * r * S, 2 * r * S);
     };
     const person = (x, y, top, skin, lift = 0, s = 1) => {
+      if (!PropPeople.ok()) return;
       ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.25)');
       RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
       dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -4625,6 +4628,7 @@ function renderGlassGardens(e, px, py, t) {
       ctx.fillStyle = g; ctx.fillRect(X(x - r), Y(y - r), 2 * r * S, 2 * r * S);
     };
     const person = (x, y, top, skin, lift = 0, s = 1) => {
+      if (!PropPeople.ok()) return;
       ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.25)');
       RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
       dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -4933,6 +4937,7 @@ function renderAshmereVineyard(e, px, py, t) {
       ctx.fillStyle = g; ctx.fillRect(X(x - r), Y(y - r), 2 * r * S, 2 * r * S);
     };
     const person = (x, y, top, skin, lift = 0, s = 1) => {
+      if (!PropPeople.ok()) return;
       ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.25)');
       RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
       dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -5258,6 +5263,7 @@ function renderSchool(e, px, py, t) {
     const PCOL = ['#e0d060', '#60c0e0', '#e07080', '#80e090', '#b080e0', '#f0a040', '#f4f4f0', '#4a70c8'];
     const SKN = ['#f0d0b0', '#c89870', '#8a5a3a', '#e0b890', '#6a4630'];
     const kid = (x, y, i, hop = 0) => {
+      if (!PropPeople.ok()) return;
       ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(X(x + 0.6), Y(y + 0.4), 1.8*sx, 0.7*sy, 0, 0, Math.PI*2); ctx.fill();
       R(x - 1.3, y - 6 - hop, 2.6, 5, PCOL[i % PCOL.length]);
       R(x - 1.1, y - 1.2 - hop, 0.9, 1.4, '#2a3a5a'); R(x + 0.2, y - 1.2 - hop, 0.9, 1.4, '#2a3a5a');
@@ -8318,6 +8324,7 @@ function renderCommercial(e, px, py, t) {
       if (open && fine) {
         const cols = ['#c04040', '#4060c0', '#f0f0e8', '#d0b040', '#2d5f8c', '#e08040'];
         const person = (x, y, c, hgt) => {
+          if (!PropPeople.ok()) return;
           R(x, y, 0.009, hgt, c);
           ctx.fillStyle = 'rgba(60,44,32,0.95)'; circ(X(x + 0.0045), Y(y - 0.006), H*0.0075); ctx.fill();
         };
@@ -12598,6 +12605,7 @@ function _renderDataFarm(e, px, py, W, H, t) {
 }
 
 function _cmPerson(x, y, S, col) {
+  if (!PropPeople.ok()) return;
   ctx.fillStyle = col;
   ctx.beginPath(); ctx.roundRect(x - 1.6*S, y - 2*S, 3.2*S, 5*S, 1.4*S); ctx.fill();
   ctx.fillStyle = '#e8c0a0';
@@ -14723,6 +14731,7 @@ function _nKit(px, py) {
     ctx.fillStyle = g; ctx.fillRect(X(x - r), Y(y - r), 2*r*S, 2*r*S);
   };
   const person = (x, y, shirt, skin, lift = 0, s = 1) => {
+    if (!PropPeople.ok()) return;
     ell(x + 0.6*s, y + 0.6*s, 1.8*s, 0.8*s, 'rgba(0,0,0,0.25)');
     RR(x - 1.3*s, y - 4.2*s - lift, 2.6*s, 4.2*s, 1*s, shirt);
     dot(x, y - 5.2*s - lift, 1.2*s, skin);
@@ -15755,6 +15764,7 @@ function _renderBistro(e, px, py, W, H, t) {
   const busy = k => open && (rush || _cmFrac((e.col || 0) + k*11) < (evening ? 0.8 : 0.5));
   // A seated diner, side-on, facing `dir` (+1 right / -1 left)
   const diner = (x, y, shirt, skin, dir, k) => {
+    if (!PropPeople.ok()) return;
     const lift = Math.max(0, Math.sin(t*1.3 + k*2.1));
     RR(x - 1.4, y - 5, 2.8, 4.4, 1, shirt);
     dot(x + dir*0.2, y - 6.2 + Math.sin(t*0.9 + k)*0.15, 1.2, skin);
@@ -21392,6 +21402,7 @@ function _renderGoldRoom(e, px, py, W, H, t) {
     ctx.fillStyle = g; ctx.fillRect(X(x - r), Y(y - r), 2 * r * S, 2 * r * S);
   };
   const person = (x, y, top, skin, lift = 0, s = 1) => {
+    if (!PropPeople.ok()) return;
     ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
     RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
     dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -21706,6 +21717,7 @@ function _clubKit(e, px, py, S) {
       ctx.fillStyle = g; ctx.fillRect(X(x), Y(y), w * S, h * S);
     },
     person(x, y, top, skin, lift = 0, s = 1) {
+      if (!PropPeople.ok()) return;
       K.ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
       K.RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
       K.dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -22213,6 +22225,7 @@ function _renderNightclub(e, px, py, W, H, t) {
     ctx.fillStyle = g; ctx.fillRect(X(x), Y(y), w * S, h * S);
   };
   const person = (x, y, top, skin, lift = 0, s = 1) => {
+    if (!PropPeople.ok()) return;
     ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
     RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
     dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -22610,6 +22623,7 @@ function _bizKit(e, px, py, W, H, t, dw, dh) {
     ctx.fillStyle = c; ctx.fillText(s, X(x), Y(y)); ctx.restore();
   };
   const person = (x, y, top, skin, s = 1) => {
+    if (!PropPeople.ok()) return;
     ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
     RR(x - 1.2 * s, y - 4 * s, 2.4 * s, 4 * s, 0.9 * s, top);
     dot(x, y - 5 * s, 1.1 * s, skin);
@@ -27893,6 +27907,7 @@ function _renderLibrary(e, px, py, W, H, t) {
     ctx.fillStyle = g; ctx.fillRect(X(x - r), Y(y - r), 2 * r * S, 2 * r * S);
   };
   const person = (x, y, top, skin, lift = 0, s = 1) => {
+    if (!PropPeople.ok()) return;
     ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
     RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
     dot(x, y - 5 * s - lift, 1.1 * s, skin);
@@ -28097,6 +28112,7 @@ function _renderSpaceport(e, px, py, W, H, t) {
     ctx.fillStyle = c; ctx.fillText(s, X(x), Y(y)); ctx.restore();
   };
   const person = (x, y, top, s = 1) => {
+    if (!PropPeople.ok()) return;
     ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
     RR(x - 1.2 * s, y - 4 * s, 2.4 * s, 4 * s, 0.9 * s, top);
     dot(x, y - 5 * s, 1.1 * s, '#e0b890');
@@ -28826,6 +28842,7 @@ function _renderMeridianSpire(e, px, py, W, H, t) {
   if (on) {
     const pc = ['#d04040', '#3060c0', '#f0e0c0', '#303030', '#40a060', '#e0a020', '#a050c0'];
     const person = (x, y, c) => {
+      if (!PropPeople.ok()) return;
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x + 0.8*S, y + 1.2*S, 1.6*S, 0.8*S, 0, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 1.5*S, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = '#e8c8a0'; ctx.beginPath(); ctx.arc(x, y - 0.3*S, 0.7*S, 0, Math.PI*2); ctx.fill();
@@ -29641,6 +29658,7 @@ function _renderAquarium(e, px, py, W, H, t) {
 
   // ── Plaza attractions ──
   const kid = (x, y, c, r = 1.1) => {
+    if (!PropPeople.ok()) return;
     ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(x + 0.6*S, y + 1*S, r*S, r*0.5*S, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r*S, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#e8c8a0'; ctx.beginPath(); ctx.arc(x, y - 0.25*S, r*0.5*S, 0, Math.PI*2); ctx.fill();
@@ -30126,6 +30144,7 @@ function _renderConventionCentre(e, px, py, W, H, t) {
   if (on) {
     const pc = ['#d04040', '#3060c0', '#f0e0c0', '#303030', '#40a060', '#e0a020', '#a050c0', '#ff80a0'];
     const person = (x, y, c) => {
+      if (!PropPeople.ok()) return;
       ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, 1.3*S, 0, Math.PI*2); ctx.fill();
       ctx.fillStyle = '#e8c8a0'; ctx.beginPath(); ctx.arc(x, y - 0.3*S, 0.6*S, 0, Math.PI*2); ctx.fill();
     };

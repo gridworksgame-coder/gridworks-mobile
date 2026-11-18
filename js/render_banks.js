@@ -42,6 +42,7 @@ function _bankKit(px, py, S) {
       ctx.restore();
     },
     person(x, y, top, skin, lift = 0, s = 1) {
+      if (!PropPeople.ok()) return;
       k.ell(x + 0.5 * s, y + 0.5 * s, 1.6 * s, 0.7 * s, 'rgba(0,0,0,0.3)');
       k.RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
       k.dot(x, y - 5 * s - lift, 1.1 * s, skin);

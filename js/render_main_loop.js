@@ -1275,14 +1275,16 @@ function renderEntityAt(e, x, y, t) {
   // entity_defs.js): their art is still drawn for the footprint it was
   // made for, and scaled up here to fill the one the building takes now.
   // The sprite sees its old width/height for the duration of the draw.
+  // The people drawn on it follow the zone's street crowd (PropPeople).
+  const pp = PropPeople.begin(e);
   const art = artScaleFor(e);
-  if (!art) { _renderEntitySprite(e, x, y, t); return; }
+  if (!art) { try { _renderEntitySprite(e, x, y, t); } finally { PropPeople.end(pp); } return; }
   const w0 = e.width, h0 = e.height;
   e.width = art.w; e.height = art.h;
   ctx.save();
   ctx.translate(x, y); ctx.scale(art.kx, art.ky); ctx.translate(-x, -y);
   try { _renderEntitySprite(e, x, y, t); }
-  finally { ctx.restore(); e.width = w0; e.height = h0; }
+  finally { ctx.restore(); e.width = w0; e.height = h0; PropPeople.end(pp); }
 }
 
 function _renderEntitySprite(e, x, y, t) {

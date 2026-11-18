@@ -2012,7 +2012,16 @@ const ZoneLife = (() => {
   }
 
   // _dev: the figure painters, for drawing them on their own from the console.
-  return { render, renderRoads, drawVehicle, drawPerson, drawSmallPerson, drawGroup: _drawGroup, VEH,
+  // How busy a zone's streets are right now, 0..1: the hour's activity and
+  // the weather, as render() spreads its walkers. The people drawn on the
+  // zone's buildings follow it too (PropPeople, render_core.js).
+  function peopleActivity(key) {
+    const Z = ZONES[key];
+    if (!Z) return 1;
+    return Z.activity(DayNight.hour()) * (_hardy(key) ? 0.5 + 0.5 * _wx : _wx);
+  }
+
+  return { render, renderRoads, drawVehicle, drawPerson, drawSmallPerson, drawGroup: _drawGroup, VEH, peopleActivity,
     // The people drawn on the latest frame (empty once a frame or two goes by
     // without the zones being drawn: zoomed out, or nothing on screen).
     people: () => (performance.now() - _peopleT < 250 ? _people : []),
