@@ -730,12 +730,6 @@ function renderConveyor(e, px, py, t) {
       renderWire(uw, px, py, t);
       ctx.restore();
     }
-    if (e._underPipe) {
-      ctx.save(); ctx.globalAlpha = 0.4;
-      e._underPipe.col = e.col; e._underPipe.row = e.row;
-      renderPipe(e._underPipe, px, py, t);
-      ctx.restore();
-    }
     const cx = px + TILE/2, cy = py + TILE/2;
     const dirs = [[0,-1],[0,1],[-1,0],[1,0]];
     const { connected, pdc, pdr } = ConveyorLayout.of(e, t, Camera.zoom >= CONVEYOR_CLEAT_MIN_ZOOM);
@@ -800,6 +794,18 @@ function renderConveyor(e, px, py, t) {
     _conveyorTop(e, cx, cy, t, connected);
 
     // What rides the belt is drawn by BeltCargo.render, after every tile.
+
+    // A pipe sharing the tile always crosses OVER the belt, on its gantry,
+    // whichever of the two was laid last. With the belt laid second the
+    // pipe used to be drawn underneath at 40%, so a run of crossings
+    // flipped from pipe-over to belt-over as more belt went down.
+    if (e._underPipe) {
+      const p = e._underPipe;
+      p.col = e.col; p.row = e.row;
+      _pipeOverOf.set(p, e);
+      if (_pipeOverBelt.armed && !e._bpPreview && GridManager.getEntity(e.col, e.row) === e) _pipeOverBelt.q.push(p, px, py);
+      else renderPipe(p, px, py, t, true);
+    }
   }
 
 // Over a belt tile's static layers and cleats: the transfer turntable at a
@@ -1333,6 +1339,15 @@ let _PIPE_HYDRO_NBRS = null, _PIPE_OIL_NBRS = null, _UPIPE_HYDRO_NBRS = null, _U
 // under it, so during the main frame these pipes are queued and drawn
 // after the cargo — see renderPipesOverBelts, called from render_main_loop.
 const _pipeOverBelt = { armed: false, q: [], sq: [] };   // q: pipes over belts; sq: splitter housings
+// A pipe stacked UNDER a belt (the belt laid second) -> that belt, so the
+// pipe is still drawn crossing over it (renderConveyor). Checked against the
+// belt's _underPipe each time, so a stale entry is ignored.
+const _pipeOverOf = new WeakMap();
+function _beltUnderPipe(e) {
+    if (e._underConveyor) return e._underConveyor;
+    const b = _pipeOverOf.get(e);
+    return b && b._underPipe === e ? b : null;
+}
 function _pipeGantry(belt, px, py, t) {
     const S = TILE / 40;
     const { connected } = ConveyorLayout.of(belt, t, false);
@@ -2025,7 +2040,8 @@ function renderPipe(e, px, py, t, _overPass = false) {
         return;
       }
     }
-    if (e._underConveyor) _pipeGantry(e._underConveyor, px, py, t);
+    const _belowBelt = _beltUnderPipe(e);
+    if (_belowBelt) _pipeGantry(_belowBelt, px, py, t);
     const cx = px+TILE/2, cy = py+TILE/2;
     const dirs = [
       {dc:0,dr:-1,sx:cx,sy:py,      ex:cx,ey:cy},
@@ -2092,13 +2108,13 @@ function renderPipe(e, px, py, t, _overPass = false) {
     const bodyFlow = fill ? false : hasFlow;
     // Raised over a belt, the pipe also throws its shadow down onto the belt;
     // those few tiles draw live rather than add a bitmap per crossing.
-    if (!e._underConveyor && PipeStatic.blit(PipeStatic.key(mask, bodyKey, bodyFlow, detail), px, py, conn, mask, bodyPal, detail, bodyFlow)) {
+    if (!_belowBelt && PipeStatic.blit(PipeStatic.key(mask, bodyKey, bodyFlow, detail), px, py, conn, mask, bodyPal, detail, bodyFlow)) {
       if (n >= 3 && bodyFlow) _pipeJunctionGlow(pal, a0, t, cx, cy);
       ctx.lineCap = 'butt';
       ctx.lineJoin = 'miter';
     } else {
       ctx.translate(px, py);   // cached geometry is tile-local
-      if (e._underConveyor && n > 0) {
+      if (_belowBelt && n > 0) {
         // raised over a belt: its shadow falls on the belt below, well offset
         ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
         ctx.save(); ctx.translate(4, 6.5);
