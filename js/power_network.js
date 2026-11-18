@@ -2229,8 +2229,14 @@ const PowerNetwork = (() => {
               if (_loadGrace <= 0 && typeof Progression !== 'undefined' && !Progression.isUnlocked(T.SOLAR) &&
                   _outageStart - _lastBiofuelHintToast > 45000 && typeof showToast === 'function') {
                 _lastBiofuelHintToast = _outageStart;
-                showToast('⚡ Your grid ran out of power — build more Biofuel Generators to cover demand',
-                          '#ff8040', '#180a00', '#804020', 'early-biofuel-hint');
+                // Short of fuel, not of generators, if any generator on this
+                // grid has stopped for want of biofuel (they run at full
+                // output or not at all): building more would not help.
+                const _dryGens = component.filter(e => e.type === T.BIOFUELGEN && !e._lightningDamaged && !((e._biofuelOutput || 0) > 0)).length;
+                showToast(_dryGens
+                  ? `⚡ Your grid ran out of power — ${_dryGens === 1 ? 'a Biofuel Generator has' : _dryGens + ' Biofuel Generators have'} run out of biofuel: collect more to get ${_dryGens === 1 ? 'it' : 'them'} running`
+                  : '⚡ Your grid ran out of power — build more Biofuel Generators to cover demand',
+                  '#ff8040', '#180a00', '#804020', 'early-biofuel-hint');
               }
             }
             component.forEach(e => {
