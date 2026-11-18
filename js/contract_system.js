@@ -700,7 +700,27 @@ const ContractSystem = (() => {
     [T.URANIUMMINE]: T.URANIUMDEPOSIT, [T.SULFURMINE]: T.SULFURDEPOSIT, [T.SULFURMINE2]: T.SULFURDEPOSIT,
     [T.LITHIUMMINE]: T.LITHIUMDEPOSIT, [T.RAREEARTHMINE]: T.RAREEARTHDEPOSIT, [T.HELIUMWELL]: T.HELIUMDEPOSIT, [T.HELIUMWELL2]: T.HELIUMDEPOSIT,
   };
+  // Every client coal seam is laid down holding this much (contract_sites.js).
+  const SITE_SEAM_COAL = 105000;
+  // A deposit starts full: its max is what it was given. The site layouts
+  // give a coal seam only its coalAmount, and stampSite() copied the props
+  // across as they were, so every job-site seam had no coalMax. The mine
+  // mined it as normal (tickMine reads coalAmount) but drew its fill as
+  // coalAmount / coalMax = 0: the label read EMPTY and the coal heap sat
+  // flat while coal came out, and the low/exhausted warnings never fired.
+  function fillDepositMax(e) {
+    if (e.coalAmount !== undefined && !(e.coalMax > 0)) e.coalMax = e.coalAmount;
+    if (e._oreAmount !== undefined && !(e._oreMax > 0)) e._oreMax = e._oreAmount;
+  }
+  // Sites stamped before that was fixed, live or saved, hold seams already
+  // part mined; what they started with is the layout's figure.
+  function repairSeamMax(dep) {
+    if (!dep || dep.type !== T.COALDEPOSIT || !dep._clientOwned || dep.coalMax > 0 || dep.coalAmount === undefined) return;
+    dep.coalMax = Math.max(dep.coalAmount, SITE_SEAM_COAL);
+  }
   function relinkResources() {
+    for (const dep of EntityRegistry.getByType(T.COALDEPOSIT)) repairSeamMax(dep);
+    for (const t of [T.COALMINE, T.COALMINE2]) for (const m of EntityRegistry.getByType(t)) repairSeamMax(m._linkedDeposit);
     for (const type of Object.keys(DEPOSIT_OF)) {
       for (const e of EntityRegistry.getByType(type)) {
         if (e._linkedDeposit || e._depositCol === undefined) continue;
@@ -818,6 +838,7 @@ const ContractSystem = (() => {
       // impossible, so it could brick the contract outright.
       e._clientOwned = true;
       if (p.props) Object.assign(e, p.props);
+      fillDepositMax(e);
       // Client businesses take their real subtype footprint (a Works Office
       // is a 3×3 office, a Shop Floor a 4×4 factory). Without this every one
       // was stamped at the bare COMMERCIAL/INDUSTRIAL def size — 1×1 — and
