@@ -214,6 +214,66 @@ const BuildingSpriteCache = (() => {
   // bakes as the whole visible frame. Five holds a full screen to a few
   // refreshes a second, plenty for sprites a few dozen pixels across.
   const REFRESH_MAX_PER_FRAME = 5;
+  // ── Spending the frame's headroom on animation ─────────────────────
+  // The figures above are the floor, sized for a machine with no time to
+  // spare. Held fixed, they also capped a fast machine running at a steady
+  // 60fps to the same 2-7fps of building animation whenever it zoomed out,
+  // with most of every frame left idle. So the refresh rate is scaled up by
+  // _scale while frames keep arriving on time (the rAF interval, which also
+  // catches GPU-process cost that no timer in this file can see), up to a
+  // fresh bitmap every frame. On a late frame it is cut back straight away.
+  //   - more bakes a frame:  REFRESH_MAX_PER_FRAME * _scale
+  //   - more time a frame:   REFRESH_BUDGET_* * _scale, but never more than
+  //                          REFRESH_FRAME_FRAC of a frame
+  //   - shorter refresh:     MIN_REFRESH_MS / _scale, but never under a frame
+  // It only grows while the bitmaps on screen are actually refreshed less
+  // than every frame (_bound), so it stops once animation is at the frame
+  // rate. "Smooth Building Animation" off keeps the floor.
+  const SCALE_MAX          = 24;
+  const SCALE_GROW         = 0.1;    // per on-time frame
+  const SCALE_CUT          = 0.75;   // per late frame
+  const REFRESH_FRAME_FRAC = 0.55;
+  const LATE_FACTOR        = 1.45;   // a frame this much over the usual interval is late
+  let _scale = 1, _growAfter = 0, _bound = false;
+  let _lastBegin = 0, _frameMs = 1000 / 60, _dtEma = 0, _paceN = 0, _paceSkip = 0;
+  const _dts = [];
+  function _boosting() { return _scale > 1 && GfxQuality.smoothBuildings(); }
+  function _budget(baseMs) {
+    return _boosting() ? Math.min(baseMs * _scale, Math.max(baseMs, _frameMs * REFRESH_FRAME_FRAC)) : baseMs;
+  }
+  function _maxBakes() { return _boosting() ? Math.round(REFRESH_MAX_PER_FRAME * _scale) : REFRESH_MAX_PER_FRAME; }
+  function _minRefresh() { return _boosting() ? Math.max(_frameMs * 0.9, MIN_REFRESH_MS / _scale) : MIN_REFRESH_MS; }
+  // Called once a frame from beginFrame with the frame's start time.
+  function _pace(now) {
+    const dt = now - _lastBegin;
+    _lastBegin = now;
+    if (!(dt > 0 && dt < 250)) return;            // first frame, or back from a pause / hidden window
+    // The frame after a live trial is slow on purpose (see endFrame).
+    if (_paceSkip > 0 && --_paceSkip === 0) return;
+    _dts.push(dt);
+    if (_dts.length > 60) _dts.shift();
+    // The usual interval: a low percentile of recent frames, so one slow
+    // frame doesn't move it, and never under the FPS cap's own interval (at
+    // a 60fps cap a 144Hz display alternates 14ms and 21ms frames).
+    const cap = GfxQuality.fpsCap ? GfxQuality.fpsCap() : 0;
+    const capMs = cap ? 1000 / cap : 0;
+    if (++_paceN % 30 === 0 && _dts.length >= 20) {
+      const s = _dts.slice().sort((a, b) => a - b);
+      _frameMs = Math.max(s[Math.floor(s.length * 0.2)], capMs);
+    }
+    _dtEma = _dtEma ? _dtEma + (dt - _dtEma) * 0.1 : dt;
+    if (dt > _frameMs * LATE_FACTOR) {
+      _scale = Math.max(1, _scale * SCALE_CUT);
+      _growAfter = now + 500;
+      return;
+    }
+    // Already running under its cap (or under 45fps uncapped) is no frame
+    // with time to give.
+    const behind = capMs ? _frameMs > capMs * 1.2 : _frameMs > 1000 / 45;
+    if (_bound && !behind && _dtEma <= _frameMs * 1.15 && now >= _growAfter) {
+      _scale = Math.min(SCALE_MAX, _scale + SCALE_GROW);
+    }
+  }
   const LIVE_BUDGET_MS = 8;
   const LIVE_RESUME    = 0.6;   // hysteresis: re-enter live at 60% of budget
   const TRIAL_GAP_MS   = 2000;  // how often a cached frame may re-test live
@@ -335,10 +395,15 @@ const BuildingSpriteCache = (() => {
   // per-frame bake budget can really get round: a handful of buildings on
   // screen refresh nearly every frame, a cityful backs off gracefully.
   function _interval(budgetMs) {
-    const perFrame = Math.max(1, Math.min(REFRESH_MAX_PER_FRAME, budgetMs / Math.max(0.01, _bakeMsPer)));
-    const cycleMs  = (Math.max(1, _visible) / perFrame) * 16.7;
-    return Math.max(MIN_REFRESH_MS, Math.min(600, cycleMs));
+    const perFrame = Math.max(1, Math.min(_maxBakes(), _budget(budgetMs) / Math.max(0.01, _bakeMsPer)));
+    const cycleMs  = (Math.max(1, _visible) / perFrame) * _frameMs;
+    return Math.max(_minRefresh(), Math.min(600, cycleMs));
   }
+
+  // How much a bitmap's staleness shows, by its size on screen: a choppy
+  // Hyperion Station two hundred pixels across reads as broken, a house a
+  // few dozen across barely at all. Big ones come due sooner and sort ahead.
+  function _weight(pw, ph) { return Math.min(2, Math.max(0.5, Math.sqrt(pw * ph) / 96)); }
 
   function stats() {
     return { mode: _trial ? 'live (trial)' : _tier, visible: _visible,
@@ -347,7 +412,9 @@ const BuildingSpriteCache = (() => {
              bakeMsPer: +_bakeMsPer.toFixed(3),
              estLiveMs: +(_visible * _liveMsPer).toFixed(1),
              estSplitMs: +(_splitSeen * _splitMsPer).toFixed(1),
-             cached: entries.size, why: { ..._why } };
+             cached: entries.size, why: { ..._why },
+             scale: +_scale.toFixed(2), frameMs: +_frameMs.toFixed(1), maxBakes: _maxBakes(),
+             budgetMs: +_budget(REFRESH_BUDGET_HIGH).toFixed(1) };
   }
 
   function eligible(type) {
@@ -452,6 +519,7 @@ const BuildingSpriteCache = (() => {
   function beginFrame(m) {
     refreshes = 0; spentMs = 0; _splitSeen = 0; _splitMs = 0; _firstBakeMs = 0;
     const now = performance.now();
+    _pace(now);
     if (m) _zoomNow = m.a;
     if (m) {
       _viewMoving = _prevE !== null &&
@@ -473,6 +541,7 @@ const BuildingSpriteCache = (() => {
   // to measure — in cached mode it holds the last honest reading and is
   // what decides when live drawing becomes affordable again.
   function endFrame(now, eligibleSeen, liveMs, lv) {
+    _bound = false;
     if (!_cacheOff && _tier !== 'live') _refreshPass(now, lv === 1 ? REFRESH_BUDGET_MED : REFRESH_BUDGET_HIGH);
     PerfMonitor.record('Sprite refreshes', refreshes);
     // Pinned: hold the frozen tier, no trials and no sweep (see setPinned).
@@ -545,6 +614,7 @@ const BuildingSpriteCache = (() => {
           now - _lastTrial > TRIAL_GAP_MS) {
         _trial = true;
         _lastTrial = now;
+        _paceSkip = 2;   // the next frame is the trial: don't read it as late (_pace)
       }
       PerfMonitor.record('Buildings live-drawn', _tier === 'live' ? _visible : 0);
     }
@@ -594,7 +664,7 @@ const BuildingSpriteCache = (() => {
     // A first bake lands at a random point in the interval so a screenful of
     // new bitmaps doesn't all come due on the same frame.
     en.at = en.at ? now : now - Math.random() * interval;
-    en.zoom = zoom; en.scale = z;
+    en.zoom = zoom; en.scale = z; en.w = _weight(pw, ph);
     refreshes++;
   }
 
@@ -616,6 +686,14 @@ const BuildingSpriteCache = (() => {
     _due.length = 0;
     if (!_zoomSettled) return;   // see ZOOM_SETTLE_MS
     const interval = _interval(budgetMs);
+    budgetMs = _budget(budgetMs);
+    const maxBakes = _maxBakes();
+    // Bigger bitmaps come due sooner (see _weight), down to a frame at the
+    // most and out to the slow end of the interval at the least.
+    const minR = _minRefresh(), maxR = Math.max(interval, 600);
+    // Short of allowance (see _scale): the bitmaps on screen wait longer
+    // than a frame between refreshes, or this pass runs out (below).
+    _bound = interval > _frameMs * 1.05;
     for (const en of entries.values()) {
       if (en.seen !== now) continue;                  // not on screen this frame
       if (en.zoom !== _zoomNow) { _why.zoom++; _why.zoomNow = _zoomNow; _why.lastZoomEntry = en.zoom; _due.push(en); continue; }
@@ -637,13 +715,17 @@ const BuildingSpriteCache = (() => {
       // bitmap has to be re-baked without the moving parts, whatever key()
       // says by then.
       if (en.split) en.key = null;
-      if (now - en.at > (_panning ? Math.max(interval, PAN_REFRESH_MS) : interval)) { _why.interval++; _due.push(en); }
+      const w = en.w || 1;
+      const iv = Math.min(maxR, Math.max(minR, interval / w));
+      if (now - en.at > (_panning ? Math.max(iv, PAN_REFRESH_MS) : iv)) { _why.interval++; _due.push(en); }
     }
     _why.frames++;
     if (!_due.length) return;
-    _due.sort((a, b) => a.at - b.at);                 // least recently baked first
-    let spent = 0;
-    for (let i = 0; i < _due.length && i < REFRESH_MAX_PER_FRAME && spent < budgetMs; i++) {
+    // Stalest first, weighted by size on screen: every bitmap's claim grows
+    // for as long as it waits, so the small ones are delayed, never starved.
+    _due.sort((a, b) => (now - b.at) * (b.w || 1) - (now - a.at) * (a.w || 1));
+    let spent = 0, i = 0;
+    for (; i < _due.length && i < maxBakes && spent < budgetMs; i++) {
       const en = _due[i];
       const t0 = performance.now();
       _bake(en.e, en, en.x, en.y, en.t, _zoomNow, now, interval);
@@ -652,6 +734,7 @@ const BuildingSpriteCache = (() => {
       spent += ms;
     }
     spentMs = spent;
+    if (i < _due.length) _bound = true;               // ran out of allowance with bitmaps still due
   }
 
   // Bake a building's bitmap ahead of it coming on screen, at `zoom`. False
