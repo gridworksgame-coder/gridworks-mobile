@@ -3618,6 +3618,9 @@ const ContractSystem = (() => {
     openBoard, closeBoard, toggleBoard, tickButton,
     accept, complete, abandon, confirmAbandon, fail, returnHome, resumeSite, discardForLoad,
     hasContract, isAtSite: () => atJob >= 0, siteSeason,
+    // The rectangle the player may build in while standing on a site, or
+    // null at home (GridManager.buildable).
+    siteBounds: () => { const j = currentJob(); return j && j.bounds ? j.bounds : null; },
     // A fusion job taken before the reactors' fuels were made consistent with
     // home: it asks for a Fusion Reactor AND MHD Rings, which only D-He3 can
     // satisfy. While standing on one, the Fusion Reactor still burns the

@@ -375,13 +375,24 @@ const GridManager = (() => {
       return !!e && (e.type === T.TREE || e.type === T.BUSH);
     },
 
+    // Can the player build on this tile? On the map, and on a contract
+    // site inside the site's own rectangle: the ground round it is shown
+    // (darkened) but is not the player's to build on.
+    _siteRect() {
+      return typeof ContractSystem !== 'undefined' && ContractSystem.siteBounds ? ContractSystem.siteBounds() : null;
+    },
+    buildable(col, row, L = this._siteRect()) {
+      return this.inBounds(col, row) && (!L || (col >= L.minC && col <= L.maxC && row >= L.minR && row <= L.maxR));
+    },
+
     // Multi-tile footprint helpers
     canPlaceFootprint(col, row, w, h) {
       // Land fenced off for Hyperion Station is closed to building.
       if (!this.ignoreReserved && typeof GovernmentSystem !== 'undefined' && GovernmentSystem.isMeridianReserved?.(col, row, w, h)) return false;
+      const L = this._siteRect();
       for (let r = row; r < row + h; r++)
         for (let c = col; c < col + w; c++)
-          if (!this.inBounds(c, r) || (tiles[r][c] && !this.isVegetation(tiles[r][c]))) return false;
+          if (!this.buildable(c, r, L) || (tiles[r][c] && !this.isVegetation(tiles[r][c]))) return false;
       return true;
     },
 
@@ -401,9 +412,10 @@ const GridManager = (() => {
     canDropMoved(entity, col, row, absorbWires, ownLines, fill) {
       const w = entity.width || 1, h = entity.height || 1;
       if (!this.ignoreReserved && typeof GovernmentSystem !== 'undefined' && GovernmentSystem.isMeridianReserved?.(col, row, w, h)) return false;
+      const L = this._siteRect();
       for (let r = row; r < row + h; r++)
         for (let c = col; c < col + w; c++) {
-          if (!this.inBounds(c, r)) return false;
+          if (!this.buildable(c, r, L)) return false;
           const t = tiles[r][c];
           if (!t || t === entity || this.isVegetation(t)) continue;
           if (absorbWires && this.isLooseWire(t)) continue;
@@ -422,7 +434,7 @@ const GridManager = (() => {
       const w = entity.width || 4, h = entity.height || 4;
       for (let r = row; r < row + h; r++)
         for (let c = col; c < col + w; c++) {
-          if (!this.inBounds(c, r)) return false;
+          if (!this.buildable(c, r)) return false;
           const t = tiles[r][c];
           if (!t || (t !== entity && t.type !== T.WATER)) return false;
         }
@@ -437,6 +449,7 @@ const GridManager = (() => {
       for (let r = row; r < row + h; r++)
         for (let c = col; c < col + w; c++) {
           if (!this.inBounds(c, r)) return { reason: 'the edge of the map' };
+          if (!this.buildable(c, r)) return { reason: 'the edge of the contract site' };
           const t = tiles[r][c];
           if (!t || t === entity || this.isVegetation(t)) continue;
           if (absorbWires && this.isLooseWire(t)) continue;

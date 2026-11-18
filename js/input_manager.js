@@ -1283,6 +1283,8 @@ const InputManager = (() => {
 
     if (!state.selectedTool) return;
     if (state.selectedTool === 'delete') { if (!_pathDeleteHold) _pressRemove(col, row); return; }
+    // On a contract site, nothing goes outside the site (GridManager.buildable).
+    if (!GridManager.buildable(col, row)) { flashMessage('Outside the contract site'); return; }
 
     const type = state.selectedTool;
 
@@ -1691,7 +1693,7 @@ const InputManager = (() => {
       // All 16 tiles must be T.WATER
       for (let r = row; r < row + mh; r++)
         for (let c = col; c < col + mw; c++) {
-          if (!GridManager.inBounds(c, r)) { flashMessage('Out of bounds!'); return; }
+          if (!GridManager.buildable(c, r)) { flashMessage(GridManager.inBounds(c, r) ? 'Outside the contract site' : 'Out of bounds!'); return; }
           const t = GridManager.getEntity(c, r);
           if (!t || t.type !== T.WATER) { flashMessage('Water Extractor must be fully on a lake!'); return; }
         }
@@ -1755,7 +1757,7 @@ const InputManager = (() => {
         let blocked = false;
         for (let r = row; r < row + h && !blocked; r++) {
           for (let c = col; c < col + w && !blocked; c++) {
-            if (!GridManager.inBounds(c, r)) { blocked = true; break; }
+            if (!GridManager.buildable(c, r)) { blocked = true; break; }
             const t = GridManager.getEntity(c, r);
             if (t && t.type !== T.WIRE && t.type !== T.PIPE && t.type !== T.UNDERGNDPIPE && t.type !== T.ROAD) blocked = true;
           }
@@ -1981,7 +1983,7 @@ const InputManager = (() => {
         let blocked = false;
         for (let r = row; r < row + h && !blocked; r++) {
           for (let c = col; c < col + w && !blocked; c++) {
-            if (!GridManager.inBounds(c, r)) { blocked = true; break; }
+            if (!GridManager.buildable(c, r)) { blocked = true; break; }
             const t = GridManager.getEntity(c, r);
             if (t && !TRUCK_PLACEMENT_PASSTHROUGH.has(t.type)) blocked = true;
           }
@@ -3237,6 +3239,7 @@ const InputManager = (() => {
       for (let r = r0; r < r0 + h; r++)
         for (let c = c0; c < c0 + w; c++) {
           if (!GridManager.inBounds(c, r)) return { reason: 'the edge of the map' };
+          if (!GridManager.buildable(c, r)) return { reason: 'the edge of the contract site' };
           const t = GridManager.tiles[r][c];
           // A tile an extractor in the group is leaving is lake again once
           // it lifts (its _savedWaterTiles go back down).
