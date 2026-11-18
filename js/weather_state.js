@@ -307,6 +307,7 @@ const FrostSystem = (() => {
   const BAKE_BUDGET_MS = 5;          // working out fields per frame, at least a slice of one
   const NEW_BUDGET_MS  = 8;          // ...and for chunks just come into view
   const RING_BUDGET_MS = 3;          // ...and for the ring just off screen, baked ahead of a pan
+  const CUT_BUDGET_MS  = 70;         // ...and on a camera cut, for what is on screen (RenderCut, render_core.js)
   const SLICE_MS       = 2.5;        // the least a field gets in a frame it is worked on
   const PAINT_BUDGET_MS = 8;         // painting steps from them (well under a millisecond each)
   const EDGE_ROUGH  = 0.05;          // how ragged a patch's edge is
@@ -772,6 +773,9 @@ const FrostSystem = (() => {
       };
       const t0 = performance.now();
       let baked = 0;
+      // A camera cut: the snow on screen is worked out now, up to
+      // CUT_BUDGET_MS, rather than arriving over the frames after the shot.
+      const onCut = typeof RenderCut !== 'undefined' && RenderCut.active;
       const chunk = (u, cx, cy) => {
         const key = u + '|' + cx + ',' + cy;
         let ch = _chunks.get(key);
@@ -820,12 +824,12 @@ const FrostSystem = (() => {
         const C0 = TIER_TILES[0] * TILE;
         const bx0 = Math.max(0, Math.floor(worldLeft / C0)), bx1 = Math.min(Math.ceil(COLS / TIER_TILES[0]) - 1, Math.floor((worldLeft + worldW) / C0));
         const by0 = Math.max(0, Math.floor(worldTop / C0)),  by1 = Math.min(Math.ceil(ROWS / TIER_TILES[0]) - 1, Math.floor((worldTop + worldH) / C0));
-        for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) update(chunk(0, bx, by), 0, bx, by);
+        for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) update(chunk(0, bx, by), 0, bx, by, onCut ? CUT_BUDGET_MS : undefined);
       }
       for (let cy = cy0; cy <= cy1; cy++) {
         for (let cx = cx0; cx <= cx1; cx++) {
           const ch = chunk(tier, cx, cy);
-          update(ch, tier, cx, cy);
+          update(ch, tier, cx, cy, onCut ? CUT_BUDGET_MS : undefined);
           const dx = (cx - cx0) * N, dy = (cy - cy0) * N;
           if (!put(ch, 1, 1, N, N, dx, dy, N, N)) borrow(cx, cy, dx, dy);
         }

@@ -4857,6 +4857,65 @@ function bgJobStart(zoom, dark, zoneVer, W, H) {
   _bgJob = { worldLeft, worldTop, zoom, dark, zoneVer, W, H, rE, nextR: rS, nextX: 0 };
 }
 
+// ── Camera cuts ─────────────────────────────────────────────────────
+// A cut (a cinematic changing shots, the camera sent across the map) is a
+// frame the camera lands somewhere new. The caches spread their work over
+// frames so a pan or zoom stays smooth, and on a cut that showed as the
+// view filling in a moment after it appeared: ground sharpening out of a
+// blur, snow arriving in patches. On a cut frame they finish what is on
+// screen first instead. A hitch on a cut can't be seen; a pop-in can.
+// Moving more than CUT_SCREENS of a screen, or zooming by more than
+// CUT_ZOOM, in one frame is a cut; a drag, a fling or a wheel notch (12%)
+// never is.
+const RenderCut = (() => {
+  const CUT_SCREENS = 0.75, CUT_ZOOM = 1.3;
+  let px = null, py = 0, pz = 1, active = false;
+  return {
+    // Once a frame, before anything is drawn, with the live camera.
+    check(x, y, z, W, H) {
+      active = px !== null && (Math.max(z / pz, pz / z) > CUT_ZOOM ||
+               Math.max(Math.abs(x - px) * z / W, Math.abs(y - py) * z / H) > CUT_SCREENS);
+      px = x; py = y; pz = z;
+      return active;
+    },
+    get active() { return active; },
+  };
+})();
+
+// The ground cache on a cut: anchored on the new view at once, the part of
+// it on screen painted now and the margin round it queued as pan strips are
+// (bgPendingStep), so nothing is shown stretched, blurred or late. Painting
+// the whole cache in one frame is 40-460ms (closest to farthest zoom); the
+// screen is about an eighth of it.
+function bgCutTo(zoom, dark, zoneVer, W, H) {
+  _bgJob = null;
+  bgPendingClear();
+  _bgFadeActive = false;
+  const wl = Camera.x - BG_MARGIN / zoom, wt = Camera.y - BG_MARGIN / zoom;
+  bgCtx.setTransform(1, 0, 0, 1, 0, 0);
+  bgCtx.clearRect(0, 0, bgCache.width, bgCache.height);
+  _bgWorldLeft = wl; _bgWorldTop = wt;
+  _bgZoom = zoom; _bgDark = dark; _bgZoneVer = zoneVer; _bgW = W; _bgH = H;
+  _bgValid = true;
+  const cz = zoom * RENDER_SCALE;
+  const band = Math.max(Math.round(BG_PENDING_BAND_PX * RENDER_SCALE), Math.ceil(6 * TILE * cz));
+  const Wc = bgCache.width, Hc = bgCache.height;
+  // The screen (and bgPendingStep's guard round it) in one piece, on whole
+  // cache pixels: one call, not the twenty-odd bands it covers.
+  const g = BG_PENDING_GUARD_PX * RENDER_SCALE;
+  const ox = Math.round(BG_MARGIN * RENDER_SCALE);
+  const sx0 = Math.max(0, Math.floor(ox - g)), sy0 = Math.max(0, Math.floor(ox - g));
+  const sx1 = Math.min(Wc, Math.ceil(ox + W * RENDER_SCALE + g)), sy1 = Math.min(Hc, Math.ceil(ox + H * RENDER_SCALE + g));
+  _bgBandDraw(bgCtx, wl, wt, zoom, dark, wl + sx0 / cz, wt + sy0 / cz, wl + sx1 / cz, wt + sy1 / cz);
+  // The margin round it, queued in bands like a pan's strips.
+  const queue = (x0, y0, x1, y1) => {
+    for (let y = y0; y < y1; y += band)
+      for (let x = x0; x < x1; x += band)
+        _bgPending.push([wl + x / cz, wt + y / cz, wl + Math.min(x1, x + band) / cz, wt + Math.min(y1, y + band) / cz]);
+  };
+  queue(0, 0, Wc, sy0); queue(0, sy1, Wc, Hc); queue(0, sy0, sx0, sy1); queue(sx1, sy0, Wc, sy1);
+}
+
 // Advance the rebuild within a time budget; swap in when complete.
 //
 // A band is cut across into pieces of BG_JOB_CHUNK_COLS tiles. A whole band

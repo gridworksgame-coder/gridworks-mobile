@@ -1743,6 +1743,16 @@ RenderSystem.render = function (t, inputState) {
         if (_lastLiveZoom === null) _lastLiveZoom = _zoom;
         if (_zoom !== _lastLiveZoom) { _zoomSettleAt = performance.now() + ZOOM_SETTLE_MS; _lastLiveZoom = _zoom; }
         const _zoomSettled = performance.now() >= _zoomSettleAt;
+        // A camera cut, or a zoom that has come to rest with the stretched
+        // old ground no longer covering the screen: paint the view's ground
+        // now rather than over the next second (RenderCut, bgCutTo).
+        if (RenderCut.check(Camera.x, Camera.y, _zoom, W, H) && _bgValid) bgCutTo(_zoom, _dark, _zoneVer, W, H);
+        else if (_bgValid && _zoomSettled && _zoom !== _bgZoom) {
+          const _sc = _zoom / _bgZoom;
+          const _gx = (_bgWorldLeft - Camera.x) * _zoom, _gy = (_bgWorldTop - Camera.y) * _zoom;
+          if (_gx > 0 || _gy > 0 || _gx + bgCache.width * _sc / _rs < W || _gy + bgCache.height * _sc / _rs < H)
+            bgCutTo(_zoom, _dark, _zoneVer, W, H);
+        }
 
         // Does the cached bitmap's own baked-in zoom still match live zoom?
         // If not, we're mid zoom-gesture — the panning offset math below
