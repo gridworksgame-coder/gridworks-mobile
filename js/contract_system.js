@@ -1146,7 +1146,7 @@ const ContractSystem = (() => {
     ContractRequirements.clearActive();
     stopAmbience();
     const others = jobs.length - 1;
-    banner = { title: 'HOME',
+    banner = { title: 'HOME', kicker: 'WELCOME BACK',
                sub: others > 0 ? `${jobs.length} contracts still open`
                                : `${job.site.client} contract still open`,
                until: performance.now() + 3400 };
@@ -1175,8 +1175,8 @@ const ContractSystem = (() => {
     syncSiteWeather(true);      // restoreWorld put the sky in step with HOME's weather event
     applySiteCameraLimit(job.bounds);
     startArrivalShot(job.bounds, job.markers, job.site);
-    banner = { title: job.site.client.toUpperCase(),
-               sub: `${job.site.place} · Back on site`, until: performance.now() + 3400 };
+    banner = { title: job.site.client.toUpperCase(), kicker: 'BACK ON SITE',
+               sub: job.site.place, until: performance.now() + 3400 };
     _lastSig = null;
     renderChecklist();
   }
@@ -1256,8 +1256,8 @@ const ContractSystem = (() => {
 
     closeBoard();
     startArrivalShot(bounds, markers, site);
-    banner = { title: site.client.toUpperCase(),
-               sub: `${site.place} · Contract accepted${arrival.season ? ' · ' + arrival.season[0].toUpperCase() + arrival.season.slice(1) + ({ rain: ', rain', snow: ', snow', blizzard: ', blizzard', overcast: ', overcast', clear: ', clear skies' }[arrival.weather] || '') : ''}`,
+    banner = { title: site.client.toUpperCase(), kicker: 'CONTRACT ACCEPTED',
+               sub: `${site.place}${arrival.season ? ' · ' + arrival.season[0].toUpperCase() + arrival.season.slice(1) + ({ rain: ', rain', snow: ', snow', blizzard: ', blizzard', overcast: ', overcast', clear: ', clear skies' }[arrival.weather] || '') : ''}`,
                until: performance.now() + 4200 };
     renderChecklist();
   }
@@ -1288,7 +1288,7 @@ const ContractSystem = (() => {
     MessageLog.add(`${client} paid the ${formatMoney(owed)} balance; contract complete`, '#40d090');
     if (beatRival) MessageLog.add(`Finished ahead of the rival crew: ${formatMoney(rival.bonus)} bonus included`, '#ffd070');
     else if (rival) MessageLog.add('The rival crew would have been quicker: no early-finish bonus', '#7a8a99');
-    banner = { title: 'CONTRACT COMPLETE', sub: `${formatMoney(owed)} balance received${perk ? ' · ' + perk.label : ''}`, until: performance.now() + 4200 };
+    banner = { title: 'CONTRACT COMPLETE', tone: 'good', sub: `${formatMoney(owed)} balance received${perk ? ' · ' + perk.label : ''}`, until: performance.now() + 4200 };
     SFX.contractComplete?.();
     if (perk) MessageLog.add(`${client} paid in kind: ${perk.label}`, '#7ad8ff');
     if (repeatable) MessageLog.add(`${client} would trust a crew of yours with this job: watch the board for a repeat order`, '#ffb060');
@@ -1297,7 +1297,7 @@ const ContractSystem = (() => {
     if (cRank.index > cRankBefore) MessageLog.add(`${client} now rates you ${cRank.name}`, '#7ad8ff');
     if (pRank.index > pRankBefore) {
       MessageLog.add(`Contractor rank: ${pRank.name}`, '#ffd070');
-      banner = { title: 'CONTRACTOR RANK: ' + pRank.name.toUpperCase(), sub: 'Your name is getting around', until: performance.now() + 4800 };
+      banner = { title: pRank.name.toUpperCase(), kicker: 'CONTRACTOR RANK', tone: 'good', sub: 'Your name is getting around', until: performance.now() + 4800 };
     }
   }
 
@@ -1387,7 +1387,7 @@ const ContractSystem = (() => {
     reclaimAdvance(job);
     closeJob(job);
     MessageLog.add(`${client} contract abandoned: ${formatMoney(advance)} advance returned, materials are sunk`, '#a05868');
-    banner = { title: 'CONTRACT ABANDONED', sub: `${formatMoney(advance)} advance returned · materials sunk`,
+    banner = { title: 'CONTRACT ABANDONED', tone: 'bad', sub: `${formatMoney(advance)} advance returned · materials sunk`,
                until: performance.now() + 3600 };
   }
 
@@ -1444,7 +1444,7 @@ const ContractSystem = (() => {
                (Economy.balance < 0 ? ' You are in debt; clear it before customers start to leave.' : ''),
       color: '#ff6040', border: '#602018', tag: 'contract-liability', glow: true, contract: true,
     });
-    banner = { title: 'LIABLE FOR REACTOR INCIDENT', sub: `${client} billed you ${formatMoney(liability)}`, until: performance.now() + 6000 };
+    banner = { title: 'LIABLE FOR REACTOR INCIDENT', tone: 'bad', sub: `${client} billed you ${formatMoney(liability)}`, until: performance.now() + 6000 };
     SFX.failure?.();
   }
 
@@ -1471,7 +1471,7 @@ const ContractSystem = (() => {
     closeJob(job);
     MessageLog.add(`${client} contract failed: deadline passed at ${done}/${total} complete`, '#ff6040');
     SFX.failure?.();
-    banner = { title: 'CONTRACT FAILED', sub: `Deadline passed · ${done}/${total} complete · no payment`,
+    banner = { title: 'CONTRACT FAILED', tone: 'bad', sub: `Deadline passed · ${done}/${total} complete · no payment`,
                until: performance.now() + 5000 };
   }
 
@@ -2321,7 +2321,7 @@ const ContractSystem = (() => {
     closeJob(job);
     Economy.setBalance(Economy.balance + pay);
     MessageLog.add(`${client} signed off your crew's work: ${formatMoney(pay)} paid`, '#40d090');
-    banner = { title: 'CREW JOB COMPLETE', sub: `${client} · ${formatMoney(pay)} received`, until: performance.now() + 4200 };
+    banner = { title: 'CREW JOB COMPLETE', tone: 'good', sub: `${client} · ${formatMoney(pay)} received`, until: performance.now() + 4200 };
     SFX.goodConnect?.();
   }
 
@@ -3511,34 +3511,103 @@ const ContractSystem = (() => {
     ctx.restore();
   }
 
+  // The arrival / home / result card: a band of shade that fades out at
+  // its ends, a small kicker over the title, the title itself in the
+  // display face with a soft glow, settling into place as it fades in, and
+  // accent rules drawing out either side of it. Results take a tone (green
+  // done, red failed). 20% smaller on phones, where the screen is tight.
+  const BANNER_TONES = {
+    info: { accent: [110, 184, 255], title: '#e6f3ff', glow: 'rgba(110,184,255,0.55)' },
+    good: { accent: [80, 220, 150],  title: '#e8fff2', glow: 'rgba(80,220,150,0.5)' },
+    bad:  { accent: [255, 110, 96],  title: '#fff0ec', glow: 'rgba(255,110,96,0.5)' },
+  };
   function renderBanner(ctx, cw, ch) {
     if (!banner) return;
-    const left = banner.until - performance.now();
+    const now = performance.now();
+    if (banner.start === undefined) banner.start = now;
+    const left = banner.until - now, dur = Math.max(1, banner.until - banner.start), el = now - banner.start;
     if (left <= 0) { banner = null; return; }
-    const a = Math.min(1, left / 700) * Math.min(1, (4200 - left) / 400);
+    const fadeIn = Math.min(1, el / 450), fadeOut = Math.min(1, left / 700);
+    const a = Math.min(fadeIn, fadeOut);
+    const ease = 1 - Math.pow(1 - Math.min(1, el / 900), 3);     // settle-in, 0 → 1
+    const S = (typeof document !== 'undefined' && document.documentElement.classList.contains('gw-mobile')) ? 0.8 : 1;
+    const T = BANNER_TONES[banner.tone] || BANNER_TONES.info;
+    const rgba = (o) => `rgba(${T.accent[0]},${T.accent[1]},${T.accent[2]},${o})`;
+    const cx = cw / 2, cy = ch * 0.34 + 48 * S;
+    const bandH = (banner.kicker ? 132 : 116) * S, bandW = Math.min(cw, 980 * S);
+    const top = cy - bandH / 2;
 
-    // Mobile: the CONTRACT COMPLETE card is drawn 40% smaller so it covers
-    // less of the small screen; every other banner keeps the full size.
-    const k = window.GW_MOBILE && banner.title === 'CONTRACT COMPLETE' ? 0.6 : 1;
-    const top = ch * 0.34 + 48 * (1 - k), bh = 96 * k;
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.fillStyle = 'rgba(2,6,12,0.82)';
-    ctx.fillRect(0, top, cw, bh);
-    ctx.strokeStyle = 'rgba(90,168,255,0.4)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, top);          ctx.lineTo(cw, top);
-    ctx.moveTo(0, top + bh);     ctx.lineTo(cw, top + bh);
-    ctx.stroke();
+
+    // Shade: dark in the middle, gone at the ends, so it reads as a card
+    // laid over the world rather than a bar across the screen.
+    const g = ctx.createLinearGradient(cx - bandW / 2, 0, cx + bandW / 2, 0);
+    g.addColorStop(0,    'rgba(3,8,15,0)');
+    g.addColorStop(0.22, 'rgba(3,8,15,0.84)');
+    g.addColorStop(0.78, 'rgba(3,8,15,0.84)');
+    g.addColorStop(1,    'rgba(3,8,15,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - bandW / 2, top, bandW, bandH);
+    // Hairlines along its top and bottom edges, fading the same way.
+    const hl = ctx.createLinearGradient(cx - bandW / 2, 0, cx + bandW / 2, 0);
+    hl.addColorStop(0, rgba(0)); hl.addColorStop(0.5, rgba(0.55)); hl.addColorStop(1, rgba(0));
+    ctx.fillStyle = hl;
+    ctx.fillRect(cx - bandW / 2, top, bandW, Math.max(1, 1 * S));
+    ctx.fillRect(cx - bandW / 2, top + bandH - Math.max(1, 1 * S), bandW, Math.max(1, 1 * S));
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#8ec8ff';
-    ctx.font = `${Math.round(26 * k)}px monospace`;
-    ctx.fillText(banner.title, cw / 2, top + 45 * k);
-    ctx.fillStyle = '#5a7a92';
-    ctx.font = `${Math.round(12 * k)}px monospace`;
-    ctx.fillText(banner.sub, cw / 2, top + 70 * k);
+    ctx.textBaseline = 'middle';
+    const spacing = (px) => { if ('letterSpacing' in ctx) ctx.letterSpacing = `${px}px`; };
+    let y = cy - (banner.kicker ? 10 : 4) * S;
+
+    // Kicker: small, wide-set, flanked by two diamonds.
+    if (banner.kicker) {
+      spacing(4 * S);
+      ctx.font = `600 ${Math.round(11 * S)}px Inter, Arial, sans-serif`;
+      ctx.fillStyle = rgba(0.95);
+      const ky = top + 24 * S;
+      ctx.fillText(banner.kicker, cx, ky);
+      const kw = ctx.measureText(banner.kicker).width / 2 + 14 * S;
+      for (const sx of [-1, 1]) {
+        const dx = cx + sx * kw, d = 3 * S;
+        ctx.beginPath(); ctx.moveTo(dx, ky - d); ctx.lineTo(dx + d, ky); ctx.lineTo(dx, ky + d); ctx.lineTo(dx - d, ky); ctx.closePath();
+        ctx.fill();
+      }
+      y = top + 58 * S;
+    }
+
+    // Title: the display face, glowing, closing up from wide-set as it lands.
+    let size = 38 * S;
+    spacing((6 + 10 * (1 - ease)) * S);
+    ctx.font = `800 ${Math.round(size)}px Orbitron, Inter, sans-serif`;
+    let tw = ctx.measureText(banner.title).width;
+    const maxW = bandW * 0.72;
+    if (tw > maxW) { size *= maxW / tw; ctx.font = `800 ${Math.round(size)}px Orbitron, Inter, sans-serif`; tw = ctx.measureText(banner.title).width; }
+    const ty = y + 6 * S * (1 - ease);
+    ctx.shadowColor = T.glow; ctx.shadowBlur = 18 * S;
+    ctx.fillStyle = T.title;
+    ctx.fillText(banner.title, cx, ty);
+    ctx.shadowBlur = 0;
+
+    // Accent rules either side of the title, drawing outwards.
+    const gap = 22 * S, run = (70 + 50 * ease) * S * ease;
+    for (const sx of [-1, 1]) {
+      const x0 = cx + sx * (tw / 2 + gap), x1 = x0 + sx * run;
+      const rg = ctx.createLinearGradient(x0, 0, x1, 0);
+      rg.addColorStop(0, rgba(0.9)); rg.addColorStop(1, rgba(0));
+      ctx.fillStyle = rg;
+      ctx.fillRect(Math.min(x0, x1), ty - Math.max(1, 1 * S), Math.abs(x1 - x0), Math.max(2, 2 * S));
+    }
+
+    // Sub line.
+    if (banner.sub) {
+      spacing(1 * S);
+      ctx.font = `500 ${Math.round(13 * S)}px Inter, Arial, sans-serif`;
+      ctx.fillStyle = 'rgba(176,196,214,0.92)';
+      ctx.fillText(banner.sub, cx, top + bandH - 22 * S);
+    }
+    spacing(0);
     ctx.restore();
   }
 
