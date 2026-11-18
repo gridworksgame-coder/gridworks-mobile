@@ -471,6 +471,10 @@ const PuddleSystem = (() => {
       foam:  rgb([214, 206, 184], [92, 90, 84], d),       // foam and scum riding a flood's waterline
       ring:  rgb([226, 236, 246], [150, 176, 210], d),
       ringDark: `rgba(20,24,30,${(0.35 - 0.15 * d).toFixed(3)})`,
+      // A slight blue over all of it, puddle and flood alike, so standing
+      // water reads as water and not just wet ground.
+      blue:  rgb([92, 150, 214], [52, 84, 150], d),
+      blueA: 0.16 - 0.06 * d,
     };
     // The same colours as numbers, for the flood's baked pixels.
     pal.n = {};
@@ -681,6 +685,8 @@ const PuddleSystem = (() => {
         wg.globalAlpha = pl.rippleA * Math.min(1, (zd * TILE - 14) / 16);
         wg.fillStyle = tx.ripples; wg.fillRect(bx0, by0, bw, bh);
       }
+      // The blue (see palette), over the water only.
+      wg.globalAlpha = pl.blueA; wg.fillStyle = pl.blue; wg.fillRect(bx0, by0, bw, bh);
       // The flood's waterline, as baked: its lip and the foam riding it.
       wg.globalCompositeOperation = 'source-over';
       if (fc) {
