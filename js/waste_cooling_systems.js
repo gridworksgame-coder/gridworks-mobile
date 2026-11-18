@@ -302,6 +302,17 @@ const HaulSystem = (() => {
     return best;
   };
 
+  // A waste truck at the stop its Send To list (or AutoHaul) sent it to gets
+  // a Hauler's reach. Its route can end on the second ring of tiles round
+  // the building, and a 3-tile truck parked there at an angle sits just over
+  // 2 tiles from the edge: it arrived, never loaded or unloaded, and the leg
+  // was marked done with the ash still aboard. Anything it merely parks
+  // beside keeps the tight 2-tile rule, so it doesn't help itself on the way.
+  const _wasteReach = (trk, ent) => {
+    const desc = trk._autoDispatch && !trk._detourDesc && trk._destQueue && trk._destQueue[trk._queueIdx];
+    return desc && desc.col != null && GridManager.getEntity(desc.col, desc.row) === ent ? HAULER_DOCK : PICKUP_BUFFER;
+  };
+
   // ── Hauler ──────────────────────────────────────────────────────
   // The cargo truck's side of the same dock: it loads a resource from a
   // producer or an unflagged vessel and unloads it into a vessel flagged for
@@ -488,7 +499,7 @@ const HaulSystem = (() => {
       // ── Currently loading ──
       if (trk._haulState === 'loading') {
         const src = trk._haulTarget, cfg = trk._haulCfg;
-        if (!_stillAt(src) || _truckDist(trk, src) > PICKUP_BUFFER || haulBlocked(src)) {
+        if (!_stillAt(src) || _truckDist(trk, src) > _wasteReach(trk, src) || haulBlocked(src)) {
           trk._haulState = null; trk._haulTarget = null; trk._haulCfg = null;
           return;
         }
@@ -515,7 +526,7 @@ const HaulSystem = (() => {
         // made a truck arrive, sit through
         // its arrival grace window without ever unloading, and immediately
         // get sent to the next destination with a still-full tank.
-        if (!_stillAt(fac) || _truckDist(trk, fac) > PICKUP_BUFFER) {
+        if (!_stillAt(fac) || _truckDist(trk, fac) > _wasteReach(trk, fac)) {
           trk._haulState = null; trk._haulTarget = null;
           return;
         }
@@ -538,7 +549,7 @@ const HaulSystem = (() => {
             const avail = src[cfg.field] || 0;
             if (avail < MIN_PICKUP) continue;
             if (haulBlocked(src)) continue;
-            if (_truckDist(trk, src) > PICKUP_BUFFER) continue;
+            if (_truckDist(trk, src) > _wasteReach(trk, src)) continue;
             trk._haulState  = 'loading';
             trk._haulTarget = src;
             trk._haulCfg    = cfg;
@@ -560,7 +571,7 @@ const HaulSystem = (() => {
               const avail = src[cfg.field] || 0;
               if (avail < MIN_PICKUP) continue;
               if (haulBlocked(src)) continue;
-              if (_truckDist(trk, src) > PICKUP_BUFFER) continue;
+              if (_truckDist(trk, src) > _wasteReach(trk, src)) continue;
               trk._haulState  = 'loading';
               trk._haulTarget = src;
               trk._haulCfg    = cfg;
@@ -571,7 +582,7 @@ const HaulSystem = (() => {
         for (const fac of EntityRegistry.getByType(trk._cargoFacility)) {
           // No power requirement — see the matching comment in the
           // "currently unloading" branch above.
-          if (_truckDist(trk, fac) > PICKUP_BUFFER) continue;
+          if (_truckDist(trk, fac) > _wasteReach(trk, fac)) continue;
           trk._haulState  = 'unloading';
           trk._haulTarget = fac;
           return;

@@ -233,6 +233,8 @@ html.gw-mobile #req-panel { zoom: var(--gwm-panel-zoom, 0.8); }
 /* Truck windows and the contract board: same scale as the build popups. */
 /* !important: the game sets its own inline zoom (1.15) on the truck windows. */
 html.gw-mobile :is(#trucks-panel, #truck-patrol-panel, #saved-path-panel) { zoom: var(--gwm-hotbar-zoom, 0.525) !important; }
+/* The truck's destination window (Send To list): 15% bigger, panel and text. */
+html.gw-mobile #truck-patrol-panel { zoom: calc(var(--gwm-hotbar-zoom, 0.525) * 1.15) !important; }
 /* Contract board: 15% bigger than the toolbar scale. */
 html.gw-mobile #contract-board > * { zoom: calc(var(--gwm-hotbar-zoom, 0.525) * 1.15) !important; }
 
