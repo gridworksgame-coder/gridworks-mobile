@@ -121,17 +121,23 @@ const WorldMapSystem = (() => {
   // it would show exists. They are viewing preferences, so they live in
   // localStorage rather than the save.
   const ROD_TYPES_MAP = [T.LIGHTNINGROD, T.LIGHTNINGROD2, T.LIGHTNINGROD3].filter(v => v !== undefined);
+  // Any of these unlocked, or one already standing on the map.
+  const _have = (...types) => types.some(t => t !== undefined &&
+    ((typeof Progression !== 'undefined' && Progression.isUnlocked(t)) ||
+     (typeof EntityRegistry !== 'undefined' && EntityRegistry.getByType(t).size > 0)));
   // All of them live in the VIEW dropdown above the map's top-right corner
   // (_drawToggles): first the map's own layers, each on by default and
-  // always offered, then the overlays, each offered once something it would
-  // show exists.
+  // offered once the thing it shows is unlocked (or already on the map:
+  // buildings, zones and alerts always), then the overlays, each offered once
+  // something it would show exists.
   const _overlayToggles = [
     { key: 'gridworks.worldmap.showBuildings', label: 'Buildings', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showZones', label: 'Zones', group: 'layer', defaultOn: true, offered: () => true },
-    { key: 'gridworks.worldmap.showPowerLines', label: 'Power Towers / Poles', group: 'layer', defaultOn: true, offered: () => true },
-    { key: 'gridworks.worldmap.showNetworks', label: 'Pipes & Conveyors', group: 'layer', defaultOn: true, offered: () => true },
-    { key: 'gridworks.worldmap.showTrucks', label: 'Trucks', group: 'layer', defaultOn: true, offered: () => true },
-    { key: 'gridworks.worldmap.showDrones', label: 'Drones', group: 'layer', defaultOn: true, offered: () => true },
+    { key: 'gridworks.worldmap.showPowerLines', label: 'Power Towers / Poles', group: 'layer', defaultOn: true, offered: () => _have(T.POLE, T.POWERTOWER, T.PROTECTOR) },
+    { key: 'gridworks.worldmap.showPipes', label: 'Pipes', group: 'layer', defaultOn: true, offered: () => _have(T.PIPE, T.UNDERGNDPIPE), was: 'gridworks.worldmap.showNetworks' },
+    { key: 'gridworks.worldmap.showConveyors', label: 'Conveyors', group: 'layer', defaultOn: true, offered: () => _have(T.CONVEYOR, T.UNDERGNDCONVEYOR, T.CONVEYORSPLITTER), was: 'gridworks.worldmap.showNetworks' },
+    { key: 'gridworks.worldmap.showTrucks', label: 'Trucks', group: 'layer', defaultOn: true, offered: () => _have(T.TRUCK, T.HAULER) },
+    { key: 'gridworks.worldmap.showDrones', label: 'Drones', group: 'layer', defaultOn: true, offered: () => _have(T.DRONEPORT, T.DRONECHARGER) },
     { key: 'gridworks.worldmap.showAlerts', label: 'Status Alerts', group: 'layer', defaultOn: true, offered: () => true },
     { key: 'gridworks.worldmap.showDroneNets', label: 'Drone Networks', group: 'overlay',
       offered: () => EntityRegistry.getByType(T.DRONEPORT).size > 0 || EntityRegistry.getByType(T.DRONECHARGER).size > 0 },
@@ -143,7 +149,9 @@ const WorldMapSystem = (() => {
   for (const tg of _overlayToggles) {
     tg.on = !!tg.defaultOn; tg.rect = null;
     try {
-      const v = localStorage.getItem(tg.key);
+      // Pipes and Conveyors were one switch: each starts as that one was set.
+      let v = localStorage.getItem(tg.key);
+      if (v === null && tg.was) v = localStorage.getItem(tg.was);
       if (v !== null) tg.on = v === '1';
     } catch (err) {}
   }
@@ -153,9 +161,11 @@ const WorldMapSystem = (() => {
   const _showPowerLines = () => _toggleOn('gridworks.worldmap.showPowerLines');
   const _layer = name => _toggleOn('gridworks.worldmap.show' + name);
   // Which VIEW layer a type drawn in the buildings pass belongs to.
-  const _NET_TYPES = new Set([T.PIPE, T.UNDERGNDPIPE, T.CONVEYOR, T.UNDERGNDCONVEYOR, T.CONVEYORSPLITTER].filter(v => v !== undefined));
+  const _PIPE_TYPES = new Set([T.PIPE, T.UNDERGNDPIPE].filter(v => v !== undefined));
+  const _CONV_TYPES = new Set([T.CONVEYOR, T.UNDERGNDCONVEYOR, T.CONVEYORSPLITTER].filter(v => v !== undefined));
   const _POLE_TYPES = new Set([T.POWERTOWER, T.PROTECTOR].filter(v => v !== undefined));
-  const _typeShown = type => _NET_TYPES.has(type) ? _layer('Networks')
+  const _typeShown = type => _PIPE_TYPES.has(type) ? _layer('Pipes')
+    : _CONV_TYPES.has(type) ? _layer('Conveyors')
     : _POLE_TYPES.has(type) ? _showPowerLines()
     : type === T.TRUCK ? _layer('Trucks')
     : _layer('Buildings');
@@ -1621,7 +1631,7 @@ const WorldMapSystem = (() => {
   function _drawToggles(ox, oy, mW) {
     for (const tg of _overlayToggles) tg.rect = null;
     _viewAll = null; _viewPanel = null;
-    const hidden = _overlayToggles.filter(t => t.group === 'layer' && !t.on).length;
+    const hidden = _overlayToggles.filter(t => t.group === 'layer' && !t.on && t.offered()).length;
     const lit = _viewOpen || _inRect(_viewBtn, _mouseSX, _mouseSY);
     _ctx.save();
     _ctx.font = 'bold 10px Inter, Arial, sans-serif';
@@ -1668,7 +1678,7 @@ const WorldMapSystem = (() => {
     if (!_viewOpen) return;
 
     // Panel
-    const layers = _overlayToggles.filter(t => t.group === 'layer');
+    const layers = _overlayToggles.filter(t => t.group === 'layer' && t.offered());
     const overlays = typeof EntityRegistry === 'undefined' ? [] : _overlayToggles.filter(t => t.group === 'overlay' && t.offered());
     const PW = 236, RH = 26, HEAD = 30, SUB = 26, PADB = 8;
     const ph = HEAD + layers.length * RH + (overlays.length ? SUB + overlays.length * RH : 0) + PADB;
