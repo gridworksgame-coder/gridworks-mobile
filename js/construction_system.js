@@ -55,8 +55,19 @@ const ConstructionSystem = (() => {
   // lot is still waiting its turn.
   const drawW = (e) => e._constructing && (e._buildDone || 0) >= 0 ? drawFor(e) : 0;
 
-  // "31s", "~4 min" — game seconds at normal speed.
-  const formatSecs = (s) => s < 90 ? `${Math.round(s)}s` : `~${Math.round(s / 60)} min`;
+  // Build time in the game's own clock: "40 min", "3h 20m", "1d 4h".
+  // `s` is seconds at normal speed (an in-game hour is
+  // DayNight.secondsPerGameHour() of those). It used to print those real
+  // seconds ("31s", "~4 min"), which read wrong beside the game's clock.
+  const formatSecs = (s) => {
+    const sph = typeof DayNight !== 'undefined' && DayNight.secondsPerGameHour ? DayNight.secondsPerGameHour() : 50;
+    const m = Math.max(0, Math.ceil(s / sph * 60));     // in-game minutes, rounded up
+    if (m < 60) return m <= 1 ? '1 min' : `${m} min`;
+    const h = Math.floor(m / 60), mm = m % 60;
+    if (h < 24) return mm ? `${h}h ${mm}m` : `${h}h`;
+    const d = Math.floor(h / 24), hh = h % 24;
+    return hh ? `${d}d ${hh}h` : `${d}d`;
+  };
 
   function start(e, delay = 0, siteKW = null) {
     e._constructing = true;
