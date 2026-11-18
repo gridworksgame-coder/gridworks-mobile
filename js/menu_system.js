@@ -555,13 +555,24 @@ const MenuSystem = (() => {
     loadBtn.style.display = (slots.length || !locked) ? 'block' : 'none';
   }
 
+  // A save made in a scenario says so in the save lists: a SCENARIO tag on
+  // its name and the scenario's title on its details line.
+  function scenarioTag(s) {
+    return s.scenario ? '<span class="save-slot-tag scenario">SCENARIO</span>' : '';
+  }
+  function scenarioRule(s) {
+    if (!s.scenario) return '';
+    const title = typeof ScenarioSystem !== 'undefined' && ScenarioSystem.titleOf ? ScenarioSystem.titleOf(s.scenario) : null;
+    return `<span class="save-slot-scenario">Scenario${title ? ': ' + escapeHtml(title) : ''}</span> · `;
+  }
+
   function slotCardHtml(s) {
     return `
       <div class="save-slot-card" data-id="${s.id}">
         <div class="save-slot-info">
-          <div class="save-slot-name">${escapeHtml(s.saveName || s.cityName)}</div>
+          <div class="save-slot-name">${escapeHtml(s.saveName || s.cityName)}${scenarioTag(s)}</div>
           <div class="save-slot-sub">${escapeHtml(s.cityName)} · ${formatDate(s.savedAt)}</div>
-          <div class="save-slot-sub save-slot-rules">${escapeHtml(s.difficulty || 'Normal')} · ${escapeHtml((WORLD_SIZES[s.worldSize] || WORLD_SIZES.normal).label)} map${s.permadeath ? ' · <span class="save-slot-perma">☠ Permadeath</span>' : ''}</div>
+          <div class="save-slot-sub save-slot-rules">${scenarioRule(s)}${escapeHtml(s.difficulty || 'Normal')} · ${escapeHtml((WORLD_SIZES[s.worldSize] || WORLD_SIZES.normal).label)} map${s.permadeath ? ' · <span class="save-slot-perma">☠ Permadeath</span>' : ''}</div>
         </div>
         <div class="save-slot-actions">
           <button class="save-slot-btn load" data-action="load" title="Load">▶</button>
@@ -697,7 +708,7 @@ const MenuSystem = (() => {
       ? slots.map(s => `
           <div class="save-slot-card${s.id === current ? ' is-current' : ''}" data-id="${s.id}">
             <div class="save-slot-info">
-              <div class="save-slot-name">${escapeHtml(s.saveName || s.cityName)}${s.id === current ? '<span class="save-slot-tag">CURRENT</span>' : ''}</div>
+              <div class="save-slot-name">${escapeHtml(s.saveName || s.cityName)}${scenarioTag(s)}${s.id === current ? '<span class="save-slot-tag">CURRENT</span>' : ''}</div>
               <div class="save-slot-sub">${escapeHtml(s.cityName)} · ${formatDate(s.savedAt)}</div>
             </div>
             <div class="save-slot-actions">

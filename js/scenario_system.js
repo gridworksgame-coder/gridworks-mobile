@@ -2055,6 +2055,8 @@ const ScenarioSystem = (() => {
     // Whether this scenario flies rockets (LaunchSystem asks before it ticks).
     launches: () => !!(run && run.def.launch),
     list: () => SCENARIOS.map(s => s.id),
+    // A scenario's title by id (the save lists label scenario saves with it).
+    titleOf: (id) => (SCENARIOS.find(s => s.id === id) || {}).title || null,
     state: () => run,   // read-only, for testing
   };
 })();
