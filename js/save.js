@@ -660,6 +660,7 @@ const SaveSystem = (() => {
     if ((v = e.type === T.TRUCK ? !!e._queueLoop : undefined) !== undefined) o._queueLoop = v;
     if ((v = e.type === T.TRUCK ? !!e._autoDispatch : undefined) !== undefined) o._autoDispatch = v;
     if ((v = e.type === T.TRUCK && e._autoDispatch ? !!e._legDone : undefined) !== undefined) o._legDone = v;
+    if ((v = e.type === T.TRUCK && e._autoDispatch && e._dispatchPaused ? true : undefined) !== undefined) o._dispatchPaused = v;
     // A truck loaded a moment ago is only pending until its first tick, and one
     // back home doesn't tick while the player is on a job site. Saving that as
     // "off" switched a Waste Truck's automation off for good.
@@ -2545,6 +2546,7 @@ const SaveSystem = (() => {
         // player pressed Stop, and guessing "arrived" drove that truck off
         // again on every load. Older saves without it still get the guess.
         if (s._legDone !== undefined) entity._legDone = s._legDone;
+        if (s._dispatchPaused) entity._dispatchPaused = true;   // stopped from the panel: stays stopped
         else if (entity.type === T.TRUCK && entity._autoDispatch && !entity._patrolling && entity._destQueue && entity._destQueue.length) entity._legDone = true;
         if (s._autoHaulJob      !== undefined) entity._autoHaulJob      = s._autoHaulJob;
         if (s._name             !== undefined) entity._name             = s._name;

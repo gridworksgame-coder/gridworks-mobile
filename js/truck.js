@@ -1247,6 +1247,7 @@ const TruckSystem = (() => {
 
     startPatrol(e) {
       if (!e._path || e._path.length < 2) return;
+      e._dispatchPaused = false;   // set by the panel's Stop (see TruckDispatchSystem)
       if (_driven === e) _driven = null;
       // A patrol runs off the grid (skipGrid), so tiles this truck claimed
       // when it was last driven by hand would never be handed back.

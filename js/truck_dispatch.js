@@ -327,6 +327,7 @@ const TruckDispatchSystem = (() => {
   }
 
   function _startLeg(trk) {
+    trk._dispatchPaused = false;
     // A refuel detour takes priority over the queue. If the station has gone
     // (demolished, or no route to it), drop the detour and fall through.
     if (trk._detourDesc) {
@@ -481,7 +482,9 @@ const TruckDispatchSystem = (() => {
         // and its planner, which waits for the leg to end, never got it
         // back. Restarting the leg from where it stands settles it: a truck
         // already at its stop finishes there, one short of it drives on.
-        const stalled = !trk._patrolling && !trk._awaitingArrivalGrace && !trk._legDone && !trk._needsReroute
+        // A trip the player stopped (_dispatchPaused) is waiting for Start,
+        // not stalled: restarting it drove the truck off again by itself.
+        const stalled = !trk._patrolling && !trk._dispatchPaused && !trk._awaitingArrivalGrace && !trk._legDone && !trk._needsReroute
           && !(trk._recoverTimer > 0) && !trk._haulState && !trk._refuelTarget && !trk._fuelledBy
           && !TruckSystem.isDriven(trk) && !(typeof truckStranded === 'function' && truckStranded(trk));
         trk._stallTicks = stalled ? (trk._stallTicks || 0) + 1 : 0;

@@ -306,6 +306,10 @@ const TruckPatrolPanel = (() => {
         showToast(`⏳ Truck is ${label}; it'll resume automatically in a few seconds`, '#e0c060', '#140e00', '#605010');
       } else if (wasPatrolling) {
         TruckSystem.stopPatrol(_target);
+        // A trip stopped part-way stays open for Start to resume, but marked
+        // paused: parked with a leg open otherwise reads as a stalled leg,
+        // and TruckDispatchSystem restarted it two seconds later.
+        if (_target._autoDispatch) _target._dispatchPaused = true;
         showToast('⏹ Patrol stopped', '#ff7a7a', '#180800', '#602010');
       } else if (_target._autoDispatch) {
         // Resume a paused auto-dispatch trip on its current leg.
