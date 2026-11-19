@@ -582,13 +582,27 @@ const MenuSystem = (() => {
       </div>`;
   }
 
-  // Renders the full save-slot list inside the Load Game modal.
+  // Renders the save-slot list inside the Load Game modal, filtered by the
+  // search box: every word typed must appear somewhere in the save's name,
+  // city, difficulty, map size or date (case-insensitive, any order).
   function renderLoadGameList() {
-    const list  = document.getElementById('load-game-list');
-    const slots = SaveSystem.listSlots();
-    list.innerHTML = slots.length
-      ? slots.map(slotCardHtml).join('')
-      : '<div class="menu-saves-empty">No saved worlds yet</div>';
+    const list   = document.getElementById('load-game-list');
+    const search = document.getElementById('load-game-search');
+    const slots  = SaveSystem.listSlots();
+    if (search) {
+      search.hidden = !slots.length;
+      search.placeholder = `Search ${slots.length} save${slots.length === 1 ? '' : 's'}…`;
+    }
+    const words = ((search && search.value) || '').toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = words.length ? slots.filter(s => {
+      const hay = [s.saveName, s.cityName, s.difficulty || 'Normal',
+        (WORLD_SIZES[s.worldSize] || WORLD_SIZES.normal).label, formatDate(s.savedAt),
+        s.permadeath ? 'permadeath' : ''].join(' ').toLowerCase();
+      return words.every(w => hay.includes(w));
+    }) : slots;
+    list.innerHTML = !slots.length ? '<div class="menu-saves-empty">No saved worlds yet</div>'
+      : !shown.length ? '<div class="menu-saves-empty">No saves match</div>'
+      : shown.map(slotCardHtml).join('');
   }
 
   function escapeHtml(s) {
@@ -617,8 +631,12 @@ const MenuSystem = (() => {
     folderReady.then(() => {
       renderLoadGameList();
     });
+    const search = document.getElementById('load-game-search');
+    if (search) search.value = '';                 // a fresh list each time it opens
     renderLoadGameList();
     document.getElementById('load-game-modal').classList.add('visible');
+    // Ready to type into, except on touch screens (the keyboard would cover the list).
+    if (search && !search.hidden && !matchMedia('(pointer: coarse)').matches) search.focus();
   }
 
   function hideLoadGameModal() {
@@ -1690,6 +1708,24 @@ const MenuSystem = (() => {
     document.getElementById('load-game-close').addEventListener('click', () => {
       SFX.click(); hideLoadGameModal();
     });
+    {
+      const search = document.getElementById('load-game-search');
+      if (search) {
+        search.addEventListener('input', renderLoadGameList);
+        // Escape clears the search first, then closes; Enter loads the only match.
+        search.addEventListener('keydown', e => {
+          e.stopPropagation();                    // typing here is not game hotkeys
+          if (e.key === 'Escape') {
+            if (search.value) { search.value = ''; renderLoadGameList(); }
+            else hideLoadGameModal();
+            e.preventDefault();
+          } else if (e.key === 'Enter') {
+            const cards = document.querySelectorAll('#load-game-list .save-slot-card');
+            if (cards.length === 1) cards[0].querySelector('[data-action="load"]')?.click();
+          }
+        });
+      }
+    }
 
     // Save-slot list — delegated so it works for dynamically rendered cards
     document.getElementById('load-game-list').addEventListener('click', e => {
@@ -2072,6 +2108,9 @@ const MenuSystem = (() => {
 
     // Esc key: toggle the pause menu — close it if open, open it if not.
     document.addEventListener('keydown', e => {
+      // Escape in the Load Game search with text in it clears the search
+      // (its own handler), rather than closing the list.
+      if (e.key === 'Escape' && e.target && e.target.id === 'load-game-search' && e.target.value) return;
       if (e.key === 'Escape') {
         // Modals are dismissed topmost-first, in the same order they stack
         // visually, so Escape always closes just the thing in front and

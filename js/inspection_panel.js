@@ -1380,7 +1380,7 @@ const InspectionPanel = (() => {
   function _drawIcon(canvas, type) {
     if (!canvas) return;
     const c = canvas.getContext('2d');
-    try { RenderSystem.drawIconInto(c, type, canvas.width); } catch (_e) {}
+    try { withoutImageFills(() => RenderSystem.drawIconInto(c, type, canvas.width)); } catch (_e) {}
     // Capabilities with no sprite or hand-drawn icon (the resource scans)
     // come out empty — CSS draws a plain research marker in the tile instead.
     const d = c.getImageData(0, 0, canvas.width, canvas.height).data;

@@ -170,7 +170,7 @@ const WireReach = (() => {
       // drawing it into this CPU canvas made the read-back below wait on the
       // GPU — ~15ms a building, which was the whole cost of a measurement.
       // It is at most half opaque, so it is never "solid" paint on its own.
-      const draw = () => SplitPhase.run('static', () => renderEntityAt(e, px, py, t));
+      const draw = () => withoutImageFills(() => SplitPhase.run('static', () => renderEntityAt(e, px, py, t)));
       if (typeof ContactShadow !== 'undefined' && ContactShadow.without) ContactShadow.without(draw); else draw();
     } catch (_e) {
       return null;
@@ -891,13 +891,13 @@ function _drawPvModule(x, y, w, h, cols, rows, lvl, t, fine, dust = 0) {
   ctx.fillStyle = '#4a5258';                                   // rear legs
   ctx.fillRect(x + w * 0.15, y + h - 1, 2, 4);
   ctx.fillRect(x + w * 0.85 - 2, y + h - 1, 2, 4);
-  ctx.fillStyle = '#9aa4ac'; ctx.fillRect(x, y, w, h);         // frame
+  ctx.fillStyle = '#9aa4ac'; _fillRectMetalG(ctx, x, y, w, h);         // frame
   ctx.fillStyle = '#c4ccd2'; ctx.fillRect(x, y, w, 1);
   const ix = x + 1.5, iy = y + 1.5, iw = w - 3, ih = h - 3;
   const g = ctx.createLinearGradient(0, iy, 0, iy + ih);
   g.addColorStop(0, lit ? '#1f5fae' : '#142a4a');
   g.addColorStop(1, lit ? '#0a2148' : '#08142a');
-  ctx.fillStyle = g; ctx.fillRect(ix, iy, iw, ih);
+  ctx.fillStyle = g; _fillRectMetalG(ctx, ix, iy, iw, ih);
   const cw = iw / cols, ch = ih / rows;
   if (lit) {
     // Cells shimmer faintly, each a step out of phase with its neighbour.
@@ -1331,7 +1331,7 @@ function renderSubstation3(e, px, py, t) {
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(cx, cy, ringR + W * 0.035, 0, Math.PI * 2); ctx.stroke();
     ctx.fillStyle = '#030614';
-    ctx.beginPath(); ctx.arc(cx, cy, ringR - W * 0.035, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, ringR - W * 0.035, 0, Math.PI * 2); _fillMetalG(ctx);
     ctx.strokeStyle = live(0.45);
     ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.arc(cx, cy, ringR - W * 0.035, 0, Math.PI * 2); ctx.stroke();
@@ -1922,7 +1922,7 @@ function renderSubstation4(e, px, py, t) {
       if (hot) _lgAdd(K, CX, CY, r * 3.2, coreRGB.join(','), 0.35 + 0.4 * pct);
       const g = ctx.createRadialGradient(X(CX - r * 0.3), Y(CY - r * 0.3), 0, X(CX), Y(CY), r * S);
       g.addColorStop(0, hot ? '#ffffff' : '#5a6478'); g.addColorStop(0.45, hot ? core(0.95) : '#3a4458'); g.addColorStop(1, hot ? core(0.25) : '#1a2030');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(CX), Y(CY), r * S, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(CX), Y(CY), r * S, 0, Math.PI * 2); _fillMetalG(ctx);
       // containment cage
       ctx.strokeStyle = hot ? 'rgba(255,255,255,0.45)' : 'rgba(150,160,180,0.35)'; ctx.lineWidth = 0.8 * S;
       for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.ellipse(X(CX), Y(CY), (r + 4) * S, (r + 4) * S * Math.abs(Math.cos(t * 0.7 + k * 1.05)), 0, 0, Math.PI * 2); ctx.stroke(); }
@@ -2065,7 +2065,7 @@ function renderSubstation5(e, px, py, t) {
     {
       const g = ctx.createRadialGradient(X(CX - SR * 0.25), Y(CY - SR * 0.25), 0, X(CX), Y(CY), SR * S);
       g.addColorStop(0, hot ? '#ffffff' : '#6a6470'); g.addColorStop(0.5, hot ? sunA(1) : '#3e3a46'); g.addColorStop(1, hot ? sunA(0.55) : '#1e1c24');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(CX), Y(CY), SR * S, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(CX), Y(CY), SR * S, 0, Math.PI * 2); _fillMetalG(ctx);
       if (hot && detail) {
         // granulation and a prominence looping off the limb
         for (let k = 0; k < 10; k++) { const a = jit(200 + k) * Math.PI * 2, r = jit(220 + k) * SR * 0.7; dot(CX + Math.cos(a) * r, CY + Math.sin(a) * r, 1.4, 'rgba(255,255,230,0.35)'); }
@@ -2184,6 +2184,7 @@ function renderEngOffice(e, px, py, t) {
 
   // ── Site: paved pad, kerb, lane markings, planting ──
   RR(4, 4, 392, 312, 8, L('#4a535d', '#1b2129', '#17191c'));
+  _bldGrain(ctx, 'mottle', 0.5);
   ctx.strokeStyle = L('#7a848e', '#323a44', '#24272b'); ctx.lineWidth = 2 * S; ctx.strokeRect(X(8), Y(8), 384 * S, 304 * S);
   if (detail) {
     for (let x = 24; x < 390; x += 24) R(x, 8, 0.6, 304, 'rgba(0,0,0,0.07)');
@@ -2384,6 +2385,7 @@ function renderMonitor(e, px, py, t) {
     ctx.beginPath(); ctx.ellipse(cx + 2, py + TILE - 3, 12, 3.2, 0, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = on ? '#2c3c3c' : '#1a2424';
     ctx.beginPath(); ctx.moveTo(cx - 10, py + TILE - 3); ctx.lineTo(cx + 10, py + TILE - 3); ctx.lineTo(cx + 7, py + TILE - 8); ctx.lineTo(cx - 7, py + TILE - 8); ctx.closePath(); ctx.fill();
+    _bldGrain(ctx, 'mottle', 0.5);
     ctx.fillStyle = on ? '#3a4e4e' : '#222e2e';
     ctx.fillRect(cx - 7, py + TILE - 8, 14, 1.5);
     ctx.fillStyle = '#8a9a9a';
@@ -2416,7 +2418,7 @@ function renderMonitor(e, px, py, t) {
     const cg = ctx.createLinearGradient(0, by, 0, by + bodyH);
     cg.addColorStop(0, on ? '#2a4646' : '#182626'); cg.addColorStop(1, on ? '#0c1a1a' : '#08100f');
     ctx.fillStyle = cg;
-    ctx.beginPath(); ctx.roundRect(bx, by, bodyW, bodyH, 3); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(bx, by, bodyW, bodyH, 3); _fillMetalG(ctx);
     ctx.strokeStyle = on ? `rgba(64,255,200,${0.5 + 0.2*Math.sin(t*3)})` : '#1a3030'; ctx.lineWidth = 1.2; ctx.stroke();
     // corner rivets and a rain hood along the top
     ctx.fillStyle = on ? '#7ac0b0' : '#3a5450';
@@ -2592,7 +2594,7 @@ function renderBeacon(e, px, py, t) {
 
     // ── Compound ───────────────────────────────────────────────────────
     ctx.fillStyle = C('#343a42', '#23272d');
-    ctx.beginPath(); ctx.roundRect(X(8), Y(150), 184*u, 82*u, 5*u); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(X(8), Y(150), 184*u, 82*u, 5*u); _fillMetalG(ctx);
     if (detail) for (let k = 0; k < 80; k++) {
       R(12 + (k*67) % 176, 154 + (k*29) % 74, 1.2, 1.2, k % 3 ? 'rgba(160,170,180,0.14)' : 'rgba(8,10,12,0.25)');
     }
@@ -2995,7 +2997,7 @@ function renderEVCharger(e, px, py, t) {
   asph.addColorStop(0, '#2e3236'); asph.addColorStop(1, '#25292d');
   ctx.fillStyle = asph;
   const bayAreaX = px + 4*S, bayAreaW = W*0.735;
-  ctx.beginPath(); ctx.roundRect(bayAreaX, py + 4*S, bayAreaW, H - 8*S, 3*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(bayAreaX, py + 4*S, bayAreaW, H - 8*S, 3*S); _fillMetalG(ctx);
   // LED kerb strip along the bay area's lower lip
   ctx.fillStyle = on ? 'rgba(64,255,128,0.75)' : 'rgba(40,90,60,0.6)';
   ctx.fillRect(bayAreaX + 3*S, py + H - 6.5*S, bayAreaW - 6*S, 1.2*S);
@@ -3044,7 +3046,7 @@ function renderEVCharger(e, px, py, t) {
     [[-1, -0.30], [1, -0.30], [-1, 0.30], [1, 0.30]].forEach(([sx, sy]) => ctx.fillRect(cx + sx*cw*0.5 - (sx > 0 ? 0.4*S : 1.8*S), cy + sy*ch - 2.6*S, 2.2*S, 5.2*S));
     const bg = ctx.createLinearGradient(cx - cw/2, 0, cx + cw/2, 0);
     bg.addColorStop(0, `hsl(${hue},55%,62%)`); bg.addColorStop(0.5, `hsl(${hue},55%,46%)`); bg.addColorStop(1, `hsl(${hue},50%,30%)`);
-    ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(cx - cw/2, cy - ch/2, cw, ch, 4.5*S); ctx.fill();
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(cx - cw/2, cy - ch/2, cw, ch, 4.5*S); _fillMetalG(ctx);
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 0.7*S; ctx.stroke();
     ctx.fillStyle = '#12202a';   // windscreen, roof glass, rear glass
     ctx.beginPath(); ctx.roundRect(cx - cw*0.36, cy - ch*0.36, cw*0.72, ch*0.20, 1.6*S); ctx.fill();
@@ -3123,7 +3125,7 @@ function renderEVCharger(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.30)';
   ctx.beginPath(); ctx.roundRect(cX0 + 2.5*S, canopyY0 + 3.5*S, cX1 - cX0, canopyY1 - canopyY0, 3*S); ctx.fill();
   ctx.fillStyle = '#c4cccc';   // frame
-  ctx.beginPath(); ctx.roundRect(cX0, canopyY0, cX1 - cX0, canopyY1 - canopyY0, 3*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(cX0, canopyY0, cX1 - cX0, canopyY1 - canopyY0, 3*S); _fillMetalG(ctx);
   const modCols = 8, modRows = 2;
   const mX0 = cX0 + 2*S, mY0 = canopyY0 + 2*S, mW = (cX1 - cX0 - 4*S) / modCols, mH = (canopyY1 - canopyY0 - 9*S) / modRows;
   for (let r = 0; r < modRows; r++) for (let c = 0; c < modCols; c++) {
@@ -3169,7 +3171,7 @@ function renderEVCharger(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(yX + 2*S, trY + 2.5*S, yW, trH);
   const trg = ctx.createLinearGradient(yX, 0, yX + yW, 0);
   trg.addColorStop(0, '#5f7a68'); trg.addColorStop(1, '#354a3c');
-  ctx.fillStyle = trg; ctx.beginPath(); ctx.roundRect(yX, trY, yW, trH, 2*S); ctx.fill();
+  ctx.fillStyle = trg; ctx.beginPath(); ctx.roundRect(yX, trY, yW, trH, 2*S); _fillMetalG(ctx);
   ctx.strokeStyle = '#1a261e'; ctx.lineWidth = 0.7*S; ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.7*S;
   for (let q = 1; q < 6; q++) { const fx = yX + yW*q/6; ctx.beginPath(); ctx.moveTo(fx, trY + 2*S); ctx.lineTo(fx, trY + trH - 5*S); ctx.stroke(); }
@@ -3181,9 +3183,9 @@ function renderEVCharger(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.30)'; ctx.fillRect(yX + 2*S, bfY + 2.5*S, yW, bfH);
   const bfg = ctx.createLinearGradient(yX, 0, yX + yW, 0);
   bfg.addColorStop(0, '#f0f4f2'); bfg.addColorStop(1, '#9aa4a0');
-  ctx.fillStyle = bfg; ctx.beginPath(); ctx.roundRect(yX, bfY, yW, bfH, 2*S); ctx.fill();
+  ctx.fillStyle = bfg; ctx.beginPath(); ctx.roundRect(yX, bfY, yW, bfH, 2*S); _fillMetalG(ctx);
   ctx.strokeStyle = '#4a5450'; ctx.lineWidth = 0.7*S; ctx.stroke();
-  ctx.fillStyle = '#0e1612'; ctx.fillRect(yX + 2*S, bfY + 2*S, yW - 4*S, bfH - 12*S);
+  ctx.fillStyle = '#0e1612'; _fillRectMetalG(ctx, yX + 2*S, bfY + 2*S, yW - 4*S, bfH - 12*S);
   const level = on ? 0.55 + 0.25*Math.sin(t*0.4) + (chargingCars.length ? -0.12 : 0.12) : 0.2;
   const nLed = 8;
   for (let q = 0; q < nLed; q++) {
@@ -3527,6 +3529,7 @@ function renderSolar2(e, px, py, t) {
     const fine = Camera.zoom > 0.45;
     const on   = lvl > 0.05;
     ctx.fillStyle = '#2a2b24'; ctx.fillRect(px + 3, py + 3, W - 6, H - 6);
+    _bldGrainRect(ctx, 'grit', px + 3, py + 3, W - 6, H - 6);
     if (fine) {
       ctx.setLineDash([2, 3]); ctx.strokeStyle = 'rgba(200,204,196,0.3)'; ctx.lineWidth = 1;
       ctx.strokeRect(px + 4.5, py + 4.5, W - 9, H - 9); ctx.setLineDash([]);
@@ -3607,7 +3610,7 @@ function _s3Row(x, y, w, d, tilt, lit, fine) {
   const g = ctx.createLinearGradient(0, cy - half, 0, cy + half);
   const hi = lit ? '#2f78d0' : '#183a68', lo = lit ? '#0b2552' : '#081a34';
   g.addColorStop(0, s <= 0 ? hi : lo); g.addColorStop(1, s <= 0 ? lo : hi);
-  ctx.fillStyle = g; ctx.fillRect(x, cy - half, w, half * 2);
+  ctx.fillStyle = g; _fillRectMetalG(ctx, x, cy - half, w, half * 2);
   const mods = 6, mw = w / mods;
   // Each module catches the sky a little differently, with a soft sheen
   // across its upper corner.
@@ -3675,6 +3678,7 @@ function renderSolar3(e, px, py, t) {
   // ── Static: pad, fence, road, rows, pipework, tank, skid ──
   if (Sp) {
     ctx.fillStyle = '#26271f'; ctx.fillRect(X(2), Y(2), W - 4, H - 4);
+    _bldGrainRect(ctx, 'grit', X(2), Y(2), W - 4, H - 4);
     ctx.fillStyle = 'rgba(255,255,240,0.05)';
     for (let k = 0; k < 70; k++) {
       const sx = (k * 97.3) % (W - 8), sy = (k * 53.7 + k * k * 0.31) % (H - 8);
@@ -3725,7 +3729,7 @@ function renderSolar3(e, px, py, t) {
     const bg = ctx.createLinearGradient(X(tx - tr), 0, X(tx + tr), 0);
     bg.addColorStop(0, '#4a3a2e'); bg.addColorStop(0.35, '#a8927a'); bg.addColorStop(0.7, '#6a5644'); bg.addColorStop(1, '#2e241c');
     ctx.fillStyle = bg;
-    ctx.fillRect(X(tx - tr), Y(tTop), tr * 2, tBot - tTop);
+    _fillRectMetalG(ctx, X(tx - tr), Y(tTop), tr * 2, tBot - tTop);
     ctx.beginPath(); ctx.ellipse(X(tx), Y(tBot), tr, 6, 0, 0, Math.PI); ctx.fill();
     ctx.fillStyle = 'rgba(224,176,80,0.6)';
     for (const by of [tTop + 16, tTop + 40, tTop + 64]) ctx.fillRect(X(tx - tr), Y(by), tr * 2, 2);
@@ -3783,7 +3787,7 @@ function renderSolar3(e, px, py, t) {
 
     // Inverter / transformer skid.
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(X(186), Y(128), 46, 26);
-    ctx.fillStyle = '#3c4448'; ctx.fillRect(X(184), Y(125), 46, 26);
+    ctx.fillStyle = '#3c4448'; _fillRectMetalG(ctx, X(184), Y(125), 46, 26);
     ctx.fillStyle = '#56626a'; ctx.fillRect(X(184), Y(125), 46, 4);
     ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 0.6;
     ctx.beginPath();
@@ -4218,6 +4222,7 @@ function renderBattery(e, px, py, t) {
     // ── Concrete pad ──
     rr(3.5, 6, 35, 73, 3, 'rgba(0,0,0,0.28)');
     rr(2, 4, 36, 73, 3, '#8b8f95', '#6c7076', 1);
+    _bldGrain(ctx, 'mottle', 0.5);
     ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(X(3), Y(5), 34 * S, 1.2 * S);
     // Hazard stripes along the front apron
     ctx.save();
@@ -4678,8 +4683,10 @@ function renderLightningRod3(e, px, py, t) {
     k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   }
   ctx.closePath(); ctx.fill();
+  _bldGrain(ctx, 'mottle', 0.5);
   ctx.fillStyle = '#34383f';
   ctx.beginPath(); ctx.ellipse(cx, baseY - 1 * u, padR * 0.78, padRy * 0.72, 0, 0, Math.PI * 2); ctx.fill();
+  _bldGrain(ctx, 'mottle', 0.4);
   ctx.strokeStyle = hot ? '#ffe0b0' : '#b87038'; ctx.lineWidth = 1.6 * u;
   ctx.beginPath(); ctx.ellipse(cx, baseY, padR * 0.92, padRy * 0.88, 0, 0, Math.PI * 2); ctx.stroke();
   if (hot) {                                                   // shockwave along the ground
@@ -4893,7 +4900,7 @@ function _mk3Blade(len, root, u, on, night, fine = true) {
   g.addColorStop(0,   on ? '#5e6e78' : '#3e464a');
   g.addColorStop(0.45, on ? '#34404a' : '#2a3034');
   g.addColorStop(1,   on ? '#1c242a' : '#161a1c');
-  ctx.fillStyle = g; path(); ctx.fill();
+  ctx.fillStyle = g; path(); _fillMetalG(ctx);
   // leading edge
   ctx.strokeStyle = on ? 'rgba(90,230,255,0.85)' : 'rgba(70,110,120,0.5)';
   ctx.lineWidth = 0.9*u;
@@ -4943,6 +4950,7 @@ function _renderWindMk3(e, px, py, W, H, t) {
   if (Sp) {
   ctx.fillStyle = 'rgba(120,116,106,0.55)';
   ctx.beginPath(); ctx.ellipse(hubX, baseY + 2*u, 30*u, 9*u, 0, 0, Math.PI*2); ctx.fill();
+  _bldGrain(ctx, 'grit');
   ctx.fillStyle = 'rgba(30,34,32,0.5)'; ctx.fillRect(hubX - 2*u, baseY + 4*u, 4*u, py + H - baseY - 4*u);
   }
   if (Ap && on) {

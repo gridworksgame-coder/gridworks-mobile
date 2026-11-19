@@ -18,11 +18,11 @@ function _bankKit(px, py, S) {
   const X = v => px + v * S, Y = v => py + v * S;
   const k = {
     X, Y, S,
-    R(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), w * S, h * S); },
-    RR(x, y, w, h, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(X(x), Y(y), w * S, h * S, r * S); ctx.fill(); },
+    R(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), w * S, h * S); _kitGrain(c, X(x), Y(y), w * S, h * S, true); },
+    RR(x, y, w, h, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(X(x), Y(y), w * S, h * S, r * S); ctx.fill(); _kitGrain(c, 0, 0, w * S, h * S); },
     dot(x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(x), Y(y), Math.max(0.01, r * S), 0, Math.PI * 2); ctx.fill(); },
     ell(x, y, rx, ry, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(X(x), Y(y), Math.max(0.01, rx * S), Math.max(0.01, ry * S), 0, 0, Math.PI * 2); ctx.fill(); },
-    poly(pts, c) { ctx.fillStyle = c; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.closePath(); ctx.fill(); },
+    poly(pts, c) { ctx.fillStyle = c; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.closePath(); ctx.fill(); { const [pw, ph] = _kitPolySize(pts, S, S); _kitGrain(c, 0, 0, pw, ph); } },
     ln(x1, y1, x2, y2, c, w = 1) { ctx.strokeStyle = c; ctx.lineWidth = w * S; ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); },
     glow(x, y, r, rgb, a) {
       if (a <= 0.005) return;

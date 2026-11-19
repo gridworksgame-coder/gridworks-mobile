@@ -183,7 +183,7 @@ function renderHydroGenerator(e, px, py, t) {
       const ag = ctx.createLinearGradient(0, -5 * S, 0, 5 * S);
       ag.addColorStop(0, '#e4e8ec'); ag.addColorStop(0.5, '#b4bcc4'); ag.addColorStop(1, '#6a727a');
       ctx.fillStyle = ag; ctx.strokeStyle = '#2a3036'; ctx.lineWidth = 0.8 * S;
-      ctx.beginPath(); ctx.moveTo(hubR * 0.8, -5 * S); ctx.lineTo(R * 0.9, -3 * S); ctx.lineTo(R * 0.9, 3 * S); ctx.lineTo(hubR * 0.8, 5 * S); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hubR * 0.8, -5 * S); ctx.lineTo(R * 0.9, -3 * S); ctx.lineTo(R * 0.9, 3 * S); ctx.lineTo(hubR * 0.8, 5 * S); ctx.closePath(); _fillMetalG(ctx); ctx.stroke();
       rr(R * 0.86, -4.5 * S, 6 * S, 9 * S, 1 * S, '#8a949c', '#2a3036', 0.7 * S);   // bolted foot on the stator
       ctx.restore();
     }
@@ -538,7 +538,7 @@ function renderHydroTurbine(e, px, py, t) {
       const x0 = piers[b] + pierW / 2, x1 = piers[b + 1] - pierW / 2;
       const wg = ctx.createLinearGradient(0, -B, 0, -B + intakeD);
       wg.addColorStop(0, fuelled ? '#2a7ab4' : '#204a6a'); wg.addColorStop(1, '#0a1c2a');
-      ctx.fillStyle = wg; ctx.fillRect(x0, -B, x1 - x0, intakeD);
+      ctx.fillStyle = wg; _fillRectMetalG(ctx, x0, -B, x1 - x0, intakeD);
       if (fuelled) {
         ctx.strokeStyle = 'rgba(200,240,255,0.35)'; ctx.lineWidth = 0.8 * S;
         const off = (t * 14 * S * (0.5 + fillFrac)) % (6 * S);
@@ -586,8 +586,8 @@ function renderHydroTurbine(e, px, py, t) {
       ctx.closePath();
     };
     ctx.save(); ctx.translate(shX * 0.5, shY * 0.5); ctx.fillStyle = 'rgba(0,0,0,0.3)'; strip(-0.5, 0.5, 1 * S); ctx.fill(); ctx.restore();
-    ctx.fillStyle = '#1a1c20'; strip(-0.5, 0.5, 1.1 * S); ctx.fill();
-    ctx.fillStyle = '#98a2ac'; strip(-0.5, 0.5, 0); ctx.fill();
+    ctx.fillStyle = '#1a1c20'; strip(-0.5, 0.5, 1.1 * S); _fillMetalG(ctx);
+    ctx.fillStyle = '#98a2ac'; strip(-0.5, 0.5, 0); _fillMetalG(ctx);
     ctx.fillStyle = 'rgba(20,28,36,0.30)'; strip(-0.5, -0.22, 0); ctx.fill();
     ctx.fillStyle = 'rgba(20,28,36,0.22)'; strip(0.36, 0.5, 0); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.40)'; strip(0.02, 0.20, 0); ctx.fill();
@@ -1088,14 +1088,14 @@ function renderCarbonCapture(e, px, py, t) {
     const mx = BX + 2 + c*MW, my = BY + 2 + r*(MH + 6), mw = MW - 2, mh = MH - 2;
     const hg = ctx.createLinearGradient(X(mx), Y(my), X(mx + mw), Y(my + mh));
     hg.addColorStop(0, L('#5e8a7c', '#3e5e56', '#3a4440')); hg.addColorStop(1, L('#2e4e44', '#1e3430', '#202624'));
-    ctx.fillStyle = hg; ctx.fillRect(X(mx), Y(my), mw*S, mh*S);
+    ctx.fillStyle = hg; _fillRectMetalG(ctx, X(mx), Y(my), mw*S, mh*S);
     ctx.strokeStyle = '#101c18'; ctx.lineWidth = 0.8*S; ctx.strokeRect(X(mx), Y(my), mw*S, mh*S);
     const fx = mx + mw/2, fy = my + 22, fr = 17;
     fans.push([fx, fy, fr]);
     // sorbent bed: honeycomb behind the blades, glowing faintly while it loads
     ctx.save();
     ctx.beginPath(); ctx.arc(X(fx), Y(fy), fr*S, 0, TAU); ctx.clip();
-    ctx.fillStyle = '#0c1412'; ctx.fillRect(X(fx - fr), Y(fy - fr), fr*2*S, fr*2*S);
+    ctx.fillStyle = '#0c1412'; _fillRectMetalG(ctx, X(fx - fr), Y(fy - fr), fr*2*S, fr*2*S);
     if (detail) {
       ctx.strokeStyle = on ? `rgba(110,240,180,${(0.35 + 0.15*Math.sin(t*1.5 + r + c)).toFixed(3)})` : 'rgba(90,120,110,0.35)';
       ctx.lineWidth = 0.5*S;
@@ -1173,7 +1173,7 @@ function renderCarbonCapture(e, px, py, t) {
     RR(cx - r + 6, top + 6, r*2, bot - top, r, SHADOW);
     const g = ctx.createLinearGradient(X(cx - r), 0, X(cx + r), 0);
     g.addColorStop(0, L('#b8c0bc', '#7a8288', '#3a3e3c')); g.addColorStop(0.4, L('#f4f8f6', '#a8b0b6', '#4a4e4c')); g.addColorStop(1, L('#7a8480', '#4a5258', '#2a2e2c'));
-    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(X(cx - r), Y(top), r*2*S, (bot - top)*S, r*S); ctx.fill();
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(X(cx - r), Y(top), r*2*S, (bot - top)*S, r*S); _fillMetalG(ctx);
     ctx.strokeStyle = '#2a3230'; ctx.lineWidth = 0.8*S; ctx.stroke();
     for (let y = top + 22; y < bot - 6; y += 22) R(cx - r, y, r*2, 1.2, 'rgba(0,0,0,0.18)');
     // steam jacket heating through its cycle
@@ -1440,7 +1440,7 @@ function renderCoalGenerator(e, px, py, t) {
     const chPath = (ox, oy) => { ctx.beginPath(); ctx.moveTo(chX - cbw + ox, chBase + oy); ctx.lineTo(chX + cbw + ox, chBase + oy); ctx.lineTo(chX + ctw + ox, chTop + oy); ctx.lineTo(chX - ctw + ox, chTop + oy); ctx.closePath(); };
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; chPath(6*S, 6*S); ctx.fill();
     ctx.fillStyle = hgrad(chX - cbw, chX + cbw, ['#bcb8b0', '#ece8e0', '#d4d0c8', '#76726a']);
-    chPath(0, 0); ctx.fill();
+    chPath(0, 0); _fillMetalG(ctx);
     ctx.save(); chPath(0, 0); ctx.clip();
     [0, 2].forEach(b => { ctx.fillStyle = '#c03020'; ctx.fillRect(chX - cbw, chTop + 3*S + b*6*S, cbw*2, 5*S); });
     ctx.fillStyle = 'rgba(40,36,30,0.16)';
@@ -1471,7 +1471,7 @@ function renderCoalGenerator(e, px, py, t) {
     if (Sp) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(bhX + 5*S, bhY + 6*S, bhW, bhH);
     ctx.fillStyle = hgrad(bhX, bhX + bhW, ['#a4583c', '#8a4630', '#663222']);
-    ctx.fillRect(bhX, bhY, bhW, bhH);
+    _fillRectMetalG(ctx, bhX, bhY, bhW, bhH);
     if (detail) {
       ctx.strokeStyle = 'rgba(40,16,8,0.32)'; ctx.lineWidth = 0.7*S;
       let row = 0;
@@ -1626,7 +1626,7 @@ function renderCoalGenerator(e, px, py, t) {
     // the turbine (HP + LP cylinders) and generator ──
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(thX + 5*S, thY + 6*S, thW, thH);
     ctx.fillStyle = hgrad(thX, thX + thW, ['#b0b8be', '#8e979e', '#667078']);
-    ctx.fillRect(thX, thY, thW, thH);
+    _fillRectMetalG(ctx, thX, thY, thW, thH);
     if (detail) {
       ctx.strokeStyle = 'rgba(30,36,40,0.28)'; ctx.lineWidth = S;
       ctx.beginPath(); for (let x = thX + 3*S; x < thX + thW; x += 3.5*S) { ctx.moveTo(x, thY + 7*S); ctx.lineTo(x, thY + thH); } ctx.stroke();
@@ -2049,151 +2049,310 @@ function _wfTrefoil(cx, cy, r, bg, fg) {
 }
 
 // ── Coal Waste Processing Facility (8×7) ──
-// Sawtooth-roof processing hall feeding a spinning rotary kiln; the kiln's
-// residue rides a conveyor out to an ash stockpile that grows with stored
-// waste. Chimney smokes and the skylights glow while powered.
+// A coal-ash (CCR) plant, laid out in 320×280 units (40 a tile, × S):
+//   receiving   a corrugated tipping hall top-left; a dump truck backs up
+//               to its door and tips ash in now and then while there is
+//               room (the haul trucks themselves stop anywhere alongside)
+//   kiln line   an inclined belt up to the rotary kiln (riding rings,
+//               girth gear, burner hood with its flame), the baghouse that
+//               filters its off-gas, ducted to a banded stack that smokes
+//   storage     two fly-ash silos fed by a pneumatic line, with the gauge
+//   disposal    a lined ash cell bottom-right: berms, black HDPE liner, the
+//               ash tipped off the discharge belt at the right end and
+//               pushed out leftward by a dozer as the stored waste grows
+//   water       an ash-water settling pond bottom-left, aerator turning
+//   control     a small control cabin by the truck bay
+// The ash (cracked-mud scan, greyed) and the berms are Poly Haven scans (PhotoGround,
+// skipped during read-backs, see withoutImageFills); metal and concrete
+// get the building grain. Unpowered, the belts, kiln, dozer, flame and
+// smoke all stop; the stored ash stays where it is.
 function renderCoalWasteFacility(e, px, py, t) {
-  const { W, H, S, fill } = _wfDims(e, T.COALWASTE);
-  const on = e.powered;
+  const { S, fill } = _wfDims(e, T.COALWASTE);
+  const on = !!e.powered;
   const accent = '#e0a040';
+  const dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+  const detail = typeof Camera === 'undefined' || Camera.zoom > 0.45;
+  const X = v => px + v*S, Y = v => py + v*S;
+  const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), w*S, h*S); };
+  const RR = (x, y, w, h, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(X(x), Y(y), w*S, h*S, r*S); ctx.fill(); };
+  const ell = (x, y, rx, ry, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(X(x), Y(y), rx*S, ry*S, 0, 0, Math.PI*2); ctx.fill(); };
+  const ln = (x1, y1, x2, y2, c, w) => { ctx.strokeStyle = c; ctx.lineWidth = w*S; ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); };
+  const shadow = (x, y, w, h, r) => _wfShadow(X(x), Y(y), w*S, h*S, (r || 2)*S);
+  const imgOK = typeof _imageFillsOff === 'undefined' || !_imageFillsOff;
+  const photo = (name, span) => (imgOK && typeof PhotoGround !== 'undefined') ? PhotoGround.pattern(ctx, name, span) : null;
+  const grain = (kind, a) => { if (detail && typeof _bldGrain === 'function') _bldGrain(ctx, kind, a); };
+  const winGlow = (x, y, w, h) => {
+    R(x, y, w, h, dark > 0.3 && on ? `rgba(255,214,140,${(0.55 + 0.35*dark).toFixed(2)})` : '#26323a');
+    if (dark <= 0.3) R(x, y, w*0.4, h, 'rgba(255,255,255,0.08)');
+  };
   ctx.save();
 
-  // ── Processing hall ──
-  const hx = px + W*0.05, hy = py + H*0.26, hw = W*0.46, roofH = H*0.42, wallH = H*0.17;
-  _wfShadow(hx, hy, hw, roofH + wallH, S, 3*S);
-  ctx.fillStyle = '#2a2620';
-  ctx.beginPath(); ctx.roundRect(hx, hy, hw, roofH, 3*S); ctx.fill();
-  const teeth = 5, bw = hw / teeth;
-  for (let i = 0; i < teeth; i++) {
-    const bx = hx + bw*i;
-    const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
-    g.addColorStop(0, '#565046'); g.addColorStop(0.75, '#35302a'); g.addColorStop(1, '#221e1a');
-    ctx.fillStyle = g;
-    ctx.fillRect(bx + S, hy + 2*S, bw - 2*S, roofH - 4*S);
-    ctx.fillStyle = on ? `rgba(255,180,70,${0.45 + 0.15*Math.sin(t*1.3 + i)})` : 'rgba(90,110,120,0.35)';
-    ctx.fillRect(bx + bw - 7*S, hy + 5*S, 4*S, roofH - 10*S);
-  }
-  ctx.strokeStyle = '#5a5040'; ctx.lineWidth = 1.5*S;
-  ctx.beginPath(); ctx.roundRect(hx, hy, hw, roofH, 3*S); ctx.stroke();
-
-  const wy = hy + roofH;
-  ctx.fillStyle = '#1e1a15'; ctx.fillRect(hx, wy, hw, wallH);
-  ctx.strokeStyle = '#4a4032'; ctx.lineWidth = S; ctx.strokeRect(hx, wy, hw, wallH);
-  for (let d = 0; d < 3; d++) {
-    const dx = hx + hw*(0.07 + d*0.315), dw = hw*0.23, dy = wy + wallH*0.22, dh = wallH*0.78;
-    if (d === 1) {
-      const g = ctx.createLinearGradient(0, dy, 0, dy + dh);
-      g.addColorStop(0, on ? `rgba(255,140,40,${0.85 + 0.15*Math.sin(t*5)})` : '#2a2016');
-      g.addColorStop(1, on ? 'rgba(120,40,10,0.9)' : '#120e0a');
-      ctx.fillStyle = g; ctx.fillRect(dx, dy, dw, dh);
-    } else {
-      ctx.fillStyle = '#3a342a'; ctx.fillRect(dx, dy, dw, dh);
-      ctx.strokeStyle = '#26221c'; ctx.lineWidth = S;
-      for (let k = 1; k < 5; k++) { const ly = dy + dh*k/5; ctx.beginPath(); ctx.moveTo(dx, ly); ctx.lineTo(dx + dw, ly); ctx.stroke(); }
+  // ── Settling pond (bottom-left) ───────────────────────────────────
+  {
+    const x = 14, y = 196, w = 104, h = 70;
+    RR(x, y, w, h, 8, '#5c584f');                       // concrete rim
+    grain('mottle', 0.8);
+    RR(x + 4, y + 4, w - 8, h - 8, 6, '#3a3a34');       // sludge margin
+    const wg = ctx.createLinearGradient(0, Y(y), 0, Y(y + h));
+    wg.addColorStop(0, '#5a6a66'); wg.addColorStop(1, '#3c4a48');
+    ctx.fillStyle = wg; ctx.beginPath(); ctx.roundRect(X(x + 8), Y(y + 8), (w - 16)*S, (h - 16)*S, 5*S); ctx.fill();
+    if (detail) {                                       // a pale scum line where the ash settles out
+      ctx.strokeStyle = 'rgba(170,170,160,0.35)'; ctx.lineWidth = 1.2*S;
+      ctx.beginPath(); ctx.roundRect(X(x + 10), Y(y + 10), (w - 20)*S, (h - 20)*S, 4*S); ctx.stroke();
+      ctx.strokeStyle = 'rgba(230,240,240,0.18)'; ctx.lineWidth = 0.8*S;
+      for (let k = 0; k < 4; k++) {
+        const ph = on ? (t*0.12 + k/4) % 1 : k/4;
+        const rx = x + 20 + ((k*37) % (w - 40)), ry = y + 16 + ph*(h - 32);
+        ctx.beginPath(); ctx.moveTo(X(rx), Y(ry)); ctx.lineTo(X(rx + 14), Y(ry)); ctx.stroke();
+      }
     }
-  }
-  _wfHazardStripe(hx, wy + wallH + 3*S, hw, 5*S, S);
-
-  // ── Chimney ──
-  const chX = px + W*0.10, chTop = py + H*0.05, chBase = hy + roofH*0.4, chW = 15*S;
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(chX - chW/2 + 5*S, chTop + 6*S, chW, chBase - chTop);
-  const cg = ctx.createLinearGradient(chX - chW/2, 0, chX + chW/2, 0);
-  cg.addColorStop(0, '#6a6258'); cg.addColorStop(0.5, '#4a443c'); cg.addColorStop(1, '#2a2620');
-  ctx.fillStyle = cg; ctx.fillRect(chX - chW/2, chTop, chW, chBase - chTop);
-  [0, 2].forEach(b => { ctx.fillStyle = '#a03020'; ctx.fillRect(chX - chW/2, chTop + b*6*S + 4*S, chW, 5*S); });
-  ctx.fillStyle = '#1a1612';
-  ctx.beginPath(); ctx.ellipse(chX, chTop, chW/2 + S, 3*S, 0, 0, Math.PI*2); ctx.fill();
-  if (on) {
-    ctx.fillStyle = `rgba(255,120,30,${0.35 + 0.2*Math.sin(t*6)})`;
-    ctx.beginPath(); ctx.ellipse(chX, chTop, chW/2 - 2*S, 2*S, 0, 0, Math.PI*2); ctx.fill();
-  }
-  _wfSmoke(chX, chTop - 3*S, S, t, '110,104,96', on, 0.45);
-
-  // ── Rotary kiln ──
-  const kl = W*0.37, kr = 14*S;
-  const kx = hx + hw + kl/2 - 4*S, ky = py + H*0.47, kAng = -0.16;
-  ctx.save();
-  ctx.translate(kx, ky); ctx.rotate(kAng);
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(-kl/2 + 4*S, -kr + 9*S, kl, kr*2);
-  ctx.fillStyle = '#2c2822';
-  [-0.28, 0.28].forEach(f => ctx.fillRect(kl*f - 7*S, 0, 14*S, kr + 10*S));
-  const kg = ctx.createLinearGradient(0, -kr, 0, kr);
-  kg.addColorStop(0, '#5a4c3a'); kg.addColorStop(0.3, '#9a8260'); kg.addColorStop(1, '#2e261c');
-  ctx.fillStyle = kg;
-  ctx.beginPath(); ctx.roundRect(-kl/2, -kr, kl, kr*2, 4*S); ctx.fill();
-  ctx.save();
-  ctx.beginPath(); ctx.roundRect(-kl/2, -kr, kl, kr*2, 4*S); ctx.clip();
-  ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 2*S;
-  const off = on ? (t*18*S) % (12*S) : 0;
-  for (let x = -kl/2 - 12*S + off; x < kl/2 + 12*S; x += 12*S) {
-    ctx.beginPath(); ctx.moveTo(x, -kr); ctx.lineTo(x + 5*S, kr); ctx.stroke();
-  }
-  // heat bloom along the underside near the burner
-  if (on) {
-    const hg = ctx.createLinearGradient(-kl/2, 0, kl*0.1, 0);
-    hg.addColorStop(0, `rgba(255,110,30,${0.35 + 0.1*Math.sin(t*4)})`); hg.addColorStop(1, 'rgba(255,110,30,0)');
-    ctx.fillStyle = hg; ctx.fillRect(-kl/2, -kr, kl, kr*2);
-  }
-  ctx.restore();
-  ctx.fillStyle = '#231e17';
-  [-0.28, 0.28].forEach(f => ctx.fillRect(kl*f - 3.5*S, -kr - 2*S, 7*S, kr*2 + 4*S));
-  ctx.strokeStyle = '#5a4c38'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(-kl/2, -kr, kl, kr*2, 4*S); ctx.stroke();
-  // discharge hood on the far end
-  ctx.fillStyle = '#3a342c'; ctx.strokeStyle = '#5a5040';
-  ctx.beginPath(); ctx.roundRect(kl/2 - 4*S, -kr - 4*S, 12*S, kr*2 + 8*S, 2*S); ctx.fill(); ctx.stroke();
-  ctx.restore();
-  const kEndX = kx + Math.cos(kAng)*(kl/2 + 2*S), kEndY = ky + Math.sin(kAng)*(kl/2 + 2*S);
-
-  // ── Ash stockpile — grows with stored waste ──
-  const heapCX = px + W*0.78, heapBY = py + H*0.87;
-  const heapRX = W*(0.09 + 0.07*fill), heapRY = H*(0.07 + 0.09*fill);
-  const heapTop = heapBY - heapRY*1.5;
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.beginPath(); ctx.ellipse(heapCX + 5*S, heapBY + 2*S, heapRX*1.05, heapRY*0.4, 0, 0, Math.PI*2); ctx.fill();
-  const hg = ctx.createLinearGradient(heapCX - heapRX, heapTop, heapCX + heapRX, heapBY);
-  hg.addColorStop(0, '#77716a'); hg.addColorStop(0.5, '#4c4740'); hg.addColorStop(1, '#27241f');
-  ctx.fillStyle = hg;
-  ctx.beginPath();
-  ctx.moveTo(heapCX - heapRX, heapBY);
-  ctx.quadraticCurveTo(heapCX - heapRX*0.25, heapTop - heapRY*0.35, heapCX, heapTop);
-  ctx.quadraticCurveTo(heapCX + heapRX*0.25, heapTop - heapRY*0.35, heapCX + heapRX, heapBY);
-  ctx.ellipse(heapCX, heapBY, heapRX, heapRY*0.35, 0, 0, Math.PI);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(18,16,12,0.55)';
-  for (let i = 0; i < 16; i++) {
-    const fx = Math.sin(i*12.9898) * 0.5, fy = Math.sin(i*78.233) * 0.5 + 0.5;
-    ctx.beginPath();
-    ctx.arc(heapCX + fx*heapRX*1.5*(1 - fy*0.7), heapBY - fy*(heapBY - heapTop)*0.85, 1.4*S, 0, Math.PI*2);
-    ctx.fill();
+    // floating aerator, turning while powered
+    const ax = x + w*0.62, ay = y + h*0.5;
+    ell(ax + 1.5, ay + 2, 8, 8, 'rgba(0,0,0,0.25)');
+    ell(ax, ay, 8, 8, '#d8d4c8');
+    ctx.save(); ctx.translate(X(ax), Y(ay)); ctx.rotate(on ? t*3 : 0.4);
+    ctx.fillStyle = '#4a5058'; for (let k = 0; k < 3; k++) { ctx.rotate(Math.PI*2/3); ctx.fillRect(-1*S, 0, 2*S, 7*S); }
+    ctx.restore();
+    if (on) { ctx.strokeStyle = 'rgba(240,250,250,0.35)'; ctx.lineWidth = S; ctx.beginPath(); ctx.arc(X(ax), Y(ay), (10 + (t*6 % 6))*S, 0, Math.PI*2); ctx.stroke(); }
+    // walkway out to it
+    R(x + w*0.62 - 1.5, y + 2, 3, h*0.5 - 9, '#8a8478');
   }
 
-  _wfConveyor(kEndX + 4*S, kEndY + 6*S, heapCX, heapTop + 2*S, S, t, on, '#7a7266');
-  if (on) {
-    // ash trickling off the belt head
-    for (let i = 0; i < 3; i++) {
-      const ph = (t*1.4 + i/3) % 1;
-      ctx.fillStyle = `rgba(150,140,125,${0.8*(1-ph)})`;
-      ctx.beginPath(); ctx.arc(heapCX + (i-1)*2*S, heapTop + 2*S + ph*8*S, 1.3*S, 0, Math.PI*2); ctx.fill();
+  // ── Lined ash cell (bottom-right) ─────────────────────────────────
+  const cx0 = 132, cy0 = 200, cw = 172, ch = 66;
+  {
+    // berm: compacted earth (the coal-ground scan)
+    RR(cx0, cy0, cw, ch, 6, '#5e574b');
+    const berm = photo('ground_coal_rim', 160);
+    if (berm) { ctx.fillStyle = berm; ctx.fill(); ctx.fillStyle = 'rgba(120,108,88,0.35)'; ctx.fill(); }
+    // HDPE liner showing round the rim of the pit
+    RR(cx0 + 6, cy0 + 6, cw - 12, ch - 12, 4, '#1a1b1d');
+    if (detail) {                                   // welded liner panels, a sky sheen across them
+      for (let k = 1; k < 8; k++) ln(cx0 + 6 + k*(cw - 12)/8, cy0 + 6, cx0 + 6 + k*(cw - 12)/8, cy0 + ch - 6, 'rgba(255,255,255,0.07)', 0.7);
+      const sh = ctx.createLinearGradient(0, Y(cy0 + 6), 0, Y(cy0 + ch - 6));
+      sh.addColorStop(0, 'rgba(200,215,230,0.10)'); sh.addColorStop(0.5, 'rgba(200,215,230,0)'); sh.addColorStop(1, 'rgba(200,215,230,0.05)');
+      ctx.fillStyle = sh; ctx.fillRect(X(cx0 + 6), Y(cy0 + 6), (cw - 12)*S, (ch - 12)*S);
+    }
+    // the ash body: tipped at the right end under the belt and pushed out
+    // leftward as waste is stored, so its face moves across the cell
+    const aw = (cw - 20) * Math.min(1, 0.12 + 0.88*fill), ax0 = cx0 + cw - 10 - aw;
+    if (fill > 0.005) {
+      ctx.beginPath(); ctx.roundRect(X(ax0), Y(cy0 + 10), aw*S, (ch - 20)*S, 3*S);
+      ctx.fillStyle = '#76726a'; ctx.fill();
+      // compacted ash, cracking as it dries: the cracked-mud scan, greyed
+      const ash = photo('ground_lithium_rim', 112);
+      if (ash) { ctx.fillStyle = ash; ctx.fill(); ctx.fillStyle = 'rgba(40,40,42,0.32)'; ctx.fill(); }
+      // fresh, paler lifts near the working face; dozer tracks across them
+      const fg = ctx.createLinearGradient(X(ax0), 0, X(ax0 + aw), 0);
+      fg.addColorStop(0, 'rgba(255,255,250,0.16)'); fg.addColorStop(0.25, 'rgba(255,255,250,0)'); fg.addColorStop(1, 'rgba(60,58,54,0.18)');
+      ctx.fillStyle = fg; ctx.fill();
+      if (detail) {
+        ctx.strokeStyle = 'rgba(40,38,34,0.22)'; ctx.lineWidth = 1.4*S; ctx.setLineDash([2*S, 1.6*S]);
+        for (const yy of [cy0 + 22, cy0 + 30, cy0 + 44]) ln(ax0 + 4, yy, ax0 + aw - 6, yy, 'rgba(40,38,34,0.22)', 1.4);
+        ctx.setLineDash([]);
+        // the face: a soft lip where the ash ends on the liner
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(X(ax0 - 1), Y(cy0 + 10), 2*S, (ch - 20)*S);
+      }
+    }
+    // haul ramp down the berm, at the far end from the tipping point
+    ctx.fillStyle = '#6a6254'; ctx.beginPath();
+    ctx.moveTo(X(cx0 + 16), Y(cy0)); ctx.lineTo(X(cx0 + 32), Y(cy0)); ctx.lineTo(X(cx0 + 28), Y(cy0 + 12)); ctx.lineTo(X(cx0 + 16), Y(cy0 + 12)); ctx.closePath(); ctx.fill();
+    // dozer working between the tipping point and the face (parked when
+    // unpowered or empty)
+    if (fill > 0.04) {
+      const right = cx0 + cw - 34, span = Math.max(6, right - ax0 - 4);
+      const u = on ? 0.5 + 0.5*Math.sin(t*0.35) : 0.15;
+      const dx = ax0 + 2 + u*span, dy = cy0 + ch*0.5 - 6 + (on ? Math.sin(t*0.9)*4 : 0);
+      const dir = on ? -Math.cos(t*0.35) : -1;    // heading -x pushes toward the face
+      R(dx + 2, dy + 3, 20, 12, 'rgba(0,0,0,0.3)');
+      R(dx, dy, 20, 3, '#222'); R(dx, dy + 9, 20, 3, '#222');         // tracks
+      R(dx + 3, dy + 1.5, 14, 9, '#e0a828');                           // body
+      R(dx + 6, dy + 3, 6, 6, '#2a2a28');                              // cab roof
+      R(dir > 0 ? dx + 20 : dx - 3, dy - 1, 3, 14, '#3a3a36');         // blade
+      if (on && detail) for (let k = 0; k < 3; k++) {                  // dust off the blade
+        const ph = (t*0.9 + k/3) % 1;
+        ell((dir > 0 ? dx + 24 : dx - 4) + ph*4*dir, dy + 5 - ph*6, 2 + ph*4, 1.5 + ph*3, `rgba(190,186,178,${(0.35*(1 - ph)).toFixed(2)})`);
+      }
     }
   }
 
-  // ── Ash silo + gauge ──
-  const sX = px + W*0.70, sY = py + H*0.09, sW = W*0.14, sH = H*0.22;
-  _wfShadow(sX, sY, sW, sH, S, 3*S);
-  const sg = ctx.createLinearGradient(sX, 0, sX + sW, 0);
-  sg.addColorStop(0, '#7a7468'); sg.addColorStop(0.4, '#5a554c'); sg.addColorStop(1, '#2c2924');
-  ctx.fillStyle = sg; ctx.fillRect(sX, sY, sW, sH);
-  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = S;
-  [0.33, 0.66].forEach(f => { ctx.beginPath(); ctx.moveTo(sX, sY + sH*f); ctx.lineTo(sX + sW, sY + sH*f); ctx.stroke(); });
-  ctx.fillStyle = '#8a8478';
-  ctx.beginPath(); ctx.ellipse(sX + sW/2, sY, sW/2, 4*S, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#3a362e';
-  ctx.beginPath(); ctx.arc(sX + sW/2, sY, 3*S, 0, Math.PI*2); ctx.fill();
-  _wfGauge(px + W*0.88, py + H*0.11, 8*S, H*0.22, S, fill, accent, on);
+  // ── Receiving hall (top-left) ─────────────────────────────────────
+  const hx = 14, hy = 26, hw = 104, hh = 92;
+  {
+    shadow(hx, hy, hw, hh + 8, 3);
+    // corrugated roof, ridge across the middle
+    const rg = ctx.createLinearGradient(0, Y(hy), 0, Y(hy + hh*0.62));
+    rg.addColorStop(0, '#7c8086'); rg.addColorStop(0.48, '#9aa0a6'); rg.addColorStop(0.5, '#6c7076'); rg.addColorStop(1, '#5a5e64');
+    ctx.fillStyle = rg; ctx.beginPath(); ctx.rect(X(hx), Y(hy), hw*S, hh*0.62*S); ctx.fill();
+    if (detail && typeof _corrugatedGrain === 'function') _corrugatedGrain(ctx, 1);   // corrugated_iron_02: the ribs
+    if (detail) {
+      R(hx + 14, hy + 8, 10, hh*0.62 - 16, 'rgba(210,230,240,0.35)');   // skylight strips
+      R(hx + hw - 24, hy + 8, 10, hh*0.62 - 16, 'rgba(210,230,240,0.35)');
+      // ash dust settled on the roof near the door
+      ctx.fillStyle = 'rgba(180,176,168,0.22)'; ctx.fillRect(X(hx), Y(hy + hh*0.45), hw*S, hh*0.17*S);
+    }
+    // front wall (facing down) with the big tipping door
+    const wy = hy + hh*0.62, wh = hh*0.38;
+    R(hx, wy, hw, wh, '#4e4a44'); grain('mottle', 0.8);
+    if (detail) { ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 0.5*S; ctx.beginPath(); for (let v = wy + 4; v < wy + wh; v += 4) { ctx.moveTo(X(hx), Y(v)); ctx.lineTo(X(hx + hw), Y(v)); } ctx.stroke(); }
+    const dx = hx + hw*0.22, dw = hw*0.44;
+    const dg = ctx.createLinearGradient(0, Y(wy + 4), 0, Y(hy + hh));
+    dg.addColorStop(0, '#0c0b0a'); dg.addColorStop(1, on ? '#3a3226' : '#1a1814');
+    ctx.fillStyle = dg; ctx.fillRect(X(dx), Y(wy + 4), dw*S, (wh - 4)*S);
+    if (on) { ctx.fillStyle = `rgba(255,190,110,${(0.10 + 0.25*dark).toFixed(2)})`; ctx.fillRect(X(dx), Y(wy + 4), dw*S, (wh - 4)*S); }
+    _wfHazardStripe(X(dx - 3), Y(wy + 1), (dw + 6)*S, 3*S, S);
+    winGlow(hx + 6, wy + 8, 10, 6); winGlow(hx + hw - 16, wy + 8, 10, 6);
+  }
 
-  _wfPlate('COAL ASH PROCESSING', px + W*0.44, py + H*0.08, S, accent, on);
-  _wfLamp(px + W - 11*S, py + 11*S, S, t, accent, on);
+  // ── Dump truck at the bay, tipping now and then ──────────────────
+  {
+    const tx = hx + hw*0.22 + 14, ty = hy + hh + 4;   // bed toward the door, cab toward us
+    const P = 14, ph = (t / P) % 1;
+    const tip = on && fill < 0.98 ? Math.max(0, Math.sin(Math.min(1, Math.max(0, (ph - 0.25) / 0.5)) * Math.PI)) : 0;
+    R(tx + 3, ty + 4, 22, 46, 'rgba(0,0,0,0.3)');
+    R(tx, ty + 6, 22, 40, '#2a2a2a');                         // chassis
+    for (const yy of [ty + 10, ty + 30, ty + 40]) { R(tx - 2, yy, 3, 7, '#111'); R(tx + 21, yy, 3, 7, '#111'); }
+    // bed: lifts at the cab end, so it foreshortens and rides up into the door
+    const bedL = 28 * (1 - 0.35*tip), bedY = ty + 4 - 6*tip;
+    R(tx + 1, bedY + 2*tip + 3, 20, bedL, 'rgba(0,0,0,0.25)');
+    R(tx, bedY, 22, bedL, '#a85a2a'); 
+    R(tx + 2, bedY + 2, 18, bedL - 4, '#6e6a62');            // ash load
+    if (detail) R(tx + 2, bedY + 2, 18, 3, 'rgba(255,255,255,0.18)');
+    if (tip > 0.2) for (let k = 0; k < 4; k++) {             // ash pouring out of the tailgate
+      const q = (t*1.8 + k/4) % 1;
+      ell(tx + 6 + k*3.5, bedY - 2 - q*8, 2 + q*2, 1.6 + q*1.5, `rgba(170,166,158,${(0.6*(1 - q)*tip).toFixed(2)})`);
+    }
+    // cab
+    RR(tx + 1, ty + 34, 20, 13, 2, '#d0a020');
+    R(tx + 3, ty + 36, 16, 4, dark > 0.3 ? '#1a2028' : '#5e7486');
+    if (on && dark > 0.3) { ell(tx + 5, ty + 47.5, 2, 1, 'rgba(255,240,200,0.9)'); ell(tx + 17, ty + 47.5, 2, 1, 'rgba(255,240,200,0.9)'); }
+  }
+
+  // ── Control cabin ─────────────────────────────────────────────────
+  {
+    const x = 74, y = 142, w = 40, h = 30;
+    shadow(x, y, w, h, 2);
+    RR(x, y, w, h*0.55, 2, '#c8c4b8'); grain('mottle', 0.45);
+    R(x, y + h*0.55, w, h*0.45, '#8c877c');
+    winGlow(x + 4, y + h*0.62, 14, 7); winGlow(x + 22, y + h*0.62, 14, 7);
+    R(x + 3, y + 3, 6, 4, '#6a6e70');                         // rooftop AC
+    if (detail) ln(x + 30, y + 4, x + 30, y - 6, '#5a5e60', 0.8);  // radio mast
+  }
+
+  // ── Feed belt: hall up to the kiln's feed end ─────────────────────
+  _wfConveyor(X(hx + hw - 4), Y(hy + 40), X(150), Y(98), S, t, on, '#7a7468');
+
+  // ── Rotary kiln ───────────────────────────────────────────────────
+  const kx0 = 146, kx1 = 270, ky = 104, kr = 15;
+  {
+    // piers
+    for (const f of [0.27, 0.73]) { const px0 = kx0 + (kx1 - kx0)*f; R(px0 - 8 + 3, ky + 6 + 3, 16, kr + 8, 'rgba(0,0,0,0.3)'); R(px0 - 8, ky + 6, 16, kr + 8, '#6e6a62'); }
+    R(kx0 + 4, ky - kr + 8, kx1 - kx0, kr*2, 'rgba(0,0,0,0.32)');
+    const kg = ctx.createLinearGradient(0, Y(ky - kr), 0, Y(ky + kr));
+    kg.addColorStop(0, '#5e4e3c'); kg.addColorStop(0.28, '#a88c66'); kg.addColorStop(0.55, '#6a5640'); kg.addColorStop(1, '#2a221a');
+    ctx.fillStyle = kg; ctx.beginPath(); ctx.roundRect(X(kx0), Y(ky - kr), (kx1 - kx0)*S, kr*2*S, 4*S); ctx.fill();
+    grain('stain', 0.4);
+    ctx.save(); ctx.clip();
+    // shell plate seams rolling past while it turns
+    ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 1.2*S;
+    const off = on ? (t*10) % 10 : 3;
+    for (let y0 = ky - kr - 10 + off; y0 < ky + kr + 10; y0 += 10) ln(kx0, y0, kx1, y0, 'rgba(0,0,0,0.16)', 0.9);
+    if (on) {                                     // heat toward the burner end
+      const hg = ctx.createLinearGradient(X(kx0 + (kx1 - kx0)*0.55), 0, X(kx1), 0);
+      hg.addColorStop(0, 'rgba(255,110,30,0)'); hg.addColorStop(1, `rgba(255,110,30,${(0.32 + 0.08*Math.sin(t*4)).toFixed(2)})`);
+      ctx.fillStyle = hg; ctx.fillRect(X(kx0), Y(ky - kr), (kx1 - kx0)*S, kr*2*S);
+    }
+    ctx.restore();
+    // riding rings and the girth gear
+    for (const f of [0.27, 0.73]) { const rx = kx0 + (kx1 - kx0)*f; R(rx - 3, ky - kr - 2, 6, kr*2 + 4, '#2c2620'); R(rx - 3, ky - kr - 2, 6, 3, '#6a5c48'); }
+    { const gx = kx0 + (kx1 - kx0)*0.5; R(gx - 4, ky - kr - 3, 8, kr*2 + 6, '#3a3228');
+      if (detail) { ctx.fillStyle = '#5a4e3c'; const go = on ? (t*20) % 3 : 0; for (let yy = ky - kr - 3 + go; yy < ky + kr + 3; yy += 3) ctx.fillRect(X(gx - 4), Y(yy), 8*S, 1*S); }
+      R(gx + 4, ky + kr - 2, 10, 8, '#4a4e52'); }                     // drive motor
+    // feed hood (left) and burner hood (right)
+    RR(kx0 - 10, ky - kr - 4, 14, kr*2 + 8, 2, '#4a463e'); grain('stain', 0.7);
+    RR(kx1 - 2, ky - kr - 6, 18, kr*2 + 12, 3, '#3e3a34'); grain('stain', 0.7);
+    ell(kx1 + 7, ky, 6, 9, on ? `rgba(255,${150 + Math.round(40*Math.sin(t*7))},60,0.95)` : '#1c1a16');
+    if (on) ell(kx1 + 7, ky, 3, 5, 'rgba(255,240,190,0.9)');
+    // burner fuel line
+    ln(kx1 + 16, ky, kx1 + 26, ky, '#2a2a28', 3);
+  }
+
+  // ── Baghouse + ducts + stack ─────────────────────────────────────
+  {
+    const bx = 150, by = 22, bw = 88, bh = 46;
+    shadow(bx, by, bw, bh, 2);
+    RR(bx, by, bw, bh, 2, '#7a7e82'); grain('stain', 0.6);
+    // compartments seen from above: a hopper roof each, with access hatches
+    const cols = 4, rows = 2, cwid = (bw - 6)/cols, chgt = (bh - 6)/rows;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const x = bx + 3 + c*cwid, y = by + 3 + r*chgt;
+      R(x + 1, y + 1, cwid - 2, chgt - 2, '#8e9296');
+      if (detail) {
+        ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.beginPath();
+        ctx.moveTo(X(x + cwid - 1), Y(y + 1)); ctx.lineTo(X(x + cwid - 1), Y(y + chgt - 1)); ctx.lineTo(X(x + 1), Y(y + chgt - 1)); ctx.closePath(); ctx.fill();
+        R(x + cwid/2 - 2, y + chgt/2 - 2, 4, 4, '#5a5e62');
+      }
+    }
+    // pulse-jet cleaning: one compartment at a time blinks while running
+    if (on && detail) { const k = Math.floor(t*1.2) % (cols*rows); const x = bx + 3 + (k % cols)*cwid, y = by + 3 + Math.floor(k / cols)*chgt; R(x + 1, y + 1, cwid - 2, chgt - 2, 'rgba(255,255,255,0.10)'); }
+    // duct: kiln feed hood up into the baghouse, baghouse across to the stack
+    ln(kx0 - 3, ky - kr - 4, kx0 - 3, by + bh, '#2a2a28', 9); ln(kx0 - 3, ky - kr - 4, kx0 - 3, by + bh, '#6a6c6e', 6);
+    ln(bx + bw, by + bh*0.5, 286, by + bh*0.5, '#2a2a28', 9); ln(bx + bw, by + bh*0.5, 286, by + bh*0.5, '#6a6c6e', 6);
+    // stack: a banded chimney standing up from its foot
+    const sx = 288, sTop = 6, sBase = 82, sw = 16;
+    R(sx - sw/2 + 6, sTop + 8, sw, sBase - sTop, 'rgba(0,0,0,0.3)');
+    const sg = ctx.createLinearGradient(X(sx - sw/2), 0, X(sx + sw/2), 0);
+    sg.addColorStop(0, '#8a857c'); sg.addColorStop(0.45, '#6a655c'); sg.addColorStop(1, '#3a3630');
+    ctx.fillStyle = sg; ctx.fillRect(X(sx - sw/2), Y(sTop), sw*S, (sBase - sTop)*S);
+    _bldGrainRect(ctx, 'mottle', X(sx - sw/2), Y(sTop), sw*S, (sBase - sTop)*S, 0.8);
+    for (const b of [4, 14]) R(sx - sw/2, sTop + b, sw, 5, '#b03424');
+    ell(sx, sTop, sw/2 + 1, 3, '#1a1612');
+    if (on) ell(sx, sTop, sw/2 - 2, 1.8, 'rgba(255,140,60,0.35)');
+    // aviation light on the stack at night
+    if (dark > 0.3 && Math.sin(t*2.4) > 0.3) ell(sx, sTop + 2, 2, 2, '#ff3020');
+    _wfSmoke(X(sx), Y(sTop - 3), S, t, '150,146,140', on, 0.4);
+  }
+
+  // ── Fly-ash silos + pneumatic line + gauge ────────────────────────
+  {
+    ln(194, 68, 194, 146, '#3a3c3e', 3);                          // conveying line down from the baghouse
+    ln(170, 146, 216, 146, '#3a3c3e', 3);
+    for (const [sx, i] of [[170, 0], [216, 1]]) {
+      const sy = 166, r = 18;
+      ell(sx + 4, sy + 5, r, r, 'rgba(0,0,0,0.32)');
+      const g = ctx.createRadialGradient(X(sx - 6), Y(sy - 6), 2*S, X(sx), Y(sy), r*S);
+      g.addColorStop(0, '#d4d0c6'); g.addColorStop(1, '#8a867c');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(X(sx), Y(sy), r*S, 0, Math.PI*2); ctx.fill();
+      grain('mottle', 0.5);
+      if (detail) {                                        // roof sheets running to the vent
+        ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 0.6*S; ctx.beginPath();
+        for (let k = 0; k < 12; k++) { const a = k*Math.PI/6; ctx.moveTo(X(sx), Y(sy)); ctx.lineTo(X(sx + Math.cos(a)*r), Y(sy + Math.sin(a)*r)); }
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1*S; ctx.beginPath(); ctx.arc(X(sx), Y(sy), r*S, 0, Math.PI*2); ctx.stroke();
+      }
+      ell(sx, sy, 4, 4, '#4a4a46');                         // bin vent
+      if (on && detail && Math.sin(t*0.7 + i*2) > 0.6) ell(sx + 3, sy - 4, 3, 2, 'rgba(200,196,190,0.4)');
+    }
+    _wfGauge(X(244), Y(146), 8*S, 40*S, S, fill, accent, on);
+  }
+
+  // ── Discharge: kiln end down onto the ash cell ───────────────────
+  {
+    const x1 = kx1 + 4, y1 = ky + kr + 6, x2 = cx0 + cw - 22, y2 = cy0 + 22;
+    _wfConveyor(X(x1), Y(y1), X(x2), Y(y2), S, t, on, '#8a8478');
+    if (on && fill < 0.999) for (let k = 0; k < 3; k++) {
+      const q = (t*1.4 + k/3) % 1;
+      ell(x2 + (k - 1)*2, y2 + q*7, 1.4, 1.4, `rgba(170,166,158,${(0.8*(1 - q)).toFixed(2)})`);
+    }
+    // the pile under the belt head
+    if (fill > 0.005) ell(x2, y2 + 10, 9, 6, 'rgba(150,146,138,0.55)');
+    // quench water line to the pond
+    ln(kx0 + 10, ky + kr + 8, kx0 + 10, 186, '#2a2c2e', 4); ln(kx0 + 10, 186, 112, 186, '#2a2c2e', 4); ln(112, 186, 112, 200, '#2a2c2e', 4);
+    if (on && detail) { ctx.setLineDash([2*S, 5*S]); ctx.lineDashOffset = -t*14*S; ln(kx0 + 10, ky + kr + 8, kx0 + 10, 186, '#6aa0b0', 1.4); ln(kx0 + 10, 186, 112, 186, '#6aa0b0', 1.4); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+  }
+
+  _wfPlate('COAL ASH PROCESSING', X(196), Y(10), S, accent, on);
+  _wfLamp(X(306), Y(12), S, t, accent, on);
   ctx.restore();
 }
 
@@ -2219,11 +2378,11 @@ function renderOilWasteFacility(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.beginPath(); ctx.arc(ccx + 5*S, ccy + 6*S, cr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#4a4a42';
-  ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ccx, ccy, cr, 0, Math.PI*2); _fillMetalG(ctx);
   const wg = ctx.createRadialGradient(ccx - cr*0.3, ccy - cr*0.3, cr*0.1, ccx, ccy, cr);
   wg.addColorStop(0, '#3a5a2a'); wg.addColorStop(0.6, '#1c3016'); wg.addColorStop(1, '#0c160a');
   ctx.fillStyle = wg;
-  ctx.beginPath(); ctx.arc(ccx, ccy, cr - 6*S, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ccx, ccy, cr - 6*S, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.strokeStyle = '#6a6a5e'; ctx.lineWidth = 1.2*S;
   ctx.beginPath(); ctx.arc(ccx, ccy, cr - 10*S, 0, Math.PI*2); ctx.stroke();
   // oily sheen swirling
@@ -2238,7 +2397,7 @@ function renderOilWasteFacility(e, px, py, t) {
   ctx.translate(ccx, ccy); ctx.rotate(bAng);
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-cr + 6*S, 1*S, 2*(cr - 6*S), 7*S);
   ctx.fillStyle = '#8a8470'; ctx.strokeStyle = '#3a382e'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.rect(-cr + 4*S, -3*S, 2*(cr - 4*S), 6*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.rect(-cr + 4*S, -3*S, 2*(cr - 4*S), 6*S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = '#5a5648';
   for (let x = -cr + 10*S; x < cr - 6*S; x += 7*S) { ctx.beginPath(); ctx.moveTo(x, -3*S); ctx.lineTo(x + 3.5*S, 3*S); ctx.stroke(); }
   ctx.fillStyle = '#d8a820'; ctx.fillRect(cr - 10*S, -5*S, 8*S, 10*S);
@@ -2257,7 +2416,7 @@ function renderOilWasteFacility(e, px, py, t) {
     const dg = ctx.createRadialGradient(t1x - tr*0.35, ty - tr*0.35, tr*0.1, t1x, ty, tr);
     dg.addColorStop(0, '#7a8a66'); dg.addColorStop(0.55, '#3e4a34'); dg.addColorStop(1, '#1a2016');
     ctx.fillStyle = dg;
-    ctx.beginPath(); ctx.arc(t1x, ty, tr, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(t1x, ty, tr, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = S;
     for (let k = 0; k < 8; k++) {
       const a = k*Math.PI/4;
@@ -2281,13 +2440,13 @@ function renderOilWasteFacility(e, px, py, t) {
   const bx = px + W*0.05, by = py + H*0.60, bw = W*0.41, roofH = H*0.20, wallH = H*0.07;
   _wfShadow(bx, by, bw, roofH + wallH, S, 3*S);
   ctx.fillStyle = '#2e3628'; ctx.strokeStyle = '#4e5a40'; ctx.lineWidth = 1.5*S;
-  ctx.beginPath(); ctx.roundRect(bx, by, bw, roofH, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, roofH, 3*S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = S;
   for (let k = 1; k < 6; k++) { const lx = bx + bw*k/6; ctx.beginPath(); ctx.moveTo(lx, by + 2*S); ctx.lineTo(lx, by + roofH - 2*S); ctx.stroke(); }
   [0.28, 0.72].forEach((f, i) => {
     const fx = bx + bw*f, fy = by + roofH*0.5, fr = 11*S;
     ctx.fillStyle = '#1a1e16'; ctx.strokeStyle = '#6a7458'; ctx.lineWidth = 1.5*S;
-    ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI*2); _fillMetalG(ctx); ctx.stroke();
     ctx.save(); ctx.translate(fx, fy); ctx.rotate(on ? t*7 + i : 0.4);
     ctx.fillStyle = '#7a8468';
     for (let b = 0; b < 3; b++) {
@@ -2298,7 +2457,7 @@ function renderOilWasteFacility(e, px, py, t) {
     ctx.fillStyle = '#3a4032'; ctx.beginPath(); ctx.arc(fx, fy, 2.5*S, 0, Math.PI*2); ctx.fill();
   });
   const bwy = by + roofH;
-  ctx.fillStyle = '#1a2016'; ctx.fillRect(bx, bwy, bw, wallH);
+  ctx.fillStyle = '#1a2016'; _fillRectMetalG(ctx, bx, bwy, bw, wallH);
   ctx.strokeStyle = '#3a4430'; ctx.lineWidth = S; ctx.strokeRect(bx, bwy, bw, wallH);
   for (let k = 0; k < 5; k++) {
     const wx = bx + bw*(0.06 + k*0.18), ww = bw*0.10;
@@ -2311,10 +2470,10 @@ function renderOilWasteFacility(e, px, py, t) {
   // ── Sludge lagoon — level rises with stored waste ──
   const lx = px + W*0.54, ly = py + H*0.60, lw = W*0.33, lh = H*0.33;
   ctx.fillStyle = '#4a4232'; ctx.strokeStyle = '#2a2418'; ctx.lineWidth = 1.5*S;
-  ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 8*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(lx, ly, lw, lh, 8*S); _fillMetalG(ctx); ctx.stroke();
   const ix = lx + 6*S, iy = ly + 6*S, iw = lw - 12*S, ih = lh - 12*S;
   ctx.fillStyle = '#12120e';
-  ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 5*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 5*S); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(220,190,60,0.45)'; ctx.lineWidth = S;
   ctx.stroke();
   ctx.save();
@@ -2328,7 +2487,7 @@ function renderOilWasteFacility(e, px, py, t) {
   for (let x = 0; x <= iw; x += 4*S) {
     ctx.lineTo(ix + x, level + Math.sin(x/(10*S) + (on ? t*1.5 : 0))*1.6*S);
   }
-  ctx.lineTo(ix + iw, iy + ih); ctx.closePath(); ctx.fill();
+  ctx.lineTo(ix + iw, iy + ih); ctx.closePath(); _fillMetalG(ctx);
   if (on) {
     for (let i = 0; i < 7; i++) {
       const ph = (t*0.6 + i*0.37) % 1;
@@ -2405,7 +2564,7 @@ function renderNuclearWasteFacility(e, px, py, t) {
   const vg = ctx.createLinearGradient(0, hy, 0, hy + vaultH);
   vg.addColorStop(0, '#2a3028'); vg.addColorStop(0.42, '#6a7462'); vg.addColorStop(0.6, '#48523f'); vg.addColorStop(1, '#1c221c');
   ctx.fillStyle = vg;
-  ctx.beginPath(); ctx.roundRect(hx, hy, hw, vaultH, 10*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(hx, hy, hw, vaultH, 10*S); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5*S;
   for (let k = 1; k < 9; k++) { const rx = hx + hw*k/9; ctx.beginPath(); ctx.moveTo(rx, hy + 3*S); ctx.lineTo(rx, hy + vaultH - 3*S); ctx.stroke(); }
   // ridge skylight with a scanning light
@@ -2425,11 +2584,11 @@ function renderNuclearWasteFacility(e, px, py, t) {
   ctx.beginPath(); ctx.roundRect(hx, hy, hw, vaultH, 10*S); ctx.stroke();
 
   const wy = hy + vaultH;
-  ctx.fillStyle = '#1a1e18'; ctx.fillRect(hx, wy, hw, wallH);
+  ctx.fillStyle = '#1a1e18'; _fillRectMetalG(ctx, hx, wy, hw, wallH);
   ctx.strokeStyle = '#3a4234'; ctx.lineWidth = S; ctx.strokeRect(hx, wy, hw, wallH);
   const dw = hw*0.24, dh = wallH*0.82, ddx = doorX - dw/2, ddy = wy + wallH - dh;
   ctx.fillStyle = '#2e342a'; ctx.strokeStyle = '#6a7460'; ctx.lineWidth = 1.5*S;
-  ctx.fillRect(ddx, ddy, dw, dh); ctx.strokeRect(ddx, ddy, dw, dh);
+  _fillRectMetalG(ctx, ddx, ddy, dw, dh); ctx.strokeRect(ddx, ddy, dw, dh);
   ctx.strokeStyle = '#1a1e18'; ctx.lineWidth = S;
   ctx.beginPath(); ctx.moveTo(doorX, ddy); ctx.lineTo(doorX, ddy + dh); ctx.stroke();
   _wfHazardStripe(ddx, ddy, dw, 4*S, S);
@@ -2445,14 +2604,14 @@ function renderNuclearWasteFacility(e, px, py, t) {
   const vx = px + W*0.06, vy = py + H*0.74, vw = W*0.15, vh = H*0.16;
   _wfShadow(vx, vy, vw, vh, S, 3*S);
   ctx.fillStyle = '#2a2e28'; ctx.strokeStyle = '#4e5648'; ctx.lineWidth = 1.5*S;
-  ctx.beginPath(); ctx.roundRect(vx, vy, vw, vh, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(vx, vy, vw, vh, 3*S); _fillMetalG(ctx); ctx.stroke();
   const vwx = vx + vw*0.18, vwy = vy + vh*0.42, vww = vw*0.64, vwh = vh*0.36;
   const glow = ctx.createLinearGradient(vwx, 0, vwx + vww, 0);
   if (on) {
     const p = 0.75 + 0.25*Math.sin(t*2.2);
     glow.addColorStop(0, `rgba(255,150,40,${p})`); glow.addColorStop(1, `rgba(160,255,90,${p})`);
   } else { glow.addColorStop(0, '#20241c'); glow.addColorStop(1, '#161a14'); }
-  ctx.fillStyle = glow; ctx.fillRect(vwx, vwy, vww, vwh);
+  ctx.fillStyle = glow; _fillRectMetalG(ctx, vwx, vwy, vww, vwh);
   ctx.strokeStyle = '#0e100c'; ctx.lineWidth = 1.5*S; ctx.strokeRect(vwx, vwy, vww, vwh);
   ctx.fillStyle = '#3a4034'; ctx.fillRect(vx + vw*0.70, vy - 8*S, 6*S, 10*S);
   _wfSmoke(vx + vw*0.70 + 3*S, vy - 9*S, S*0.6, t, '200,220,190', on, 0.25);
@@ -2491,7 +2650,7 @@ function renderNuclearWasteFacility(e, px, py, t) {
   // ── Dry cask yard ──
   _wfShadow(yx, yy, yw, yh, S, 4*S);
   ctx.fillStyle = '#44463e'; ctx.strokeStyle = '#6a6c60'; ctx.lineWidth = 1.5*S;
-  ctx.beginPath(); ctx.roundRect(yx, yy, yw, yh, 4*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(yx, yy, yw, yh, 4*S); _fillMetalG(ctx); ctx.stroke();
   const cols = 3, rows = 5, cw = yw/cols, rh = yh/rows, crr = Math.min(cw, rh)*0.30;
   ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = S;
   for (let c = 1; c < cols; c++) { ctx.beginPath(); ctx.moveTo(yx + cw*c, yy + 3*S); ctx.lineTo(yx + cw*c, yy + yh - 3*S); ctx.stroke(); }
@@ -2511,7 +2670,7 @@ function renderNuclearWasteFacility(e, px, py, t) {
       const kg = ctx.createRadialGradient(cx - crr*0.35, cy - crr*0.35, crr*0.1, cx, cy, crr);
       kg.addColorStop(0, '#c4c6ba'); kg.addColorStop(0.6, '#8a8c80'); kg.addColorStop(1, '#4a4c44');
       ctx.fillStyle = kg;
-      ctx.beginPath(); ctx.arc(cx, cy, crr, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy, crr, 0, Math.PI*2); _fillMetalG(ctx);
       ctx.strokeStyle = '#3a3c34'; ctx.lineWidth = S; ctx.stroke();
       ctx.beginPath(); ctx.arc(cx, cy, crr*0.62, 0, Math.PI*2); ctx.stroke();
       ctx.fillStyle = '#3a3c34';

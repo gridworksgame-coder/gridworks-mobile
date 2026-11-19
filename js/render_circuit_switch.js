@@ -49,7 +49,7 @@ function renderCircuitSwitch(e, px, py, t) {
   const cg = ctx.createLinearGradient(X(24), 0, X(136), 0);
   cg.addColorStop(0, '#39423e'); cg.addColorStop(0.55, '#2b3230'); cg.addColorStop(1, '#1e2422');
   ctx.fillStyle = cg;
-  ctx.fillRect(X(24), Y(46), 112 * S, 76 * S);
+  _fillRectMetalG(ctx, X(24), Y(46), 112 * S, 76 * S);
   R(24, 46, 112, 4, '#4a5450');                            // sunlit roof edge
   R(24, 118, 112, 5, '#161b19');                           // plinth shadow
   ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.2 * S;
@@ -252,7 +252,7 @@ function renderCircuitSwitch2(e, px, py, t) {
   const cg = ctx.createLinearGradient(X(36), 0, X(224), 0);
   cg.addColorStop(0, '#2c3a3e'); cg.addColorStop(0.55, '#20292c'); cg.addColorStop(1, '#151c1e');
   ctx.fillStyle = cg;
-  ctx.fillRect(X(36), Y(76), 188 * S, 128 * S);
+  _fillRectMetalG(ctx, X(36), Y(76), 188 * S, 128 * S);
   R(36, 76, 188, 6, '#3e5458');
   R(36, 200, 188, 8, '#0e1416');
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.4 * S;

@@ -52,6 +52,7 @@ function renderSteamTurbine2(e, px, py, t) {
   fg.addColorStop(0, '#3c4650'); fg.addColorStop(1, '#2a323a');
   ctx.fillStyle = fg; ctx.strokeStyle = '#12161a'; ctx.lineWidth = 2 * S;
   ctx.beginPath(); ctx.roundRect(deckX, deckY, deckW, deckH, 6 * S); ctx.fill(); ctx.stroke();
+  _bldGrain(ctx, 'stain', 0.8);
   ctx.save(); ctx.beginPath(); ctx.roundRect(deckX, deckY, deckW, deckH, 6 * S); ctx.clip();
   ctx.strokeStyle = 'rgba(255,255,255,0.05)'; ctx.lineWidth = S;
   for (let x = deckX + 20 * S; x < deckX + deckW; x += 20 * S) { ctx.beginPath(); ctx.moveTo(x, deckY); ctx.lineTo(x, deckB); ctx.stroke(); }
@@ -74,7 +75,7 @@ function renderSteamTurbine2(e, px, py, t) {
     const my = ay + sd * H * 0.31;
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.roundRect(msrX0 + 6 * S, my - msrR + 7 * S, msrX1 - msrX0, msrR * 2, msrR); ctx.fill();
     ctx.fillStyle = cyl(my - msrR, my + msrR, 'msr'); ctx.strokeStyle = '#0e1418'; ctx.lineWidth = 1.5 * S;
-    ctx.beginPath(); ctx.roundRect(msrX0, my - msrR, msrX1 - msrX0, msrR * 2, msrR); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(msrX0, my - msrR, msrX1 - msrX0, msrR * 2, msrR); _fillMetalG(ctx); ctx.stroke();
     ctx.strokeStyle = 'rgba(14,20,24,0.45)'; ctx.lineWidth = 1.2 * S;
     for (let x = msrX0 + msrR; x < msrX1 - msrR; x += (msrX1 - msrX0) / 7) { ctx.beginPath(); ctx.moveTo(x, my - msrR); ctx.lineTo(x, my + msrR); ctx.stroke(); }
     // reheat steam in, dry steam out
@@ -121,7 +122,7 @@ function renderSteamTurbine2(e, px, py, t) {
   casings.filter(c => c.lp).forEach(c => {
     const x0 = X(c.x0) - 5 * S, x1 = X(c.x1) + 5 * S, hh = H * c.hh * 1.1;
     ctx.fillStyle = '#26323a'; ctx.strokeStyle = '#0c1216'; ctx.lineWidth = 1.5 * S;
-    ctx.beginPath(); ctx.roundRect(x0, ay - hh, x1 - x0, hh * 2, 5 * S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(x0, ay - hh, x1 - x0, hh * 2, 5 * S); _fillMetalG(ctx); ctx.stroke();
     ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.2 * S;
     for (let x = x0 + 7 * S; x < x1 - 4 * S; x += 7 * S) { ctx.beginPath(); ctx.moveTo(x, ay - hh + 3 * S); ctx.lineTo(x, ay - hh + 10 * S); ctx.moveTo(x, ay + hh - 10 * S); ctx.lineTo(x, ay + hh - 3 * S); ctx.stroke(); }
   });
@@ -137,7 +138,7 @@ function renderSteamTurbine2(e, px, py, t) {
     };
     ctx.lineJoin = 'round';
     ctx.save(); ctx.translate(7 * S, 8 * S); outline(); ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fill(); ctx.restore();
-    outline(); ctx.fillStyle = cyl(ay - hm, ay + hm); ctx.fill();
+    outline(); ctx.fillStyle = cyl(ay - hm, ay + hm); _fillMetalG(ctx);
     ctx.strokeStyle = '#0a1216'; ctx.lineWidth = 1.6 * S; ctx.stroke();
     ctx.save(); outline(); ctx.clip();
     ctx.strokeStyle = 'rgba(10,20,26,0.4)'; ctx.lineWidth = 1.2 * S;
@@ -158,7 +159,7 @@ function renderSteamTurbine2(e, px, py, t) {
       [-1, 1].forEach(sd => {
         const wx = (x0 + x1) / 2, wy = ay + sd * hm * 0.55, wr = Math.min(w * 0.22, hm * 0.32);
         ctx.fillStyle = '#04080c'; ctx.strokeStyle = '#2a3a44'; ctx.lineWidth = 2 * S;
-        ctx.beginPath(); ctx.arc(wx, wy, wr, 0, TAU); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(wx, wy, wr, 0, TAU); _fillMetalG(ctx); ctx.stroke();
         ctx.save(); ctx.beginPath(); ctx.arc(wx, wy, wr - 1.5 * S, 0, TAU); ctx.clip();
         ctx.translate(wx, wy); ctx.rotate(ph * 30 * sd + i);
         const nb = 14;
@@ -207,7 +208,7 @@ function renderSteamTurbine2(e, px, py, t) {
   const gX0 = X(0.715), gX1 = X(0.775), gHH = H * 0.17;
   ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.roundRect(gX0 + 7 * S, ay - gHH + 8 * S, gX1 - gX0, gHH * 2, gHH * 0.5); ctx.fill();
   ctx.fillStyle = cyl(ay - gHH, ay + gHH, 'gen'); ctx.strokeStyle = '#061016'; ctx.lineWidth = 1.6 * S;
-  ctx.beginPath(); ctx.roundRect(gX0, ay - gHH, gX1 - gX0, gHH * 2, gHH * 0.5); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(gX0, ay - gHH, gX1 - gX0, gHH * 2, gHH * 0.5); _fillMetalG(ctx); ctx.stroke();
   ctx.save(); ctx.beginPath(); ctx.roundRect(gX0, ay - gHH, gX1 - gX0, gHH * 2, gHH * 0.5); ctx.clip();
   for (let q = 0; q < 5; q++) {
     const bx = gX0 + (gX1 - gX0) * (0.12 + q * 0.19);
@@ -261,7 +262,7 @@ function renderSteamTurbine2(e, px, py, t) {
 
   // ── Transformer yard: gravel pad, three main transformers ──
   ctx.fillStyle = '#3e3c34'; ctx.strokeStyle = '#1a1814'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(tyX - 4 * S, tyY - 4 * S, tyW + 8 * S, tyH + 8 * S, 4 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(tyX - 4 * S, tyY - 4 * S, tyW + 8 * S, tyH + 8 * S, 4 * S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.07)';
   for (let q = 0; q < 120; q++) ctx.fillRect(tyX - 3 * S + ((q * 37) % 97) / 97 * (tyW + 6 * S), tyY - 3 * S + ((q * 53) % 89) / 89 * (tyH + 6 * S), 1.4 * S, 1.4 * S);
   const trunkX = tyX + tyW * 0.1;
@@ -273,13 +274,13 @@ function renderSteamTurbine2(e, px, py, t) {
     ctx.strokeStyle = '#0c1216'; ctx.lineWidth = 5 * S; ctx.beginPath(); ctx.moveTo(trunkX, yy + bh / 2); ctx.lineTo(tx + 2 * S, yy + bh / 2); ctx.stroke();
     ctx.strokeStyle = '#8a9aa2'; ctx.lineWidth = 3 * S; ctx.stroke();
     const rx = tx + tw + 2 * S, rw = tyX + tyW - rx - S;
-    ctx.fillStyle = '#2e362c'; ctx.fillRect(rx, yy + bh * 0.08, rw, bh * 0.84);
+    ctx.fillStyle = '#2e362c'; _fillRectMetalG(ctx, rx, yy + bh * 0.08, rw, bh * 0.84);
     for (let y = yy + bh * 0.1; y < yy + bh * 0.9 - 2 * S; y += 3 * S) { ctx.fillStyle = '#6a7a64'; ctx.fillRect(rx + S, y, rw - 2 * S, 1.8 * S); }
     _wfShadow(tx, yy, tw, bh, S, 3 * S);
     const tg = ctx.createLinearGradient(tx, 0, tx + tw, 0);
     tg.addColorStop(0, '#4e5e50'); tg.addColorStop(0.35, '#8a9c86'); tg.addColorStop(1, '#3a463a');
     ctx.fillStyle = tg; ctx.strokeStyle = '#141a14'; ctx.lineWidth = 1.4 * S;
-    ctx.beginPath(); ctx.roundRect(tx, yy, tw, bh, 3 * S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(tx, yy, tw, bh, 3 * S); _fillMetalG(ctx); ctx.stroke();
     const br = Math.min(5.5 * S, tw * 0.11);
     for (let q = 0; q < 3; q++) {
       const bxx = tx + tw * (0.2 + q * 0.3), byy = yy + bh * 0.55;
@@ -294,7 +295,7 @@ function renderSteamTurbine2(e, px, py, t) {
   {
     const rw = W * 0.13, rh = H * 0.07, rx = X(0.62), ry = deckB - rh - 12 * S;
     ctx.fillStyle = '#060a0c'; ctx.strokeStyle = gen ? accent : '#2a3438'; ctx.lineWidth = 1.5 * S;
-    ctx.beginPath(); ctx.roundRect(rx, ry, rw, rh, 3 * S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(rx, ry, rw, rh, 3 * S); _fillMetalG(ctx); ctx.stroke();
     const mw = gen ? (e._currentOutput || def.powerOutput) / 1000 : 0;
     ctx.fillStyle = gen ? gold : '#4a4030'; ctx.font = `bold ${Math.max(7, 11 * S)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(`${mw.toFixed(2)} MW`, rx + rw / 2, ry + rh / 2 + 0.5 * S);

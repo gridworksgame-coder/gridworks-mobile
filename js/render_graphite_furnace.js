@@ -51,11 +51,11 @@ function renderGraphiteFurnace(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(bx + 5*S, by + 6*S, bw, bh);
     const g = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
     g.addColorStop(0, '#9a968e'); g.addColorStop(1, '#5e5a54');
-    ctx.fillStyle = g; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = g; _fillRectMetalG(ctx, bx, by, bw, bh);
     ctx.strokeStyle = '#22201c'; ctx.lineWidth = 1.1*S; ctx.strokeRect(bx, by, bw, bh);
     // the bin, open, showing the coke filling it
     const ix = bx + 4*S, iy = by + 4*S, iw = bw - 8*S, ih = bh - 8*S;
-    ctx.fillStyle = '#121214'; ctx.fillRect(ix, iy, iw, ih);
+    ctx.fillStyle = '#121214'; _fillRectMetalG(ctx, ix, iy, iw, ih);
     if (packFill > 0.02) {
       const cg = ctx.createRadialGradient(ix + iw*0.4, iy + ih*0.4, 1, ix + iw/2, iy + ih/2, Math.max(iw, ih)*0.6);
       cg.addColorStop(0, '#a8acb2'); cg.addColorStop(1, '#3a3c42');
@@ -86,7 +86,7 @@ function renderGraphiteFurnace(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(tx0 + 6*S, ty + 7*S, tx1 - tx0, th);
     const wg = ctx.createLinearGradient(0, ty, 0, ty + th);
     wg.addColorStop(0, '#8a4a34'); wg.addColorStop(1, '#4a2418');
-    ctx.fillStyle = wg; ctx.fillRect(tx0, ty, tx1 - tx0, th);
+    ctx.fillStyle = wg; _fillRectMetalG(ctx, tx0, ty, tx1 - tx0, th);
     if (detail) {
       ctx.strokeStyle = 'rgba(30,12,6,0.45)'; ctx.lineWidth = 0.5*S;
       for (let yy = ty + 2.5*S; yy < ty + th; yy += 2.5*S) { ctx.beginPath(); ctx.moveTo(tx0, yy); ctx.lineTo(tx1, yy); ctx.stroke(); }
@@ -96,7 +96,7 @@ function renderGraphiteFurnace(e, px, py, t) {
     const ci = 4*S, cx0 = tx0 + ci, cx1 = tx1 - ci, cy0 = ty + ci, cy1 = ty + th - ci;
     const cg = ctx.createLinearGradient(0, cy0, 0, cy1);
     cg.addColorStop(0, '#d4cab4'); cg.addColorStop(0.5, '#b8ac94'); cg.addColorStop(1, '#8e8470');
-    ctx.fillStyle = cg; ctx.fillRect(cx0, cy0, cx1 - cx0, cy1 - cy0);
+    ctx.fillStyle = cg; _fillRectMetalG(ctx, cx0, cy0, cx1 - cx0, cy1 - cy0);
     // heat: the whole cover scorches dark at the middle and glows warm as it fires
     if (glow > 0.05) {
       const sc = ctx.createLinearGradient(0, cy0, 0, cy1);
@@ -188,7 +188,7 @@ function renderGraphiteFurnace(e, px, py, t) {
       ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(bx + 4*S, ty + 5*S, bw, bh);
       const g = ctx.createLinearGradient(bx, ty, bx + bw, ty + bh);
       g.addColorStop(0, '#7a8a7c'); g.addColorStop(1, '#3e4a40');
-      ctx.fillStyle = g; ctx.fillRect(bx, ty, bw, bh);
+      ctx.fillStyle = g; _fillRectMetalG(ctx, bx, ty, bw, bh);
       ctx.strokeStyle = '#1a201a'; ctx.lineWidth = 1*S; ctx.strokeRect(bx, ty, bw, bh);
       // radiator fins
       ctx.strokeStyle = 'rgba(20,26,20,0.6)'; ctx.lineWidth = 0.8*S;
@@ -255,8 +255,8 @@ function renderGraphiteFurnace(e, px, py, t) {
   {
     const fx = X(5.6), fy = Y(5.25), fw = X(10.3) - fx, fh = Y(6.55) - fy;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(fx + 4*S, fy + 5*S, fw, fh);
-    ctx.fillStyle = '#6a6e74'; ctx.fillRect(fx, fy, fw, fh);
-    ctx.fillStyle = '#585c62'; ctx.fillRect(fx + 3*S, fy + 3*S, fw - 6*S, fh - 6*S);
+    ctx.fillStyle = '#6a6e74'; _fillRectMetalG(ctx, fx, fy, fw, fh);
+    ctx.fillStyle = '#585c62'; _fillRectMetalG(ctx, fx + 3*S, fy + 3*S, fw - 6*S, fh - 6*S);
     ctx.strokeStyle = '#1a1c20'; ctx.lineWidth = 1*S; ctx.strokeRect(fx, fy, fw, fh);
     const cols = 12, rows = 2, lit = Math.round(grFill*cols*rows);
     const cw = (fw - 8*S)/cols, ch = (fh - 8*S)/rows;
@@ -295,7 +295,7 @@ function renderGraphiteFurnace(e, px, py, t) {
   {
     const sx = X(10.95), sy = Y(5.75), sr = Math.min(U, V)*0.32;
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(sx + 8*S, sy + 9*S, sr, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#c8c4bc'; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#c8c4bc'; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = '#2a2a28'; ctx.lineWidth = 2*S; ctx.beginPath(); ctx.arc(sx, sy, sr*0.75, 0, Math.PI*2); ctx.stroke();
     if (e._scrubber) {
       // Capped: the flue is ducted round to an absorber tower below the

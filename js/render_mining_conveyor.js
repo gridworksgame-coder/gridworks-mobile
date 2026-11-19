@@ -1031,13 +1031,13 @@ function renderWaterExtractor(e, px, py, t) {
     ctx.save(); ctx.beginPath(); ctx.roundRect(hx, hy, hw, hh, 18*S); ctx.clip();
     for (let x = hx - hh; x < hx + hw + hh; x += 12*S) {
       ctx.fillStyle = '#e0b020';
-      ctx.beginPath(); ctx.moveTo(x, hy); ctx.lineTo(x + 6*S, hy); ctx.lineTo(x + 6*S + hh, hy + hh); ctx.lineTo(x + hh, hy + hh); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(x, hy); ctx.lineTo(x + 6*S, hy); ctx.lineTo(x + 6*S + hh, hy + hh); ctx.lineTo(x + hh, hy + hh); ctx.closePath(); _fillMetalG(ctx);
     }
     ctx.restore();
     const dx = hx + 5*S, dy = hy + 5*S, dw = hw - 10*S, dh = hh - 10*S;
     const dg = ctx.createLinearGradient(dx, dy, dx + dw, dy + dh);
     dg.addColorStop(0, '#9aa8b0'); dg.addColorStop(1, '#5a6a72');
-    ctx.fillStyle = dg; ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, 14*S); ctx.fill();
+    ctx.fillStyle = dg; ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, 14*S); _fillMetalG(ctx);
     ctx.strokeStyle = 'rgba(30,40,46,0.3)'; ctx.lineWidth = 0.8*S;
     for (let y = dy + 5*S; y < dy + dh; y += 5*S) { ctx.beginPath(); ctx.moveTo(dx + 8*S, y); ctx.lineTo(dx + dw - 8*S, y); ctx.stroke(); }
     // bollards
@@ -1050,7 +1050,7 @@ function renderWaterExtractor(e, px, py, t) {
     ctx.fillStyle = '#062a30'; ctx.beginPath(); ctx.arc(inX, inY, cgR + 3*S, 0, Math.PI*2); ctx.fill();
     const wg = ctx.createRadialGradient(inX, inY, 1, inX, inY, cgR);
     wg.addColorStop(0, running ? '#80fff0' : '#2a6a6a'); wg.addColorStop(1, running ? '#0a6a78' : '#0a3a40');
-    ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(inX, inY, cgR, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(inX, inY, cgR, 0, Math.PI*2); _fillMetalG(ctx);
     if (running) {
       ctx.save(); ctx.translate(inX, inY); ctx.rotate(t*5);
       ctx.strokeStyle = 'rgba(200,255,250,0.85)'; ctx.lineWidth = 1.6*S; ctx.lineCap = 'round';
@@ -1071,11 +1071,11 @@ function renderWaterExtractor(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.roundRect(phX + 4*S, phY + 5*S, phW, phH, 3*S); ctx.fill();
     const hg = ctx.createLinearGradient(0, phY, 0, phY + phH);
     hg.addColorStop(0, on ? '#3ab0a8' : '#2a5a58'); hg.addColorStop(1, on ? '#1a6a66' : '#16302e');
-    ctx.fillStyle = hg; ctx.beginPath(); ctx.roundRect(phX, phY, phW, phH, 3*S); ctx.fill();
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.roundRect(phX, phY, phW, phH, 3*S); _fillMetalG(ctx);
     ctx.strokeStyle = '#0a2a28'; ctx.lineWidth = S; ctx.stroke();
     _fcFan(phX + phW*0.28, phY + phH*0.5, phH*0.32, S, t, running, 7);
     const gx = phX + phW*0.66, gy = phY + phH*0.5, gr = phH*0.26;
-    ctx.fillStyle = '#f0ece0'; ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#f0ece0'; ctx.beginPath(); ctx.arc(gx, gy, gr, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.8*S; ctx.stroke();
     const na = -Math.PI*0.75 + (running ? (0.55 + 0.15*Math.sin(t*3)) : 0.05) * Math.PI*1.5;
     ctx.strokeStyle = '#c02010'; ctx.lineWidth = 1*S;
@@ -3270,7 +3270,7 @@ function renderSurvey(e, px, py, t) {
     ctx.beginPath();
     ctx.moveTo(trL, chBot); ctx.lineTo(trL, cabT + th * 0.07);
     ctx.lineTo(trL + tw * 0.045, cabT); ctx.lineTo(cabR, cabT);
-    ctx.lineTo(cabR, chBot); ctx.closePath(); ctx.fill();
+    ctx.lineTo(cabR, chBot); ctx.closePath(); _fillMetalG(ctx);
     ctx.fillStyle = c.paintLt; ctx.fillRect(trL + tw * 0.045, cabT, cabR - trL - tw * 0.045, S * 1.2);
     ctx.fillStyle = on ? (night ? 'rgba(255,214,140,0.65)' : c.glass) : c.glass;
     ctx.beginPath();
@@ -3299,7 +3299,7 @@ function renderSurvey(e, px, py, t) {
     bodyG.addColorStop(0, on ? '#5c564a' : '#2b2822');
     bodyG.addColorStop(1, on ? '#38342c' : '#1a1814');
     ctx.fillStyle = bodyG;
-    ctx.beginPath(); ctx.roundRect(icL, icT, icR - icL, icB - icT, S * 1.2); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(icL, icT, icR - icL, icB - icT, S * 1.2); _fillMetalG(ctx);
     if (lod) {   // ribbed walls
       ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = S * 0.5;
       ctx.beginPath();
@@ -3477,7 +3477,7 @@ function renderSurvey2(e, px, py, t) {
     const pg = ctx.createLinearGradient(0, padT, 0, padB);
     pg.addColorStop(0, c.padLt); pg.addColorStop(1, c.pad);
     ctx.fillStyle = pg;
-    ctx.beginPath(); ctx.roundRect(padL, padT, padR - padL, padB - padT, S * 2); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(padL, padT, padR - padL, padB - padT, S * 2); _fillMetalG(ctx);
     ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = S * 0.6;
     ctx.beginPath(); ctx.roundRect(padL, padT, padR - padL, padB - padT, S * 2); ctx.stroke();
     if (lod) {
@@ -3664,7 +3664,7 @@ function renderSurvey2(e, px, py, t) {
     shade(cx + S * 2, cbB + S * 1.2, cbW * 0.56, th * 0.02, 0.34);
     const bg = ctx.createLinearGradient(cbL, 0, cbR, 0);
     bg.addColorStop(0, c.wallSh); bg.addColorStop(0.35, c.wall); bg.addColorStop(1, c.wallSh);
-    ctx.fillStyle = bg; ctx.fillRect(cbL, cbT, cbW, cbH);
+    ctx.fillStyle = bg; _fillRectMetalG(ctx, cbL, cbT, cbW, cbH);
     // Roof parapet, HVAC and a comms radome
     ctx.fillStyle = c.mid; ctx.fillRect(cbL - S, cbT - S * 2, cbW + S * 2, S * 2.4);
     ctx.fillStyle = c.dark;
@@ -3704,7 +3704,7 @@ function renderSurvey2(e, px, py, t) {
     const scrY = cbT + cbH * 0.48, scrH = cbH * 0.30, scrW = cbW * 0.34;
     [cbL + cbW * 0.05, cbR - cbW * 0.05 - scrW].forEach((sx, i) => {
       const s = slots[i];
-      ctx.fillStyle = '#0c1210'; ctx.fillRect(sx, scrY, scrW, scrH);
+      ctx.fillStyle = '#0c1210'; _fillRectMetalG(ctx, sx, scrY, scrW, scrH);
       if (on && lod) {
         ctx.save();
         ctx.beginPath(); ctx.rect(sx, scrY, scrW, scrH); ctx.clip();
@@ -3801,7 +3801,7 @@ function renderCoalMineMK2(e, px, py, t) {
 
     // ── Rail spur along the bottom ───────────────────────────────────
     const railY = py + h - TILE / 2;   // bottom-row centre — the OUT stub sits at the spur end
-    ctx.fillStyle = '#221e1a'; ctx.fillRect(px + 2, railY - 4 * s, w - 4, 8 * s);
+    ctx.fillStyle = '#221e1a'; _fillRectMetalG(ctx, px + 2, railY - 4 * s, w - 4, 8 * s);
     ctx.strokeStyle = '#3a3430'; ctx.lineWidth = 1 * s;
     for (let x = px + 4 * s; x < px + w - 2; x += 4 * s) line(x, railY - 3.5 * s, x, railY + 3.5 * s);
     ctx.strokeStyle = '#8a8e94'; ctx.lineWidth = 0.9 * s;
@@ -3823,7 +3823,7 @@ function renderCoalMineMK2(e, px, py, t) {
       ctx.fillRect(pX + 2.5 * s + i * (pW - 5 * s) / 5, pY + pH * 0.3, 3.4 * s, 2.4 * s);
     }
     ctx.fillStyle = '#d06a20'; ctx.fillRect(pX, pY + pH * 0.6, pW, 1.6 * s);                    // safety band
-    ctx.fillStyle = '#56606a'; ctx.fillRect(pX + pW * 0.08, pY + pH * 0.68, 8 * s, pH * 0.32);  // roller door
+    ctx.fillStyle = '#56606a'; _fillRectMetalG(ctx, pX + pW * 0.08, pY + pH * 0.68, 8 * s, pH * 0.32);  // roller door
     ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.5;
     for (let y = pY + pH * 0.68 + 1.5 * s; y < pY + pH; y += 1.5 * s) line(pX + pW * 0.08, y, pX + pW * 0.08 + 8 * s, y);
     ctx.fillStyle = 'rgba(235,240,245,0.75)';
@@ -3856,7 +3856,7 @@ function renderCoalMineMK2(e, px, py, t) {
     line(siX + siW / 2 - 1 * s, siBot, siX + siW / 2 - 1 * s, railY - 5 * s);
     const sg = ctx.createLinearGradient(siX - siW / 2, 0, siX + siW / 2, 0);
     sg.addColorStop(0, '#4c5660'); sg.addColorStop(0.45, '#8e9aa6'); sg.addColorStop(1, '#3a424a');
-    ctx.fillStyle = sg; ctx.fillRect(siX - siW / 2, siTop, siW, siBot - siTop);
+    ctx.fillStyle = sg; _fillRectMetalG(ctx, siX - siW / 2, siTop, siW, siBot - siTop);
     ctx.fillStyle = '#9aa6b2';
     ctx.beginPath(); ctx.ellipse(siX, siTop, siW / 2, 2 * s, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#3e464e';
@@ -4067,7 +4067,7 @@ function renderCoalMine(e, px, py, t) {
     const s = Math.min(w, h) / 160;                                        // detail scale — 1 at 4×4
     const X = (f) => px + w*f, Y = (f) => py + h*f;
     const R = (x, y, ww, hh, c) => { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), w*ww, h*hh); };
-    const RR = (x, y, ww, hh, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(X(x), Y(y), w*ww, h*hh, r*s); ctx.fill(); };
+    const RR = (x, y, ww, hh, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(X(x), Y(y), w*ww, h*hh, r*s); _fillMetalG(ctx); };
     const dot = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(x), Y(y), Math.max(0.01, r*s), 0, Math.PI*2); ctx.fill(); };
     const ell = (x, y, rx, ry, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(X(x), Y(y), Math.max(0.01, w*rx), Math.max(0.01, h*ry), 0, 0, Math.PI*2); ctx.fill(); };
     const ln = (x1, y1, x2, y2, c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw*s; ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); };
@@ -4177,7 +4177,7 @@ function renderCoalMine(e, px, py, t) {
     for (let k = 0; k < 6; k++) ln(0.33, 0.41 + k*0.04, 0.67, 0.41 + k*0.04, 'rgba(30,20,12,0.35)', 0.4);   // planking
     const sg = ctx.createLinearGradient(0, Y(0.47), 0, Y(0.60));
     sg.addColorStop(0, '#000'); sg.addColorStop(1, '#1a1410');
-    ctx.fillStyle = sg; ctx.fillRect(X(0.41), Y(0.47), w*0.18, h*0.13);
+    ctx.fillStyle = sg; _fillRectMetalG(ctx, X(0.41), Y(0.47), w*0.18, h*0.13);
     ctx.strokeStyle = '#8a6a40'; ctx.lineWidth = 1.6*s; ctx.strokeRect(X(0.41), Y(0.47), w*0.18, h*0.13);
     ln(0.40, 0.455, 0.60, 0.455, '#c8b070', 0.6);                             // rail
     for (const rx of [0.40, 0.50, 0.60]) ln(rx, 0.455, rx, 0.47, '#c8b070', 0.6);
@@ -4329,7 +4329,7 @@ function renderUraniumMine(e, px, py, t) {
   const cw = w*0.34, ch = h*0.15;
   _wfShadow(colX - cw/2, colTop, cw, ch, S, 3*S);
   ctx.fillStyle = '#5a5850'; ctx.strokeStyle = '#2a2824'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(colX - cw/2, colTop, cw, ch, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(colX - cw/2, colTop, cw, ch, 3*S); _fillMetalG(ctx); ctx.stroke();
   const ox = colX - cw*0.34, oy = colTop + ch*0.18, ow = cw*0.68, oh = ch*0.64;
   ctx.fillStyle = '#030805';
   ctx.fillRect(ox, oy, ow, oh);
@@ -4356,7 +4356,7 @@ function renderUraniumMine(e, px, py, t) {
   const rg = ctx.createLinearGradient(0, hy, 0, hy + hh*0.6);
   rg.addColorStop(0, '#6a7068'); rg.addColorStop(1, '#3a403a');
   ctx.fillStyle = rg; ctx.strokeStyle = '#262a26'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(hx, hy, hw, hh*0.6, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(hx, hy, hw, hh*0.6, 2*S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = S;
   for (let k = 1; k < 5; k++) { const lx = hx + hw*k/5; ctx.beginPath(); ctx.moveTo(lx, hy + 2*S); ctx.lineTo(lx, hy + hh*0.6 - 2*S); ctx.stroke(); }
   ctx.fillStyle = '#20241f'; ctx.fillRect(hx, hy + hh*0.6, hw, hh*0.4);
@@ -4418,7 +4418,7 @@ function renderUraniumMine(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(sx + 5*S, sy + 6*S, sr, 0, Math.PI*2); ctx.fill();
   const sg = ctx.createRadialGradient(sx - sr*0.4, sy - sr*0.4, sr*0.1, sx, sy, sr);
   sg.addColorStop(0, '#9aa294'); sg.addColorStop(0.6, '#55604e'); sg.addColorStop(1, '#262c22');
-  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = S;
   ctx.beginPath(); ctx.arc(sx, sy, sr*0.7, 0, Math.PI*2); ctx.stroke();
   for (let k = 0; k < 8; k++) { const a = k*Math.PI/4; ctx.beginPath(); ctx.moveTo(sx + Math.cos(a)*sr*0.7, sy + Math.sin(a)*sr*0.7); ctx.lineTo(sx + Math.cos(a)*sr, sy + Math.sin(a)*sr); ctx.stroke(); }
@@ -4533,7 +4533,7 @@ function renderSulfurMine(e, px, py, t) {
   const rg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
   rg.addColorStop(0, '#6a5a46'); rg.addColorStop(1, '#3a3026');
   ctx.fillStyle = rg; ctx.strokeStyle = '#221a12'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh*0.62, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh*0.62, 2*S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = S;
   for (let k = 1; k < 4; k++) { const ly = by + bh*0.62*k/4; ctx.beginPath(); ctx.moveTo(bx + 2*S, ly); ctx.lineTo(bx + bw - 2*S, ly); ctx.stroke(); }
   ctx.fillStyle = '#241c14'; ctx.fillRect(bx, by + bh*0.62, bw, bh*0.38);
@@ -4583,13 +4583,13 @@ function renderSulfurMine(e, px, py, t) {
   const vx = px + w*0.05, vy = py + h*0.47, vw = w*0.68, vh = h*0.33;
   _wfShadow(vx, vy, vw, vh, S, 2*S);
   ctx.fillStyle = '#4a3a26'; ctx.strokeStyle = '#1a140c'; ctx.lineWidth = 1.2*S;
-  ctx.fillRect(vx, vy, vw, vh); ctx.strokeRect(vx, vy, vw, vh);
+  _fillRectMetalG(ctx, vx, vy, vw, vh); ctx.strokeRect(vx, vy, vw, vh);
   ctx.strokeStyle = '#2a2014'; ctx.lineWidth = S;
   for (let x = vx + 12*S; x < vx + vw; x += 12*S) { ctx.beginPath(); ctx.moveTo(x, vy); ctx.lineTo(x, vy + 4*S); ctx.moveTo(x, vy + vh - 4*S); ctx.lineTo(x, vy + vh); ctx.stroke(); }
   const ix = vx + 4*S, iy = vy + 4*S, iw = vw - 8*S, ih = vh - 8*S;
   const yg = ctx.createLinearGradient(ix, iy, ix + iw, iy + ih);
   yg.addColorStop(0, '#fff27a'); yg.addColorStop(0.5, '#f0cc20'); yg.addColorStop(1, '#b08a08');
-  ctx.fillStyle = yg; ctx.fillRect(ix, iy, iw, ih);
+  ctx.fillStyle = yg; _fillRectMetalG(ctx, ix, iy, iw, ih);
   ctx.save(); ctx.beginPath(); ctx.rect(ix, iy, iw, ih); ctx.clip();
   // crystalline facets
   ctx.strokeStyle = 'rgba(140,100,0,0.45)'; ctx.lineWidth = 0.8*S;
@@ -4719,7 +4719,7 @@ function renderSulfurMine2(e, px, py, t) {
   const padG = ctx.createLinearGradient(0, padY, 0, padY + padH);
   padG.addColorStop(0, '#665c4c'); padG.addColorStop(1, '#4e4638');
   ctx.fillStyle = padG; ctx.strokeStyle = '#2a261e'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(padX, padY, padW, padH, 5*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(padX, padY, padW, padH, 5*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = 'rgba(255,240,200,0.10)';
   for (let i = 0; i < 70; i++) ctx.fillRect(padX + padW*((i*0.618) % 1), padY + padH*((i*0.371 + 0.13) % 1), 1.4*S, 1.4*S);
   ctx.fillStyle = 'rgba(0,0,0,0.14)';
@@ -4743,7 +4743,7 @@ function renderSulfurMine2(e, px, py, t) {
   const wallG = ctx.createLinearGradient(bx, 0, bx + bw, 0);
   wallG.addColorStop(0, '#6e5e48'); wallG.addColorStop(1, '#3a3026');
   ctx.fillStyle = wallG; ctx.strokeStyle = '#221a12'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh*0.58, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh*0.58, 2*S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = S;
   for (let k = 1; k < 5; k++) { const ly = by + bh*0.58*k/5; ctx.beginPath(); ctx.moveTo(bx + 2*S, ly); ctx.lineTo(bx + bw - 2*S, ly); ctx.stroke(); }
   // roof vents
@@ -4752,7 +4752,7 @@ function renderSulfurMine2(e, px, py, t) {
     ctx.fillStyle = '#2a2219'; ctx.fillRect(vx, vy, bw*0.10, bh*0.14);
     ctx.fillStyle = '#5a4c3a'; ctx.fillRect(vx, vy, bw*0.10, 1.5*S);
   }
-  ctx.fillStyle = '#241c14'; ctx.fillRect(bx, by + bh*0.58, bw, bh*0.42);
+  ctx.fillStyle = '#241c14'; _fillRectMetalG(ctx, bx, by + bh*0.58, bw, bh*0.42);
   ctx.strokeStyle = '#3a3024'; ctx.strokeRect(bx, by + bh*0.58, bw, bh*0.42);
   // three furnace doors
   for (let k = 0; k < 3; k++) {
@@ -4784,7 +4784,7 @@ function renderSulfurMine2(e, px, py, t) {
   const ag = ctx.createLinearGradient(ax, 0, ax + aw, 0);
   ag.addColorStop(0, '#b8b4a8'); ag.addColorStop(0.35, '#e8e4d8'); ag.addColorStop(1, '#6a665c');
   ctx.fillStyle = ag; ctx.strokeStyle = '#2a2822'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(ax, ay, aw, ah, aw/2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(ax, ay, aw, ah, aw/2); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.25)';
   [0.3, 0.7].forEach(f => { ctx.beginPath(); ctx.moveTo(ax + 1.5*S, ay + ah*f); ctx.lineTo(ax + aw - 1.5*S, ay + ah*f); ctx.stroke(); });
   ctx.fillStyle = cyan; ctx.fillRect(ax + 1.5*S, ay + ah*0.44, aw - 3*S, ah*0.12);
@@ -4806,7 +4806,7 @@ function renderSulfurMine2(e, px, py, t) {
   const cx0 = X(0.655), cy0 = Y(0.06), cw = w*0.305, chh = h*0.11;
   _wfShadow(cx0, cy0, cw, chh, S, 2*S);
   ctx.fillStyle = '#4a4c48'; ctx.strokeStyle = '#1c1e1c'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(cx0, cy0, cw, chh, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(cx0, cy0, cw, chh, 2*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = '#5c605a'; ctx.fillRect(cx0, cy0, cw, chh*0.22);
   for (let k = 0; k < 4; k++) {
     const wx = cx0 + cw*(0.08 + k*0.23), wy = cy0 + chh*0.38;
@@ -4857,13 +4857,13 @@ function renderSulfurMine2(e, px, py, t) {
   const drawVat = (vx, vy, vw, vh, spoutF, ph) => {
     _wfShadow(vx, vy, vw, vh, S, 2*S);
     ctx.fillStyle = '#4a3a26'; ctx.strokeStyle = '#1a140c'; ctx.lineWidth = 1.2*S;
-    ctx.fillRect(vx, vy, vw, vh); ctx.strokeRect(vx, vy, vw, vh);
+    _fillRectMetalG(ctx, vx, vy, vw, vh); ctx.strokeRect(vx, vy, vw, vh);
     ctx.strokeStyle = '#2a2014'; ctx.lineWidth = S;
     for (let x = vx + 12*S; x < vx + vw; x += 12*S) { ctx.beginPath(); ctx.moveTo(x, vy); ctx.lineTo(x, vy + 4*S); ctx.moveTo(x, vy + vh - 4*S); ctx.lineTo(x, vy + vh); ctx.stroke(); }
     const ix = vx + 4*S, iy = vy + 4*S, iw = vw - 8*S, ih = vh - 8*S;
     const yg = ctx.createLinearGradient(ix, iy, ix + iw, iy + ih);
     yg.addColorStop(0, '#fff27a'); yg.addColorStop(0.5, '#f0cc20'); yg.addColorStop(1, '#b08a08');
-    ctx.fillStyle = yg; ctx.fillRect(ix, iy, iw, ih);
+    ctx.fillStyle = yg; _fillRectMetalG(ctx, ix, iy, iw, ih);
     ctx.save(); ctx.beginPath(); ctx.rect(ix, iy, iw, ih); ctx.clip();
     // cut lines where blocks have been lifted out
     ctx.strokeStyle = 'rgba(120,85,0,0.5)'; ctx.lineWidth = 0.9*S;
@@ -4903,12 +4903,12 @@ function renderSulfurMine2(e, px, py, t) {
   // ── Heated sump ──
   _wfShadow(sumpX - sumpR, sumpY - sumpR, sumpR*2, sumpR*2, S, sumpR);
   ctx.fillStyle = '#5a4a36'; ctx.strokeStyle = '#1a140c'; ctx.lineWidth = 1.5*S;
-  ctx.beginPath(); ctx.arc(sumpX, sumpY, sumpR, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(sumpX, sumpY, sumpR, 0, Math.PI*2); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = '#2a2014'; ctx.lineWidth = S;
   for (let k = 0; k < 12; k++) { const a = k*Math.PI/6; ctx.beginPath(); ctx.moveTo(sumpX + Math.cos(a)*(sumpR - 3*S), sumpY + Math.sin(a)*(sumpR - 3*S)); ctx.lineTo(sumpX + Math.cos(a)*sumpR, sumpY + Math.sin(a)*sumpR); ctx.stroke(); }
   const mg = ctx.createRadialGradient(sumpX, sumpY, 1, sumpX, sumpY, sumpR - 4*S);
   mg.addColorStop(0, run ? '#ffd060' : '#8a6a20'); mg.addColorStop(0.7, run ? '#ff9a20' : '#6a4a10'); mg.addColorStop(1, run ? '#c06010' : '#4a3008');
-  ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(sumpX, sumpY, sumpR - 4*S, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(sumpX, sumpY, sumpR - 4*S, 0, Math.PI*2); _fillMetalG(ctx);
   if (run) {
     ctx.fillStyle = `rgba(255,170,40,${0.22 + 0.08*Math.sin(t*4)})`; ctx.beginPath(); ctx.arc(sumpX, sumpY, sumpR + 6*S, 0, Math.PI*2); ctx.fill();
     // ripples spreading off the stirrer
@@ -5005,7 +5005,7 @@ function renderSulfurMine2(e, px, py, t) {
   const kx = X(0.45), ky = Y(0.835), kw = w*0.16, kh = h*0.125;
   _wfShadow(kx, ky, kw, kh, S, 2*S);
   ctx.fillStyle = '#4a4e52'; ctx.strokeStyle = '#16181a'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(kx, ky, kw, kh, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(kx, ky, kw, kh, 2*S); _fillMetalG(ctx); ctx.stroke();
   // hopper mouth
   ctx.fillStyle = '#1c1e20'; ctx.beginPath();
   ctx.moveTo(kx + kw*0.15, ky + kh*0.12); ctx.lineTo(kx + kw*0.85, ky + kh*0.12); ctx.lineTo(kx + kw*0.65, ky + kh*0.5); ctx.lineTo(kx + kw*0.35, ky + kh*0.5); ctx.closePath(); ctx.fill();
@@ -5078,11 +5078,11 @@ function renderLithiumMine(e, px, py, t) {
   ponds.forEach((p, i) => {
     ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.roundRect(p.x + 3*S, p.y + 4*S, cw, chh, 4*S); ctx.fill();
     ctx.fillStyle = '#c8b898'; ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = S;
-    ctx.beginPath(); ctx.roundRect(p.x, p.y, cw, chh, 4*S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(p.x, p.y, cw, chh, 4*S); _fillMetalG(ctx); ctx.stroke();
     const ix = p.x + 3.5*S, iy = p.y + 3.5*S, iw = cw - 7*S, ih = chh - 7*S;
     const g = ctx.createLinearGradient(ix, iy, ix + iw, iy + ih);
     g.addColorStop(0, p.c1); g.addColorStop(1, p.c0);
-    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 3*S); ctx.fill();
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 3*S); _fillMetalG(ctx);
     ctx.save(); ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 3*S); ctx.clip();
     // salt crust specks, denser in later stages
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
@@ -5136,10 +5136,10 @@ function renderLithiumMine(e, px, py, t) {
   const rg = ctx.createLinearGradient(0, shY, 0, shY + shH*0.6);
   rg.addColorStop(0, '#8aa0a8'); rg.addColorStop(1, '#4a5a60');
   ctx.fillStyle = rg; ctx.strokeStyle = '#1e2628'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(shX, shY, shW, shH*0.6, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(shX, shY, shW, shH*0.6, 2*S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = S;
   for (let k = 1; k < 6; k++) { const lx = shX + shW*k/6; ctx.beginPath(); ctx.moveTo(lx, shY + 2*S); ctx.lineTo(lx, shY + shH*0.6 - 2*S); ctx.stroke(); }
-  ctx.fillStyle = '#243034'; ctx.fillRect(shX, shY + shH*0.6, shW, shH*0.4);
+  ctx.fillStyle = '#243034'; _fillRectMetalG(ctx, shX, shY + shH*0.6, shW, shH*0.4);
   for (let k = 0; k < 3; k++) {
     ctx.fillStyle = on ? `rgba(170,230,255,${0.45 + 0.25*Math.sin(t*1.8 + k)})` : '#1a2226';
     ctx.fillRect(shX + shW*(0.1 + k*0.3), shY + shH*0.7, shW*0.18, shH*0.18);

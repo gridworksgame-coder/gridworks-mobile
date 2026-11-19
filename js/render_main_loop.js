@@ -1260,6 +1260,14 @@ function renderEntityAt(e, x, y, t) {
   // Nuked buildings are drawn as ruins in place of their sprite.
   if (e._irreparable) { LightningDamageSystem.renderRuin(ctx, e, x, y, t); return; }
   const et = e.type;
+  // Which type is being drawn, for the metal finish (_metalGrain picks clean
+  // brushed steel for the high-tech plants). Put back after, so a sprite
+  // drawn inside another's draw doesn't leave its type behind.
+  const _prevDrawType = _metalDrawType;
+  _metalDrawType = et;
+  try { _renderEntityAtInner(e, x, y, t, et); } finally { _metalDrawType = _prevDrawType; }
+}
+function _renderEntityAtInner(e, x, y, t, et) {
   // Grounding pool first, under everything the type dispatch draws. Baked:
   // it is one drawImage, but one drawImage per building per frame measured
   // ~15ms across a screenful, which is most of what a live 'under' pass
@@ -1733,7 +1741,7 @@ RenderSystem.render = function (t, inputState) {
         // ever compared with !==, so a composite key is fine.
         // ...and the season: the canopies painted into zone ground turn,
         // drop and regrow in a handful of steps (Seasons.foliageStep).
-        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + DepositGround.version() + ':' + IslandGround.version() + ':' + LandCover.version() + ':' + GroundTextures.grassDetailLoaded + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
+        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + DepositGround.version() + ':' + IslandGround.version() + ':' + LandCover.version() + ':' + GroundTextures.grassDetailLoaded + ':' + GroundTextures.zoneTexLoaded + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
         const _zoom = Camera.zoom;
 
         const ZOOM_SETTLE_MS = 160;

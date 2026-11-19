@@ -71,7 +71,7 @@ function renderDronePort(e, px, py, t) {
   const dg = ctx.createLinearGradient(dx, dy, dx + dw, dy + dh);
   dg.addColorStop(0, '#34383a'); dg.addColorStop(0.55, '#2a2e30'); dg.addColorStop(1, '#212527');
   ctx.fillStyle = dg;
-  ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, 3 * S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(dx, dy, dw, dh, 3 * S); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(232,236,240,0.30)'; ctx.lineWidth = 1.6 * S;
   ctx.beginPath(); ctx.roundRect(dx + 2.5 * S, dy + 2.5 * S, dw - 5 * S, dh - 5 * S, 2 * S); ctx.stroke();
   // Deck plating: faint panel seams, so the asphalt reads as a built
@@ -160,9 +160,9 @@ function renderDronePort(e, px, py, t) {
     const rimG = ctx.createLinearGradient(mx - pr, my - pr, mx + pr, my + pr);
     rimG.addColorStop(0, '#99a199'); rimG.addColorStop(1, '#474d47');
     ctx.fillStyle = rimG;
-    ctx.beginPath(); ctx.arc(mx, my, pr * 1.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx, my, pr * 1.1, 0, Math.PI * 2); _fillMetalG(ctx);
     ctx.fillStyle = '#14181a';
-    ctx.beginPath(); ctx.arc(mx, my, pr * 0.98, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mx, my, pr * 0.98, 0, Math.PI * 2); _fillMetalG(ctx);
     ctx.strokeStyle = home ? 'rgba(236,240,244,0.72)' : 'rgba(236,240,244,0.34)';
     ctx.lineWidth = 2 * S;
     ctx.beginPath(); ctx.arc(mx, my, pr * 0.80, 0, Math.PI * 2); ctx.stroke();
@@ -246,7 +246,7 @@ function renderDronePort(e, px, py, t) {
   const hg = ctx.createLinearGradient(hgX, 0, hgX + hgW, 0);
   hg.addColorStop(0, '#9aa096'); hg.addColorStop(0.6, '#6e746a'); hg.addColorStop(1, '#4e544c');
   ctx.fillStyle = hg; ctx.strokeStyle = '#2a2e28'; ctx.lineWidth = 1.4 * S;
-  ctx.beginPath(); ctx.roundRect(hgX, hgY, hgW, hgH, 2.5 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(hgX, hgY, hgW, hgH, 2.5 * S); _fillMetalG(ctx); ctx.stroke();
   // Ribbed roof.
   ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = S;
   for (let q = 1; q < 9; q++) {
@@ -281,7 +281,7 @@ function renderDronePort(e, px, py, t) {
     const bg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
     bg.addColorStop(0, '#7e8478'); bg.addColorStop(1, '#4a5048');
     ctx.fillStyle = bg; ctx.strokeStyle = '#23271f'; ctx.lineWidth = S;
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 1.5 * S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 1.5 * S); _fillMetalG(ctx); ctx.stroke();
     // Cooling fins.
     ctx.strokeStyle = 'rgba(0,0,0,0.3)';
     for (let q = 1; q < 4; q++) {
@@ -332,7 +332,7 @@ function renderDronePort(e, px, py, t) {
   const bbg = ctx.createLinearGradient(bbX, 0, bbX + bbW, 0);
   bbg.addColorStop(0, '#8e948a'); bbg.addColorStop(1, '#4a504a');
   ctx.fillStyle = bbg; ctx.strokeStyle = '#23271f'; ctx.lineWidth = 1.2 * S;
-  ctx.beginPath(); ctx.roundRect(bbX, bbY, bbW, bbH, 2 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(bbX, bbY, bbW, bbH, 2 * S); _fillMetalG(ctx); ctx.stroke();
   // Cell stacks, lit in sequence while the port is live.
   for (let q = 0; q < 4; q++) {
     const cyy = bbY + bbH * (0.10 + q * 0.225);
@@ -351,7 +351,7 @@ function renderDronePort(e, px, py, t) {
   const stg = ctx.createLinearGradient(stX, 0, stX + stW, 0);
   stg.addColorStop(0, '#969c92'); stg.addColorStop(1, '#4e544c');
   ctx.fillStyle = stg; ctx.strokeStyle = '#2a2e28'; ctx.lineWidth = 1.2 * S;
-  ctx.beginPath(); ctx.roundRect(stX, stY, stW, stH, 2 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(stX, stY, stW, stH, 2 * S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = S;
   for (let q = 1; q < 6; q++) {
     const ly = stY + stH * q / 6;
@@ -375,9 +375,9 @@ function renderDronePort(e, px, py, t) {
   const bgd = ctx.createLinearGradient(cx - tb, cy - tb, cx + tb, cy + tb);
   bgd.addColorStop(0, '#a6aca2'); bgd.addColorStop(0.55, '#6e746a'); bgd.addColorStop(1, '#434943');
   ctx.fillStyle = bgd; ctx.strokeStyle = '#23271f'; ctx.lineWidth = 1.5 * S;
-  oct(tb * 1.14); ctx.fill(); ctx.stroke();
+  oct(tb * 1.14); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = '#10161b'; ctx.strokeStyle = '#0a0e12'; ctx.lineWidth = S;
-  oct(tb * 0.94); ctx.fill(); ctx.stroke();
+  oct(tb * 0.94); _fillMetalG(ctx); ctx.stroke();
   // Glazing: one pane to a face, each with its own slow flicker of screens.
   const tr = tb * 0.62;
   for (let q = 0; q < 8; q++) {
@@ -391,7 +391,7 @@ function renderDronePort(e, px, py, t) {
   const rgd = ctx.createRadialGradient(cx - tr * 0.4, cy - tr * 0.5, tr * 0.1, cx, cy, tr);
   rgd.addColorStop(0, '#46505a'); rgd.addColorStop(1, '#1d2429');
   ctx.fillStyle = rgd; ctx.strokeStyle = '#141a1e'; ctx.lineWidth = 1.2 * S;
-  oct(tr); ctx.fill(); ctx.stroke();
+  oct(tr); _fillMetalG(ctx); ctx.stroke();
   // the radar head
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(on ? t * 1.05 : 0.5);
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(-tr * 0.78 + 1.5 * S, -1.6 * S + 2 * S, tr * 1.56, 3.4 * S);
@@ -1078,6 +1078,7 @@ function renderDroneCharger(e, px, py, t) {
   ctx.fillStyle = ag;
   ctx.beginPath(); ctx.roundRect(px + 2, py + 2, W - 4, H - 4, 6 * S); ctx.fill();
   ctx.strokeStyle = '#3a3e36'; ctx.lineWidth = 1.5 * S; ctx.stroke();
+  _bldGrain(ctx, 'mottle', 0.5);
   // hazard chevrons in the four corners, outside the deck
   for (const [fx, fy, a] of [[0.085, 0.085, 0], [0.915, 0.085, Math.PI / 2], [0.915, 0.915, Math.PI], [0.085, 0.915, -Math.PI / 2]]) {
     ctx.save(); ctx.translate(px + W * fx, py + H * fy); ctx.rotate(a);
@@ -1092,6 +1093,7 @@ function renderDroneCharger(e, px, py, t) {
   const dg = ctx.createLinearGradient(cx - dr, cy - dr, cx + dr, cy + dr);
   dg.addColorStop(0, '#383c3e'); dg.addColorStop(0.55, '#2a2e30'); dg.addColorStop(1, '#1f2325');
   ctx.fillStyle = dg; ctx.beginPath(); ctx.arc(cx, cy, dr, 0, TAU); ctx.fill();
+  _bldGrain(ctx, 'grit');
   ctx.strokeStyle = 'rgba(232,236,240,0.32)'; ctx.lineWidth = 1.6 * S;
   ctx.beginPath(); ctx.arc(cx, cy, dr - 3 * S, 0, TAU); ctx.stroke();
   // a pentagon of painted lanes joining the pads
@@ -1124,8 +1126,8 @@ function renderDroneCharger(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(mx + 1.5 * S, my + 2.5 * S, pr * 1.06, 0, TAU); ctx.fill();
     const pg = ctx.createLinearGradient(mx - pr, my - pr, mx + pr, my + pr);
     pg.addColorStop(0, '#9aa29a'); pg.addColorStop(1, '#565c56');
-    ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(mx, my, pr * 1.06, 0, TAU); ctx.fill();          // raised steel rim
-    ctx.fillStyle = '#15191b'; ctx.beginPath(); ctx.arc(mx, my, pr * 0.92, 0, TAU); ctx.fill();
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(mx, my, pr * 1.06, 0, TAU); _fillMetalG(ctx);          // raised steel rim
+    ctx.fillStyle = '#15191b'; ctx.beginPath(); ctx.arc(mx, my, pr * 0.92, 0, TAU); _fillMetalG(ctx);
     // the induction coil: copper windings, shimmering while it is feeding a drone
     for (let q = 0; q < 3; q++) {
       ctx.strokeStyle = live ? `rgba(255,${170 + 40 * Math.sin(t * 9 - q * 1.4)},96,0.95)` : on ? 'rgba(196,122,66,0.85)' : 'rgba(96,70,50,0.8)';
@@ -1175,8 +1177,8 @@ function renderDroneCharger(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.save(); ctx.translate(4 * S, 6 * S); hex(mr, 0); ctx.fill(); ctx.restore();
   const mg = ctx.createLinearGradient(cx - mr, cy - mr, cx + mr, cy + mr);
   mg.addColorStop(0, '#aab0a8'); mg.addColorStop(0.55, '#70766e'); mg.addColorStop(1, '#434943');
-  ctx.fillStyle = mg; ctx.strokeStyle = '#23271f'; ctx.lineWidth = 1.5 * S; hex(mr, 0); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#161b20'; ctx.strokeStyle = '#0c1014'; ctx.lineWidth = S; hex(mr * 0.74, Math.PI / 6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = mg; ctx.strokeStyle = '#23271f'; ctx.lineWidth = 1.5 * S; hex(mr, 0); _fillMetalG(ctx); ctx.stroke();
+  ctx.fillStyle = '#161b20'; ctx.strokeStyle = '#0c1014'; ctx.lineWidth = S; hex(mr * 0.74, Math.PI / 6); _fillMetalG(ctx); ctx.stroke();
   const spin = on ? t * (0.5 + 2.2 * load) : 0.3;
   for (let q = 0; q < 6; q++) {
     const a = q * TAU / 6 + spin, lit = on && (busy > 0 ? q % 6 < Math.max(1, busy) + 1 : q % 3 === 0);
@@ -1208,7 +1210,7 @@ function renderDroneCharger(e, px, py, t) {
   const tg = ctx.createLinearGradient(tx, 0, tx + tw, 0);
   tg.addColorStop(0, '#9aa096'); tg.addColorStop(1, '#565c54');
   ctx.fillStyle = tg; ctx.strokeStyle = '#2a2e28'; ctx.lineWidth = 1.2 * S;
-  ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 1.5 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 1.5 * S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = 'rgba(0,0,0,0.28)'; for (let q = 0; q < 4; q++) ctx.fillRect(tx + 2.5 * S, ty + 3 * S + q * (th - 6 * S) / 4, tw - 5 * S, 1.6 * S);
   ctx.fillStyle = on ? (busy ? CHG : accent) : '#3a4650'; ctx.beginPath(); ctx.arc(tx + tw - 3.5 * S, ty + 3.5 * S, 1.6 * S, 0, TAU); ctx.fill();
 

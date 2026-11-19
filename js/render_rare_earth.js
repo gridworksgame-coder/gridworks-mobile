@@ -29,14 +29,14 @@ function _fcVTank(cx, cy, r, S, o = {}) {
   ctx.beginPath(); ctx.arc(cx + 4*S, cy + 5*S, r, 0, Math.PI*2); ctx.fill();
   const g = ctx.createRadialGradient(cx - r*0.4, cy - r*0.45, r*0.05, cx, cy, r);
   g.addColorStop(0, shell[0]); g.addColorStop(0.55, shell[1]); g.addColorStop(1, shell[2]);
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(10,12,14,0.8)'; ctx.lineWidth = 1.1*S; ctx.stroke();
   if (o.band) { ctx.strokeStyle = o.band; ctx.lineWidth = 2*S; ctx.beginPath(); ctx.arc(cx, cy, r - 2.2*S, 0, Math.PI*2); ctx.stroke(); }
   if (o.liquid) {
     const lr = r - 3.5*S;
     const lg = ctx.createRadialGradient(cx, cy, 1, cx, cy, lr);
     lg.addColorStop(0, o.liquid[0]); lg.addColorStop(1, o.liquid[1]);
-    ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(cx, cy, lr, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = S; ctx.stroke();
   } else {
     ctx.strokeStyle = 'rgba(0,0,0,0.13)'; ctx.lineWidth = 0.7*S;
@@ -59,7 +59,7 @@ function _fcHCyl(x0, x1, cy, r, S, stops, o = {}) {
   ctx.beginPath(); ctx.roundRect(x0 + 4*S, cy - r + 5*S, x1 - x0, r*2, r); ctx.fill();
   const g = ctx.createLinearGradient(0, cy - r, 0, cy + r);
   g.addColorStop(0, stops[0]); g.addColorStop(0.4, stops[1]); g.addColorStop(1, stops[2]);
-  ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x0, cy - r, x1 - x0, r*2, o.square ? r*0.25 : r); ctx.fill();
+  ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x0, cy - r, x1 - x0, r*2, o.square ? r*0.25 : r); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(10,10,10,0.8)'; ctx.lineWidth = S; ctx.stroke();
   ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(x0 + r*0.5, cy - r*0.62, x1 - x0 - r, r*0.18);
   for (const f of (o.bands || [])) {
@@ -84,7 +84,7 @@ function _fcBuilding(x, y, w, h, S, t, o = {}) {
   }
   const rg = ctx.createLinearGradient(x, y, x + w, y + h);
   rg.addColorStop(0, o.roof0 || '#b8bcc0'); rg.addColorStop(1, o.roof1 || '#8a9096');
-  ctx.fillStyle = rg; ctx.fillRect(x, y, w, h - 4*S);
+  ctx.fillStyle = rg; _fillRectMetalG(ctx, x, y, w, h - 4*S);
   ctx.strokeStyle = 'rgba(20,22,24,0.85)'; ctx.lineWidth = 1.2*S; ctx.strokeRect(x, y, w, h - 4*S);
   ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.8*S;
   ctx.beginPath(); ctx.moveTo(x + 1.5*S, y + h - 5.5*S); ctx.lineTo(x + 1.5*S, y + 1.5*S); ctx.lineTo(x + w - 1.5*S, y + 1.5*S); ctx.stroke();
@@ -213,7 +213,7 @@ function renderRareEarthMine(e, px, py, t) {
   // ── Wet plant: spirals on a raised steel frame ──
   const fX = px + w*0.04, fY = py + h*0.53, fW = w*0.42, fH = h*0.19;
   ctx.fillStyle = 'rgba(0,0,0,0.33)'; ctx.fillRect(fX + 4*S, fY + 5*S, fW, fH);
-  ctx.fillStyle = '#3c4248'; ctx.fillRect(fX, fY, fW, fH);
+  ctx.fillStyle = '#3c4248'; _fillRectMetalG(ctx, fX, fY, fW, fH);
   ctx.fillStyle = '#5a6066';                                                    // walkway grating
   for (let gx = fX + 1*S; gx < fX + fW - 1*S; gx += 2.4*S) ctx.fillRect(gx, fY + 1*S, 1.2*S, fH - 2*S);
   ctx.strokeStyle = '#d8b030'; ctx.lineWidth = 0.8*S; ctx.strokeRect(fX + 0.5*S, fY + 0.5*S, fW - S, fH - S);   // handrail
@@ -241,7 +241,7 @@ function renderRareEarthMine(e, px, py, t) {
   ctx.fillStyle = rf; ctx.fillRect(mx, my, mw, mh*0.38);
   ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.6*S;
   for (let x = mx + 2*S; x < mx + mw; x += 2.5*S) { ctx.beginPath(); ctx.moveTo(x, my); ctx.lineTo(x, my + mh*0.38); ctx.stroke(); }
-  ctx.fillStyle = '#2a2e32'; ctx.fillRect(mx, my + mh*0.38, mw, mh*0.62);                          // floor under
+  ctx.fillStyle = '#2a2e32'; _fillRectMetalG(ctx, mx, my + mh*0.38, mw, mh*0.62);                          // floor under
   const drY = my + mh*0.45, drH = mh*0.38;
   const dg = ctx.createLinearGradient(0, drY, 0, drY + drH);
   dg.addColorStop(0, '#d8dce0'); dg.addColorStop(0.5, '#7a8088'); dg.addColorStop(1, '#3a4048');
@@ -392,7 +392,7 @@ function renderLeachPlant(e, px, py, t) {
       ctx.strokeStyle = '#1a1816'; ctx.lineWidth = S; ctx.strokeRect(X(0.45), ky - kr - 3*S, k0 - X(0.45) + 3*S, kr*2 + 6*S);
       const bhx = k1 - 3*S, bhw = X(5.85) - bhx;
       ctx.fillStyle = 'rgba(0,0,0,0.33)'; ctx.fillRect(bhx + 4*S, ky - kr - 4*S + 5*S, bhw, kr*2 + 8*S);
-      ctx.fillStyle = '#6e4a36'; ctx.fillRect(bhx, ky - kr - 4*S, bhw, kr*2 + 8*S);
+      ctx.fillStyle = '#6e4a36'; _fillRectMetalG(ctx, bhx, ky - kr - 4*S, bhw, kr*2 + 8*S);
       ctx.strokeStyle = '#1a1210'; ctx.strokeRect(bhx, ky - kr - 4*S, bhw, kr*2 + 8*S);
       ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(bhx, ky - kr - 4*S, bhw, 2*S);
       const fl = active ? 0.75 + 0.2*Math.sin(t*9) + 0.08*Math.sin(t*23) : on ? 0.2 : 0;
@@ -417,13 +417,13 @@ function renderLeachPlant(e, px, py, t) {
     {
       const cx = X(8.55), cy = Y(1.95), r = Math.min(U*1.15, V*1.15);
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(cx + 5*S, cy + 6*S, r, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#8a8880'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#8a8880'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); _fillMetalG(ctx);
       ctx.strokeStyle = '#3a3a36'; ctx.lineWidth = 1.2*S; ctx.stroke();
       ctx.strokeStyle = '#4a5450'; ctx.lineWidth = 2.6*S; ctx.beginPath(); ctx.arc(cx, cy, r - 3*S, 0, Math.PI*2); ctx.stroke();  // launder
       const wr = r - 5*S;
       const wg = ctx.createRadialGradient(cx, cy, 1, cx, cy, wr);
       wg.addColorStop(0, active ? '#8a6040' : '#5a4a3a'); wg.addColorStop(0.55, active ? '#a89070' : '#6a6050'); wg.addColorStop(1, active ? '#a8c0c8' : '#5a666a');
-      ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(cx, cy, wr, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(cx, cy, wr, 0, Math.PI*2); _fillMetalG(ctx);
       ctx.save(); ctx.translate(cx, cy); ctx.rotate(active ? t*0.35 : 0.8);
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(2*S, -2*S + 3*S, wr, 4*S);
       ctx.fillStyle = '#d8b030'; ctx.fillRect(0, -2*S, wr, 4*S);                    // bridge
@@ -439,7 +439,7 @@ function renderLeachPlant(e, px, py, t) {
     {
       const mx = X(0.85), my = Y(2.45), mw = X(2.35) - mx, mh = Y(3.05) - my;
       ctx.fillStyle = 'rgba(0,0,0,0.33)'; ctx.fillRect(mx + 4*S, my + 5*S, mw, mh);
-      ctx.fillStyle = '#4a4640'; ctx.fillRect(mx, my, mw, mh);
+      ctx.fillStyle = '#4a4640'; _fillRectMetalG(ctx, mx, my, mw, mh);
       ctx.strokeStyle = '#1a1814'; ctx.lineWidth = S; ctx.strokeRect(mx, my, mw, mh);
       ctx.fillStyle = active ? '#8a5a36' : '#3a3026'; ctx.fillRect(mx + 2*S, my + 2*S, mw - 4*S, mh - 4*S);
       ctx.strokeStyle = '#c8ccd0'; ctx.lineWidth = 1.1*S;
@@ -492,8 +492,8 @@ function renderLeachPlant(e, px, py, t) {
     // ── Bunded sulfuric acid tank ──
     {
       const bx = X(2.6), by = Y(5.35), bw = X(4.42) - bx, bh = Y(7.25) - by;
-      ctx.fillStyle = '#5e5c56'; ctx.fillRect(bx, by, bw, bh);
-      ctx.fillStyle = '#8a877e'; ctx.fillRect(bx + 3*S, by + 3*S, bw - 6*S, bh - 6*S);
+      ctx.fillStyle = '#5e5c56'; _fillRectMetalG(ctx, bx, by, bw, bh);
+      ctx.fillStyle = '#8a877e'; _fillRectMetalG(ctx, bx + 3*S, by + 3*S, bw - 6*S, bh - 6*S);
       ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = S; ctx.strokeRect(bx + 0.5*S, by + 0.5*S, bw - S, bh - S);
       ctx.fillStyle = 'rgba(200,190,60,0.18)'; ctx.beginPath(); ctx.ellipse(bx + bw*0.3, by + bh*0.8, 6*S, 3*S, 0, 0, Math.PI*2); ctx.fill();
       _fcVTank(X(3.5), Y(6.28), Math.min(U, V)*0.72, S, { shell: ['#f4f0e0', '#c8c098', '#6a6440'], band: '#1a1a18', ladderAngle: 2.4 });
@@ -508,7 +508,7 @@ function renderLeachPlant(e, px, py, t) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(cx + 4*S, cy + 5*S, cw, chh);
       const cg = ctx.createLinearGradient(0, cy, 0, cy + chh);
       cg.addColorStop(0, '#8a7a70'); cg.addColorStop(1, '#4a3e38');
-      ctx.fillStyle = cg; ctx.fillRect(cx, cy, cw, chh);
+      ctx.fillStyle = cg; _fillRectMetalG(ctx, cx, cy, cw, chh);
       ctx.strokeStyle = '#1a1210'; ctx.lineWidth = 1.2*S; ctx.strokeRect(cx, cy, cw, chh);
       for (let k = 0; k < 5; k++) {
         const g = active ? 0.55 + 0.3*Math.sin(t*3 + k*1.3) : on ? 0.12 : 0;
@@ -524,15 +524,15 @@ function renderLeachPlant(e, px, py, t) {
     {
       const hx = X(6.75), hy = Y(5.4), hw = X(8.2) - hx, hh = Y(6.62) - hy;
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(hx + 4*S, hy + 5*S, hw, hh);
-      ctx.fillStyle = '#5a5664'; ctx.fillRect(hx, hy, hw, hh);
+      ctx.fillStyle = '#5a5664'; _fillRectMetalG(ctx, hx, hy, hw, hh);
       ctx.strokeStyle = '#16141a'; ctx.lineWidth = 1.2*S; ctx.strokeRect(hx, hy, hw, hh);
       // hopper throat, filling lilac with the buffer
       const ix = hx + 4*S, iy = hy + 4*S, iw = hw - 8*S, ih = hh - 8*S;
-      ctx.fillStyle = '#26232c'; ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix + iw, iy); ctx.lineTo(ix + iw*0.62, iy + ih); ctx.lineTo(ix + iw*0.38, iy + ih); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#26232c'; ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix + iw, iy); ctx.lineTo(ix + iw*0.62, iy + ih); ctx.lineTo(ix + iw*0.38, iy + ih); ctx.closePath(); _fillMetalG(ctx);
       ctx.save(); ctx.clip();
       const fy = iy + ih*(1 - oxFill);
       const og = ctx.createLinearGradient(0, fy, 0, iy + ih); og.addColorStop(0, on ? '#ece0fa' : '#7a7480'); og.addColorStop(1, on ? '#b8a4d8' : '#5a5462');
-      ctx.fillStyle = og; ctx.fillRect(ix, fy, iw, ih);
+      ctx.fillStyle = og; _fillRectMetalG(ctx, ix, fy, iw, ih);
       ctx.restore();
       ctx.font = `bold ${Math.max(4, 4.5*S)}px Courier New`; ctx.textAlign = 'center';
       ctx.fillStyle = on ? '#e8dcff' : '#6a6470';

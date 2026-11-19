@@ -257,8 +257,8 @@ function renderResearch2(e, px, py, t) {
 
     // Lab block: parapet, roof vents, lit window band on the front wall
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(px + 11, py + 28, 42, 37);
-    ctx.fillStyle = RSK.metalDk; ctx.fillRect(px + 8, py + 25, 44, 30);
-    ctx.fillStyle = RSK.roof;    ctx.fillRect(px + 10, py + 27, 40, 26);
+    ctx.fillStyle = RSK.metalDk; _fillRectMetalG(ctx, px + 8, py + 25, 44, 30);
+    ctx.fillStyle = RSK.roof;    _fillRectMetalG(ctx, px + 10, py + 27, 40, 26);
     ctx.fillStyle = RSK.wall;    ctx.fillRect(px + 8, py + 55, 44, 8);
     for (let k = 0; k < 6; k++) {
       ctx.fillStyle = on && Math.sin(t*0.7 + k*1.9) > -0.6 ? '#e8d0ff' : '#1a1622';
@@ -333,7 +333,7 @@ function renderResearch3(e, px, py, t) {
 
     // Central lab tower under the dome
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; _rsOct(rx - 13, ry - 13, rx + 17, ry + 17, 5); ctx.fill();
-    ctx.fillStyle = RSK.roof;           _rsOct(rx - 15, ry - 15, rx + 15, ry + 15, 5); ctx.fill();
+    ctx.fillStyle = RSK.roof;           _rsOct(rx - 15, ry - 15, rx + 15, ry + 15, 5); _fillMetalG(ctx);
     ctx.strokeStyle = RSK.metalDk; ctx.lineWidth = 1.5; ctx.stroke();
     _rsDome(rx, ry, 9, A, on, t, 2.0);
     _rsProgressRing(rx, ry, 12.5, A, on, t, 2);
@@ -5074,7 +5074,7 @@ function renderCellTower(e, px, py, t) {
 
     // ── Gravel compound ────────────────────────────────────────────────
     ctx.fillStyle = C('#3b3e3b', '#2a2c2a');
-    ctx.beginPath(); ctx.roundRect(X(6), Y(62), 148*u, 92*u, 4*u); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(X(6), Y(62), 148*u, 92*u, 4*u); _fillMetalG(ctx);
     if (detail) for (let k = 0; k < 70; k++) {
       R(10 + (k*73) % 140, 66 + (k*41) % 84, 1.2, 1.2, k % 3 ? 'rgba(170,170,160,0.16)' : 'rgba(10,10,8,0.25)');
     }
@@ -5274,6 +5274,7 @@ function renderFiberHub(e, px, py, t) {
     // ── Grass verge and concrete pad ─────────────────────────────────
     R(2, 2, 196, 196, C('#2e4a30', '#1c2a1e'));
     R(8, 8, 184, 184, C('#5a6268', '#34383c'));
+    _bldGrainRect(ctx, 'mottle', X(8), Y(8), 184*u, 184*u, 0.5);
     if (fine) {
       ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = 0.6*u;
       ctx.beginPath();
@@ -8060,6 +8061,48 @@ const _treeBaseSprites = ['a', 'b', 'c', 'd'].map(k => _seasonImg(`img/tree_base
 const _treeBaseLips    = ['a', 'b', 'c', 'd'].map(k => _seasonImg(`img/tree_base_${k}_lip.png`));
 const _TREE_BASE_W = 32, _TREE_BASE_H = 14, _TREE_BASE_AY = 24 / 56;
 
+// Cast shadows: the sun is in the upper left (as for the buildings'
+// ContactShadow, which drops 6 px down-right), so each tree throws a soft
+// canopy-shaped pool to the lower right of its foot, with the trunk's
+// shadow running into it. One pre-blurred sprite per kind (broadleaf 0,
+// fir 1, willow 2), built once on a plain canvas (no images, so nothing to
+// taint under file://) and drawn with one drawImage per tree; the canvas
+// filter is used only here, at build time, with a gradient fallback.
+const _TREE_SHADOW_W = 46, _TREE_SHADOW_H = 30;        // world px of the sprite (at scale 1)
+const _TREE_SHADOW_AX = 8, _TREE_SHADOW_AY = 8;        // the trunk's foot inside it
+const _treeShadowSprites = [0, 1, 2].map(kind => {
+  const S = 4, c = document.createElement('canvas');
+  c.width = _TREE_SHADOW_W * S; c.height = _TREE_SHADOW_H * S;
+  const g = c.getContext('2d');
+  g.scale(S, S);
+  let blurred = false;
+  try { g.filter = 'blur(2.2px)'; blurred = g.filter && g.filter !== 'none'; } catch (_) {}
+  const ax = _TREE_SHADOW_AX, ay = _TREE_SHADOW_AY;
+  const blob = (x, y, rx, ry, rot, a) => {
+    g.save(); g.translate(x, y); g.rotate(rot); g.scale(rx, ry);
+    if (blurred) g.fillStyle = `rgba(0,0,0,${a})`;
+    else { const gr = g.createRadialGradient(0, 0, 0, 0, 0, 1); gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(0.6, `rgba(0,0,0,${a * 0.8})`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; }
+    g.beginPath(); g.arc(0, 0, 1, 0, Math.PI * 2); g.fill(); g.restore();
+  };
+  // trunk shadow: a soft band from the foot toward the canopy's pool
+  g.save(); g.strokeStyle = 'rgba(0,0,0,0.8)'; g.lineCap = 'round'; g.lineWidth = 2.2;
+  g.beginPath(); g.moveTo(ax, ay); g.lineTo(ax + (kind === 1 ? 8 : 9), ay + 3); g.stroke(); g.restore();
+  if (kind === 1) {          // fir: a long narrow spire
+    blob(ax + 17, ay + 7, 13, 5.5, 0.38, 0.85);
+    blob(ax + 12, ay + 4.5, 7, 4.5, 0.38, 0.6);
+  } else if (kind === 2) {   // willow: wide and ragged, drooping round its foot
+    blob(ax + 16, ay + 8, 15, 10, 0.2, 0.8);
+    blob(ax + 9, ay + 9, 8, 6, 0, 0.55);
+    blob(ax + 25, ay + 11, 6, 5, 0, 0.5);
+  } else {                   // broadleaf: a lumpy round crown
+    blob(ax + 18, ay + 7, 12, 8.5, 0.25, 0.85);
+    blob(ax + 12, ay + 10, 6.5, 5, 0, 0.6);
+    blob(ax + 25, ay + 5, 6, 5, 0, 0.55);
+  }
+  return c;
+});
+const _TREE_SHADOW_ALPHA = 0.42;   // peak in full daylight (ContactShadow uses 0.52 for solid buildings)
+
 // Which tree grows on a tile, from the land (TerrainSystem): 2 a willow on
 // the banks of rivers and lakes, 1 a fir up on high, dry and rocky ground,
 // 0 a broadleaf tree in the valleys and lowlands. Per tree and stable for
@@ -8421,6 +8464,20 @@ function renderTree(e, px, py, t) {
       const _bw = _TREE_BASE_W * scale, _bh = _TREE_BASE_H * scale;
       const _bx = cx - _bw / 2, _by = py + TILE - 3 - _TREE_BASE_AY * _bh;
       const _base = _treeBaseSprites[_bi];
+      // Cast shadow first, under the mound and the tree: flat on the ground
+      // (no sway), thinner in winter when a broadleaf's crown is bare, and
+      // fading at night like the buildings'.
+      {
+        let _leaf = 0;
+        for (const [_season, w] of _looks) _leaf += w * (_season.state === 2 && !isConifer ? 0.4 : 1);
+        const _dk = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+        ctx.save();
+        ctx.globalAlpha *= _TREE_SHADOW_ALPHA * _leaf * (1 - _dk * 0.68);
+        const _sw = _TREE_SHADOW_W * scale, _sh = _TREE_SHADOW_H * scale;
+        ctx.drawImage(_treeShadowSprites[_kind] || _treeShadowSprites[0],
+          cx - _TREE_SHADOW_AX * scale, py + TILE - 3 - _TREE_SHADOW_AY * scale, _sw, _sh);
+        ctx.restore();
+      }
       if (_base.loaded) ctx.drawImage(_base, _bx, _by, _bw, _bh);
 
       // Ground contact shadow — grounds the tree against the terrain. Drawn
@@ -8563,7 +8620,7 @@ function renderGasStation(e, px, py, t) {
   R(32, 74, 6, 10, '#6a6e72'); R(96, 74, 6, 10, '#6a6e72');          // saddles
   const tg = ctx.createLinearGradient(0, Y(42), 0, Y(78));
   tg.addColorStop(0, '#c8ccd0'); tg.addColorStop(0.35, '#f4f4f0'); tg.addColorStop(1, '#9ea2a6');
-  ctx.fillStyle = tg; ctx.beginPath(); ctx.roundRect(X(22), Y(42), 90*u, 36*u, 18*u); ctx.fill();
+  ctx.fillStyle = tg; ctx.beginPath(); ctx.roundRect(X(22), Y(42), 90*u, 36*u, 18*u); _fillMetalG(ctx);
   R(22, 56, 90, 5, '#c83a2e');
   text('FUEL OIL', 67, 68.5, 7, '#4a4e52');
   // sight gauge: the station's real stock

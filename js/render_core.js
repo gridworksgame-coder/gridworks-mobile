@@ -1652,7 +1652,24 @@ function _zoneGroundPlan(zoneKey, rect) {
 
   const plan = { c0, c1, r0, r1, w, path, front, blocked, portals, portalAt };
   _zonePlanCache.set(key, plan);
+  _zoneClearVeg(plan);
   return plan;
+}
+// Nothing grows on a zone's sidewalks and streets: once a plan is laid
+// out, any tree or bush standing on one of its route tiles is cleared, as
+// building a house clears its lot (house_request_system.js). Deferred out
+// of the render pass that built the plan, since it removes entities.
+// Vegetation never blocks a plan and a 1x1 removal doesn't bump the zone
+// version, so this doesn't re-route the network it was cleared for.
+function _zoneClearVeg(plan) {
+  setTimeout(() => {
+    const { c0, c1, r0, r1, w, path } = plan;
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      if (!path[(r - r0) * w + (c - c0)]) continue;
+      const e = GridManager.getEntity(c, r);
+      if (e && (e.type === T.TREE || e.type === T.BUSH) && e.col === c && e.row === r) GridManager.removeEntity(c, r);
+    }
+  }, 0);
 }
 
 // ── Inter-zone connector roads ───────────────────────────────────────
@@ -2128,12 +2145,12 @@ function _drawConnectorMouths(g, cStart, cEnd, rStart, rEnd, shade) {
   if (!any) return;
   g.save();
   g.beginPath(); g.rect(cStart*T, rStart*T, (cEnd - cStart)*T, (rEnd - rStart)*T); g.clip();
-  g.fillStyle = col(58, 60, 64); g.fill(mouth.commercial);
-  g.fillStyle = col(50, 50, 52); g.fill(mouth.industrial);
+  _zoneTexFill(g, mouth.commercial, 'asphalt', col(58, 60, 64), shade);
+  _zoneTexFill(g, mouth.industrial, 'asphalt', col(50, 50, 52), shade, 'rgba(0,0,0,0.17)');
   g.fillStyle = col(236, 234, 224, 0.8); g.fill(zebra);
   g.strokeStyle = col(214, 210, 198); g.lineWidth = 1.5; g.stroke(kerb);
-  g.fillStyle = col(166, 160, 146); g.fill(walk.residential);
-  g.fillStyle = col(190, 182, 162); g.fill(walk.government);
+  _zoneTexFill(g, walk.residential, 'sidewalk', col(166, 160, 146), shade);
+  _zoneTexFill(g, walk.government, 'limestone', col(190, 182, 162), shade, 'rgba(0,0,0,0.05)');
   g.strokeStyle = col(206, 202, 190, 0.9); g.lineWidth = 1.2; g.stroke(walkEdge);
   g.restore();
 }
@@ -2188,6 +2205,199 @@ function _zoneGroundCtx(zoneKey, rect, cc0, cc1, rr0, rr1, shade) {
     lr0: Math.max(r0, rr0 - 1), lr1: Math.min(r1, rr1 + 1),
   };
 }
+// A zone surface: the Poly Haven texture `name` (GroundTextures.zoneTex,
+// mean colour = the old painted colour), dimmed to `shade` at dusk the way
+// Z.col dims flat colours; `flat` while the texture loads. `tint` (rgba,
+// optional) is laid over it, e.g. a driveway a shade darker than the walk.
+function _zoneTexFill(g, p, name, flat, shade, tint) {
+  const pat = (typeof GroundTextures !== 'undefined' && GroundTextures.zoneTex) ? GroundTextures.zoneTex[name] : null;
+  if (!pat) { g.fillStyle = flat; g.fill(p); return; }
+  g.fillStyle = pat; g.fill(p);
+  if (tint) { g.fillStyle = tint; g.fill(p); }
+  if (shade < 1) { g.fillStyle = `rgba(0,0,0,${(1 - shade).toFixed(3)})`; g.fill(p); }
+}
+// Material grain over a building's fill: call right after filling a path
+// (the current path is filled again with the grain). kind: 'grit' (shingle
+// and tar roofs), 'mottle' (walls, brick, plaster, concrete), 'stain'
+// (metal). Fainter at night, skipped while the image loads.
+//
+// Image-based fills (this grain, the photo yard pads) are switched off while
+// a building is drawn into a canvas that is read back (withoutImageFills):
+// opened from its folder (file://) an image taints the canvas and
+// getImageData throws (see LANDSCAPE_HANDOFF.md, file:// rule).
+let _imageFillsOff = 0;
+function withoutImageFills(fn) {
+  _imageFillsOff++;
+  try { return fn(); } finally { _imageFillsOff--; }
+}
+function _bldGrain(g, kind, a, rect) {
+  if (_imageFillsOff) return;
+  const pat = (typeof GroundTextures !== 'undefined' && GroundTextures.bldGrain) ? GroundTextures.bldGrain[kind] : null;
+  if (!pat) return;
+  const dk = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+  const prev = g.globalAlpha, fs = g.fillStyle;
+  g.globalAlpha = prev * (a === undefined ? 1 : a) * (1 - dk * 0.6);
+  g.fillStyle = pat;
+  if (rect) g.fillRect(rect[0], rect[1], rect[2], rect[3]); else g.fill();
+  g.globalAlpha = prev; g.fillStyle = fs;     // callers go on drawing with their own colour
+}
+// The same over a rectangle (for pads filled with fillRect).
+// (fillRect, so the caller's current path is left alone).
+function _bldGrainRect(g, kind, x, y, w, h, a) {
+  _bldGrain(g, kind, a, [x, y, w, h]);
+}
+// The building kits (_nKit, _aptKit, _bankKit, _bizKit, _clubKit) call this
+// after every R / RR / poly fill: big solid surfaces (roofs, slabs, walls,
+// yards) get the grain, everything else is left alone — small parts
+// (windows, signs, trim strips), anything translucent or blended (shadows,
+// glows, dusk washes), and everything when zoomed out past where grain can
+// be seen. w, h: the fill's size in world px. Dark fills (tar roofs,
+// asphalt) get grit, the rest mottle. rect: the fill was a fillRect, so
+// there is no path to reuse.
+const _KIT_GRAIN_MIN = TILE * 0.3;    // both sides at least this, world px
+const _KIT_GRAIN_ZOOM = 0.45;
+const _KIT_GRAIN_ALPHA = 0.6;         // over the grain's own alpha (mean ~0.1); layered surfaces add up
+// Which grain a fill of colour c on context g gets now, or null: nothing
+// translucent or blended (shadows, glows, dusk washes), nothing while
+// zoomed out past where grain shows, nothing while image fills are off.
+// Gradients with a see-through stop are glows, halos and fades, never a
+// surface: tagged as they are built, so _grainKind can leave them alone.
+if (typeof CanvasGradient !== 'undefined' && !CanvasGradient.prototype._gwTagged) {
+  const add = CanvasGradient.prototype.addColorStop;
+  CanvasGradient.prototype.addColorStop = function (o, c) {
+    if (!this._seeThru && typeof c === 'string') {
+      if (c === 'transparent') this._seeThru = true;
+      else if (c.startsWith('rgba') || c.startsWith('hsla')) { if (!(parseFloat(c.slice(c.lastIndexOf(',') + 1)) >= 0.95)) this._seeThru = true; }
+      else if (c[0] === '#' && c.length === 9 && parseInt(c.slice(7), 16) < 242) this._seeThru = true;
+    }
+    return add.call(this, o, c);
+  };
+  CanvasGradient.prototype._gwTagged = true;
+}
+function _grainKind(g, c) {
+  if (_imageFillsOff || typeof GroundTextures === 'undefined' || !GroundTextures.bldGrain.mottle) return null;
+  if (typeof Camera !== 'undefined' && Camera.zoom < _KIT_GRAIN_ZOOM) return null;
+  if (g.globalAlpha < 0.9 || g.globalCompositeOperation !== 'source-over') return null;
+  let dark = false;
+  if (typeof c === 'string') {
+    if (c[0] === '#') {
+      if (c.length === 9 && parseInt(c.slice(7), 16) < 242) return null;   // #rrggbbaa, see-through
+      if (c.length === 5 && parseInt(c[4], 16) < 15) return null;           // #rgba
+      const v = c.length >= 7 ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : [1, 2, 3].map(i => parseInt(c[i], 16) * 17);
+      dark = v[0] * 0.3 + v[1] * 0.59 + v[2] * 0.11 < 64;
+    } else if (c.startsWith('rgba')) {
+      const a = parseFloat(c.slice(c.lastIndexOf(',') + 1));
+      if (!(a >= 0.95)) return null;
+    } else if (!c.startsWith('rgb') && !c.startsWith('hsl')) return null;   // 'transparent', named colours
+  } else if (!c || typeof c !== 'object' || c._seeThru) return null;       // solid gradients and patterns pass
+  return dark ? 'grit' : 'mottle';
+}
+function _kitGrain(c, x, y, w, h, rect) {
+  if (w < 0) { x += w; w = -w; }
+  if (h < 0) { y += h; h = -h; }
+  if (w < _KIT_GRAIN_MIN || h < _KIT_GRAIN_MIN) return;
+  const kind = _grainKind(ctx, c);
+  if (!kind) return;
+  if (rect) _bldGrainRect(ctx, kind, x, y, w, h, _KIT_GRAIN_ALPHA);
+  else _bldGrain(ctx, kind, _KIT_GRAIN_ALPHA);
+}
+// Drop-in replacements for ctx.fillRect(...) / ctx.fill(...) at the big
+// surfaces of the hand-drawn buildings (roofs, walls, yards; picked by
+// measuring which fill calls paint large solid areas, 2026-11-19): the
+// same fill, then the grain over it.
+function _fillRectG(g, x, y, w, h) {
+  g.fillRect(x, y, w, h);
+  const kind = _grainKind(g, g.fillStyle);
+  if (!kind) return;
+  if (w < 0) { x += w; w = -w; }
+  if (h < 0) { y += h; h = -h; }
+  _bldGrainRect(g, kind, x, y, w, h, _KIT_GRAIN_ALPHA);
+}
+// Metal: scanned scratches, chips and drips (light/shadow) plus a light
+// coloured rust layer, over a steel surface's own paint. a: strength.
+const _METAL_ALPHA = 0.6, _RUST_ALPHA = 0.12;   // toned down 2026-11-19 (0.9 / 0.3 read as dirty)
+// The high-tech plants are clean, looked-after kit: brushed steel (made in
+// scripts/building_grain_png.py, Poly Haven has no clean metal), no wear, no
+// rust. renderEntityAt sets _metalDrawType to the type it is drawing.
+let _metalDrawType = null;
+const _BRUSHED_ALPHA = 0.9;
+let _CLEAN_METAL = null;
+function _cleanMetal(type) {
+  if (!_CLEAN_METAL) {
+    const k = ['HULKINGFUSIONREACTOR', 'ADVFUSIONREACTOR', 'FUSIONFUELPLANT', 'FUSIONLAB', 'MHDRING',
+      'ADVREACTOR', 'TRITIUMBREEDER', 'HE3SEPARATOR', 'CRYOPLANT', 'MK4RESEARCH', 'MK5RESEARCH',
+      'RESEARCH2', 'RESEARCH3', 'COREWORKS', 'SCMILL', 'ELECTROLYZER', 'ATMOSCOLLECTOR',
+      'LAUNCHCOMPLEX', 'NATIONALGRID', 'SUBSTATION4', 'SUBSTATION5', 'CIRCUITSWITCH2', 'PROTECTOR3',
+      'LIGHTNINGROD3', 'DRONEPORT', 'DRONECHARGER', 'SPENTFUELPOOL', 'REPROCESSOR', 'MOXPLANT',
+      'BATTERY', 'SOLAR3', 'WIND3', 'GOVERNOR', 'CARBONCAPTURE', 'FIBERHUB', 'STEAMTURBINE2', 'COOLINGTOWER2'];
+    _CLEAN_METAL = new Set(k.map(n => T[n]).filter(Boolean));
+  }
+  return _CLEAN_METAL.has(type);
+}
+// Corrugated iron (Poly Haven corrugated_iron_02): on the older plants the
+// big rectangular steel (sheds, walls, housings: the fillRect surfaces) is
+// corrugated sheet; round and rounded parts (tanks, drums) stay plate.
+const _CORRUGATED_ALPHA = 0.85;
+function _corrugatedGrain(g, a, rect) {
+  const s = a === undefined ? 1 : a;
+  _bldGrain(g, 'corrugated', _CORRUGATED_ALPHA * s, rect);
+  _bldGrain(g, 'rust', _RUST_ALPHA * s, rect);
+}
+// What a fill's colour says it is: 'brick' (red-brown masonry), 'paint'
+// (any other strong colour) or 'steel' (greys and near-greys). Gradients and
+// patterns count as steel.
+function _surfaceOf(c) {
+  if (typeof c !== 'string') return 'steel';
+  let v = null;
+  if (c[0] === '#') v = c.length >= 7 ? [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)) : [1, 2, 3].map(i => parseInt(c[i], 16) * 17);
+  else { const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(c); if (m) v = [+m[1], +m[2], +m[3]]; }
+  if (!v) return 'steel';
+  const mx = Math.max(...v), mn = Math.min(...v), sat = mx ? (mx - mn) / mx : 0;
+  if (sat < 0.22) return 'steel';
+  return (v[0] === mx && v[0] - v[2] > 40 && mx < 200) ? 'brick' : 'paint';
+}
+function _metalGrain(g, a, rect) {
+  const s = a === undefined ? 1 : a;
+  const surf = _surfaceOf(g.fillStyle);
+  if (surf === 'brick') { _bldGrain(g, 'mottle', 0.6 * s, rect); return; }   // masonry, not metal
+  if (_metalDrawType && _cleanMetal(_metalDrawType)) { _bldGrain(g, 'brushed', _BRUSHED_ALPHA * s, rect); return; }
+  if (rect && surf === 'steel') { _corrugatedGrain(g, s, rect); return; }
+  _bldGrain(g, 'metal', _METAL_ALPHA * s, rect);
+  _bldGrain(g, 'rust', _RUST_ALPHA * s, rect);
+}
+// Drop-in replacements at the steel surfaces of plant and grid equipment
+// (tanks, wellheads, skids, housings; picked by measurement like _fillG).
+function _fillRectMetalG(g, x, y, w, h) {
+  g.fillRect(x, y, w, h);
+  if (!_grainKind(g, g.fillStyle)) return;
+  if (w < 0) { x += w; w = -w; }
+  if (h < 0) { y += h; h = -h; }
+  _metalGrain(g, 1, [x, y, w, h]);
+}
+function _fillMetalG(g, rule) {
+  if (rule) g.fill(rule); else g.fill();
+  if (rule === 'evenodd' || !_grainKind(g, g.fillStyle)) return;
+  _metalGrain(g, 1);
+}
+function _fillG(g, rule) {
+  if (rule) g.fill(rule); else g.fill();
+  if (rule === 'evenodd') return;                    // the grain's own fill would close the holes
+  const kind = _grainKind(g, g.fillStyle);
+  if (kind) _bldGrain(g, kind, _KIT_GRAIN_ALPHA);
+}
+// A kit polygon's size in world px (pts in kit units, sx/sy units -> px).
+function _kitPolySize(pts, sx, sy) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return [(x1 - x0) * sx, (y1 - y0) * sy];
+}
+// Scanned grass light and shadow over a flat lawn colour (the same
+// GroundTextures.grassDetail the open ground uses), faded with the grass LOD.
+function _zoneLawnDetail(g, p, lod, a) {
+  const GD = typeof GroundTextures !== 'undefined' ? GroundTextures.grassDetail : null;
+  if (!GD || !GD.meadow || lod <= 0) return;
+  g.save(); g.globalAlpha = a * lod; g.fillStyle = GD.meadow; g.fill(p); g.restore();
+}
 function _circlePath(p, x, y, rad) { p.moveTo(x + rad, y); p.arc(x, y, rad, 0, Math.PI*2); }
 // Base surface: one opaque fill per tone bucket over the redraw range.
 function _zoneFillTones(g, cc0, cc1, rr0, rr1, salt, toneFn) {
@@ -2237,9 +2447,15 @@ function _forRouteTiles(Z, fn) {
 // Round deciduous canopies: shadow, darker rim, lobes, highlight.
 function _drawCanopies(g, trees, col, dark) {
   if (!trees.length) return;
-  const shadows = new Path2D();
-  for (const [x, y, rad] of trees) { shadows.moveTo(x + 3 + rad, y + 4); shadows.ellipse(x + 3, y + 4, rad, rad*0.8, 0, 0, Math.PI*2); }
-  g.fillStyle = `rgba(0,0,0,${(0.26 * (1 - dark*0.5)).toFixed(3)})`; g.fill(shadows);
+  // Cast down-right like the buildings' and the tree sprites' shadows
+  // (sun upper left), softened by stacking a wide faint pool, a mid one
+  // and a core: three fills, no blur filter on the ground canvas.
+  const fade = 1 - dark*0.68;
+  for (const [grow, dx, dy, a] of [[1.25, 7, 6, 0.08], [1.05, 6, 5, 0.09], [0.82, 5, 4, 0.1]]) {
+    const p = new Path2D();
+    for (const [x, y, rad] of trees) { const rx = rad*grow; p.moveTo(x + dx + rx*0.955, y + dy + rx*0.296); p.ellipse(x + dx, y + dy, rx, rx*0.78, 0.3, 0, Math.PI*2); }
+    g.fillStyle = `rgba(0,0,0,${(a * fade).toFixed(3)})`; g.fill(p);
+  }
   // These are baked into the ground layer, so they follow the seasons by
   // being repainted: the ground cache's key carries Seasons.foliageStep().
   // Each canopy turns, drops and regrows on its own cue (from its hv), in
@@ -2934,6 +3150,7 @@ function drawNeighbourhoodGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) 
     g.fillStyle = col(60 + k*1.5 + st, 100 + k*2 + st, 43 + k + st*0.5);
     g.fill(p);
   }
+  { const all = new Path2D(); all.rect(cc0*T, rr0*T, (cc1 - cc0 + 1)*T, (rr1 - rr0 + 1)*T); _zoneLawnDetail(g, all, lod, 0.5); }
 
   // Lots: each house's lawn is a shade apart from its neighbours'
   const lots = _nbLots(Z.plan);
@@ -2982,7 +3199,7 @@ function drawNeighbourhoodGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) 
     if (E) { jl(cx + HW, cy - HW, cx + HW, cy + HW); jl(x + T, cy - HW, x + T, cy + HW); }
     _routeLightSpot(c, r, x, y, HW, N, S, W, E, lamps, 0.12);
   });
-  g.fillStyle = col(166, 160, 146); g.fill(slabs);
+  _zoneTexFill(g, slabs, 'sidewalk', col(166, 160, 146), shade);
   g.strokeStyle = col(116, 110, 98, 0.6); g.lineWidth = 1; g.stroke(joints);
   g.strokeStyle = col(206, 202, 190, 0.9); g.lineWidth = 1.2; g.stroke(kerbs);
 
@@ -3003,7 +3220,7 @@ function drawNeighbourhoodGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) 
       edge.moveTo(cx - DW, top); edge.lineTo(cx + DW, top);
       if (D.car) cars.push([cx, y + T/2 + 1, D.carHue]);
     }
-    g.fillStyle = col(150, 146, 136); g.fill(slab);
+    _zoneTexFill(g, slab, 'sidewalk', col(150, 146, 136), shade, 'rgba(0,0,0,0.09)');
     g.strokeStyle = col(118, 112, 100, 0.8); g.lineWidth = 1; g.stroke(edge);
     // expansion joints
     const j = new Path2D();
@@ -3166,7 +3383,12 @@ function drawCommercialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
 
   // Plaza: warm concrete slabs in a few tones, half-tile joints
   const tones = _zoneFillTones(g, cc0, cc1, rr0, rr1, 2, (c, r, hv) => Math.floor(hv * 3));
-  for (const [k, p] of tones) { g.fillStyle = col(150 + k*5, 144 + k*5, 132 + k*4); g.fill(p); }
+  if (GroundTextures.zoneTex && GroundTextures.zoneTex.plaza) {
+    // one textured fill, then the slab tones as faint washes over it
+    const all = new Path2D(); all.rect(cc0*T, rr0*T, (cc1 - cc0 + 1)*T, (rr1 - rr0 + 1)*T);
+    _zoneTexFill(g, all, 'plaza', null, shade);
+    for (const [k, p] of tones) { if (k === 1) continue; g.fillStyle = k ? 'rgba(255,250,235,0.05)' : 'rgba(0,0,0,0.05)'; g.fill(p); }
+  } else for (const [k, p] of tones) { g.fillStyle = col(150 + k*5, 144 + k*5, 132 + k*4); g.fill(p); }
   {
     const j = new Path2D();
     for (let x = cc0*T; x <= (cc1 + 1)*T; x += T/2) { j.moveTo(x, rr0*T); j.lineTo(x, (rr1 + 1)*T); }
@@ -3205,7 +3427,7 @@ function drawCommercialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       else if (bi === undefined && !isFront(c, r) && _nbHash(c, r, 510) < 0.07) busStops.push([x, y, cy]);
     }
   });
-  g.fillStyle = col(58, 60, 64); g.fill(asphalt);
+  _zoneTexFill(g, asphalt, 'asphalt', col(58, 60, 64), shade);
   g.fillStyle = col(236, 234, 224, 0.8); g.fill(paint);
   g.strokeStyle = col(214, 210, 198); g.lineWidth = 1.5; g.stroke(kerbs);
   for (const [x, cy] of loading) {
@@ -3328,7 +3550,7 @@ function drawCommercialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
   // pocket-plaza lawns
   g.fillStyle = col(150, 146, 136); g.save(); g.translate(-1, -1); g.fill(lawns); g.restore();
   g.fillStyle = col(72, 112, 52); g.fill(lawns);
-  g.fillStyle = col(62, 64, 68); g.fill(bays);
+  _zoneTexFill(g, bays, 'asphalt', col(62, 64, 68), shade, 'rgba(255,255,255,0.02)');
   g.fillStyle = col(232, 232, 224, 0.75); g.fill(bayLines);
   const CAR = [[196, 48, 40], [232, 232, 228], [36, 40, 48], [52, 92, 170], [140, 144, 150], [200, 160, 50], [60, 110, 80]];
   for (const [x, y, vertical, hv] of cars) {
@@ -3443,7 +3665,15 @@ function drawIndustrialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
   // Yard surface: packed gravel with poured concrete slabs here and there
   const surf = _zoneFillTones(g, cc0, cc1, rr0, rr1, 3, (c, r, hv) => (hv < 0.35 ? 10 : 0) + Math.floor(_nbHash(c, r, 4) * 3));
   const seams = new Path2D();
-  for (const [key, p] of surf) {
+  if (GroundTextures.zoneTex && GroundTextures.zoneTex.gravel && GroundTextures.zoneTex.slab) {
+    // packed gravel and poured slabs, each one textured fill, the per-tile
+    // tones as faint washes over them
+    const grav = new Path2D(), conc = new Path2D();
+    for (const [key, p] of surf) (key >= 10 ? conc : grav).addPath(p);
+    _zoneTexFill(g, grav, 'gravel', null, shade);
+    _zoneTexFill(g, conc, 'slab', null, shade);
+    for (const [key, p] of surf) { const k = key % 10; if (k === 1) continue; g.fillStyle = k ? 'rgba(255,250,235,0.05)' : 'rgba(0,0,0,0.06)'; g.fill(p); }
+  } else for (const [key, p] of surf) {
     const k = key % 10;
     g.fillStyle = key >= 10 ? col(112 + k*5, 110 + k*5, 104 + k*4) : col(90 + k*6, 84 + k*5, 72 + k*4);
     g.fill(p);
@@ -3472,8 +3702,10 @@ function drawIndustrialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
         for (let k = 0; k < 4; k++) { px += 6 + _nbHash(c, r, 136 + k)*4; py += (_nbHash(c, r, 140 + k) - 0.5)*8; cracks.lineTo(px, py); }
       }
     }
-    g.fillStyle = col(60, 56, 50, 0.6);  g.fill(dk);
-    g.fillStyle = col(150, 144, 130, 0.5); g.fill(lt);
+    if (!(GroundTextures.zoneTex && GroundTextures.zoneTex.gravel)) {   // the photo has its own grit
+      g.fillStyle = col(60, 56, 50, 0.6);  g.fill(dk);
+      g.fillStyle = col(150, 144, 130, 0.5); g.fill(lt);
+    }
     g.fillStyle = 'rgba(20,18,16,0.35)'; g.fill(stains);
     g.strokeStyle = col(50, 48, 44, 0.6); g.lineWidth = 0.8; g.stroke(cracks);
   }
@@ -3498,7 +3730,7 @@ function drawIndustrialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     }
     _routeLightSpot(c, r, x, y, HW, N, S, W, E, masts, 0.08);
   });
-  g.fillStyle = col(50, 50, 52); g.fill(asphalt);
+  _zoneTexFill(g, asphalt, 'asphalt', col(50, 50, 52), shade, 'rgba(0,0,0,0.17)');
   g.strokeStyle = col(30, 30, 32, 0.45); g.lineWidth = 2; g.stroke(tracks);
   g.strokeStyle = col(220, 176, 44, 0.9); g.lineWidth = 1.4; g.stroke(edges);
   g.strokeStyle = col(220, 176, 44, 0.7); g.lineWidth = 1.2; g.stroke(hatch);
@@ -3661,6 +3893,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
   // Formal lawn, checkered like a mown croquet lawn
   const lawn = _zoneFillTones(g, cc0, cc1, rr0, rr1, 5, (c, r) => ((((c + r) % 2) + 2) % 2));
   for (const [k, p] of lawn) { g.fillStyle = k ? col(54, 96, 42) : col(60, 104, 46); g.fill(p); }
+  { const all = new Path2D(); all.rect(cc0*T, rr0*T, (cc1 - cc0 + 1)*T, (rr1 - rr0 + 1)*T); _zoneLawnDetail(g, all, lod, 0.45); }
 
   // Forecourts: limestone slabs with half-tile joints
   {
@@ -3673,7 +3906,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       joints.moveTo(x, y + T/2); joints.lineTo(x + T, y + T/2);
       joints.rect(x, y, T, T);
     }
-    g.fillStyle = col(190, 182, 162); g.fill(slabs);
+    _zoneTexFill(g, slabs, 'limestone', col(190, 182, 162), shade, 'rgba(0,0,0,0.05)');
     g.strokeStyle = col(150, 142, 124, 0.55); g.lineWidth = 1; g.stroke(joints);
   }
 
@@ -3687,7 +3920,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     if (N + S + W + E >= 3) roses.push([x + T/2, y + T/2]);
     _routeLightSpot(c, r, x, y, HW, N, S, W, E, lamps, 0.25);
   });
-  g.fillStyle = col(204, 196, 176); g.fill(stone);
+  _zoneTexFill(g, stone, 'limestone', col(204, 196, 176), shade, 'rgba(255,250,235,0.04)');
   g.strokeStyle = col(150, 140, 120, 0.7); g.lineWidth = 0.8; g.stroke(inlay);
   g.strokeStyle = col(112, 108, 102); g.lineWidth = 2; g.stroke(border);
   for (const [x, y] of roses) {   // compass-rose inlay at junctions

@@ -434,6 +434,42 @@ const GroundTextures = (() => {
     img.src = `img/grass_detail_${kind}.png`;
   }
 
+  // Zone ground surfaces (render_core.js zone renderers): Poly Haven
+  // scans (CC0) baked lit in Blender (scripts/bake_ground_tex.py), their
+  // mean colour matched to the old painted fill and shrunk to 256 px
+  // (scripts/zone_tex_png.py). Same rules as the grass detail: an ordinary
+  // canvas, power-of-two, no scale in the pattern; one repeat = 256 world
+  // px. Null until loaded (the zone falls back to its flat colour);
+  // zoneTexLoaded counts arrivals (ground cache key).
+  api.zoneTex = {};
+  api.zoneTexLoaded = 0;
+  for (const name of ['asphalt', 'sidewalk', 'plaza', 'gravel', 'slab', 'limestone']) {
+    api.zoneTex[name] = null;
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      c.getContext('2d').drawImage(img, 0, 0, 256, 256);
+      api.zoneTex[name] = c.getContext('2d').createPattern(c, 'repeat');
+      api.zoneTexLoaded++;
+    };
+    img.src = `img/zone_${name}.jpg`;
+  }
+
+  // Building material grain (scripts/building_grain_png.py): white light /
+  // black shadow with alpha, high-passed from Poly Haven scans, laid over a
+  // building's own flat fill with _bldGrain (render_core.js) so it keeps its
+  // colour and gains a surface. 256 px, no scale, world-anchored.
+  api.bldGrain = { grit: null, mottle: null, stain: null, metal: null, rust: null, brushed: null, corrugated: null };   // rust is coloured, the rest light/shadow
+  for (const name of Object.keys(api.bldGrain)) {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = c.height = 256;
+      c.getContext('2d').drawImage(img, 0, 0, 256, 256);
+      api.bldGrain[name] = c.getContext('2d').createPattern(c, 'repeat');
+    };
+    img.src = `img/bld_grain_${name}.png`;
+  }
+
   if (USE_PHOTO_GRASS_TEXTURE) {
     _loadImagePattern('img/grass_tile_a.png', 0,  p => { api.photoGrassPatternA = p; });
     _loadImagePattern('img/grass_tile_b.png', 37, p => { api.photoGrassPatternB = p; });

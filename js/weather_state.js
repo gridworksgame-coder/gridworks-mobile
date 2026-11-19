@@ -1352,7 +1352,7 @@ const BuildingSnow = (() => {
         const X = (e.col || 0) * TILE, Y = (e.row || 0) * TILE;
         octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, W, H);
         octx.setTransform(SC, 0, 0, SC, -X * SC, -Y * SC);
-        renderEntityAt(e, X, Y, tt);
+        withoutImageFills(() => renderEntityAt(e, X, Y, tt));
       } finally { ctx = saved2; DayNight.hour = oh; DayNight.darkness = od; Camera.zoom = oz; octx.setTransform(1, 0, 0, 1, 0, 0); }
       return octx.getImageData(0, 0, W, H).data;
     };

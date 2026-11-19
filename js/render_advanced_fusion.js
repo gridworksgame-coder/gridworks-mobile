@@ -39,7 +39,7 @@ function _afrGrate(x, y, w, h, U) {
     _afrGratePat = g.createPattern(c, 'repeat');
   }
   _afrGratePat.setTransform(new DOMMatrix([U * 0.9, 0, 0, U * 0.9, x, y]));
-  ctx.fillStyle = _afrGratePat; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = _afrGratePat; _fillRectMetalG(ctx, x, y, w, h);
 }
 
 // Concrete plinth: bevelled edge, weathering, expansion joints.
@@ -82,10 +82,10 @@ function _afrBolts(cx, cy, r, n, U, s = 1.1) {
 // Glass roof light with mullions and a sky reflection; `glow` lights it
 // from below.
 function _afrGlass(x, y, w, h, U, glow) {
-  ctx.fillStyle = '#161c22'; ctx.fillRect(x - 1.6 * U, y - 1.6 * U, w + 3.2 * U, h + 3.2 * U);
+  ctx.fillStyle = '#161c22'; _fillRectMetalG(ctx, x - 1.6 * U, y - 1.6 * U, w + 3.2 * U, h + 3.2 * U);
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
   g.addColorStop(0, '#7aa2bc'); g.addColorStop(0.45, '#2e4a5e'); g.addColorStop(1, '#18242f');
-  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = g; _fillRectMetalG(ctx, x, y, w, h);
   if (glow) { ctx.fillStyle = glow; ctx.fillRect(x, y, w, h); }
   const horiz = w >= h, L = horiz ? w : h, n = Math.max(2, Math.round(L / (11 * U)));
   ctx.strokeStyle = '#11161b'; ctx.lineWidth = 0.9 * U; ctx.beginPath();
@@ -109,13 +109,13 @@ function _afrHvac(cx, cy, s, U, t, spin) {
   ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(x + 3 * U, y + 4 * U, w, h);
   const g = ctx.createLinearGradient(x, y, x + w, y + h);
   g.addColorStop(0, '#d2d8de'); g.addColorStop(1, '#7c848c');
-  ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = g; _fillRectMetalG(ctx, x, y, w, h);
   ctx.strokeStyle = '#262a30'; ctx.lineWidth = 0.8 * U; ctx.strokeRect(x, y, w, h);
   ctx.strokeStyle = 'rgba(30,34,40,0.5)'; ctx.lineWidth = 0.5 * U; ctx.beginPath();
   for (let fx = x + w * 0.06; fx < x + w * 0.4; fx += 1.5 * U) { ctx.moveTo(fx, y + h * 0.14); ctx.lineTo(fx, y + h * 0.86); }
   ctx.stroke();
   const fr = Math.min(h * 0.4, w * 0.24), fx = x + w * 0.7;
-  ctx.fillStyle = '#101418'; ctx.beginPath(); ctx.arc(fx, cy, fr, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#101418'; ctx.beginPath(); ctx.arc(fx, cy, fr, 0, Math.PI * 2); _fillMetalG(ctx);
   ctx.strokeStyle = '#5c646c'; ctx.lineWidth = 0.9 * U; ctx.stroke();
   ctx.save(); ctx.translate(fx, cy); ctx.rotate(spin ? t * 9 : 0.6);
   ctx.fillStyle = '#9aa4ac';
@@ -157,7 +157,7 @@ function _afrRoof(x, y, w, h, U, t, o = {}) {
   const roof = o.roof || ['#8f969e', '#5b6169'];
   const rg = ctx.createLinearGradient(x, y, x + w * 0.7, y + rh);
   rg.addColorStop(0, roof[0]); rg.addColorStop(1, roof[1]);
-  ctx.fillStyle = rg; ctx.fillRect(x, y, w, rh);
+  ctx.fillStyle = rg; _fillRectMetalG(ctx, x, y, w, rh);
   ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, rh); ctx.clip();
   const seam = o.seam || 9 * U;
   ctx.lineWidth = 0.7 * U;
@@ -187,13 +187,13 @@ function _afrRoof(x, y, w, h, U, t, o = {}) {
 function _afrVessel(cx, cy, r, U, o = {}) {
   ctx.fillStyle = 'rgba(0,0,0,0.34)'; ctx.beginPath(); ctx.arc(cx + r * 0.12 + 2 * U, cy + r * 0.15 + 3 * U, r, 0, Math.PI * 2); ctx.fill();
   const shell = o.shell || ['#eef2f6', '#a4aeb8', '#48505a'];
-  ctx.fillStyle = o.flange || '#59616b'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = o.flange || '#59616b'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); _fillMetalG(ctx);
   ctx.strokeStyle = '#14181c'; ctx.lineWidth = 1 * U; ctx.stroke();
   _afrBolts(cx, cy, r * 0.9, o.bolts ?? Math.max(8, Math.min(24, Math.round(r / (2.6 * U)))), U, Math.max(0.6, Math.min(1.3, r / (16 * U))));
   const dr = r * 0.8;
   const g = ctx.createRadialGradient(cx - dr * 0.4, cy - dr * 0.45, dr * 0.05, cx, cy, dr);
   g.addColorStop(0, shell[0]); g.addColorStop(0.55, shell[1]); g.addColorStop(1, shell[2]);
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, dr, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, dr, 0, Math.PI * 2); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(10,12,16,0.8)'; ctx.lineWidth = 0.8 * U; ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = 0.7 * U; ctx.beginPath(); ctx.arc(cx, cy, dr * 0.62, 0, Math.PI * 2); ctx.stroke();
   if (o.nozzle !== false) {
@@ -282,7 +282,7 @@ function _afrSphere(cx, cy, r, U, t, o = {}) {
   const g = ctx.createRadialGradient(cx - r * 0.38, cy - r * 0.42, r * 0.04, cx, cy, r);
   const sh = o.shell || ['#ffffff', '#d6dde2', '#8c96a0', '#3c444c'];
   g.addColorStop(0, sh[0]); g.addColorStop(0.35, sh[1]); g.addColorStop(0.75, sh[2]); g.addColorStop(1, sh[3]);
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); _fillMetalG(ctx);
   ctx.strokeStyle = '#14181c'; ctx.lineWidth = 1 * U; ctx.stroke();
   ctx.strokeStyle = 'rgba(40,50,60,0.2)'; ctx.lineWidth = 0.7 * U;
   ctx.beginPath(); ctx.arc(cx, cy, r * 0.5, 0, TAU); ctx.moveTo(cx + r * 0.82, cy); ctx.arc(cx, cy, r * 0.82, 0, TAU); ctx.stroke();
@@ -323,14 +323,14 @@ function _afrSphere(cx, cy, r, U, t, o = {}) {
 // Bank of fans in a steel deck (air coolers, aftercoolers).
 function _afrFanDeck(x, y, w, h, U, t, on, n, spd = 7) {
   ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(x + 4 * U, y + 5 * U, w, h);
-  ctx.fillStyle = '#2b3036'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = '#2b3036'; _fillRectMetalG(ctx, x, y, w, h);
   const cell = w / n, fr = Math.min(cell, h) * 0.42;
   for (let q = 0; q < n; q++) {
     const fx = x + cell * (q + 0.5), fy = y + h / 2;
     const pg = ctx.createLinearGradient(x + cell * q, y, x + cell * (q + 1), y + h);
     pg.addColorStop(0, '#5a626c'); pg.addColorStop(1, '#353b43');
-    ctx.fillStyle = pg; ctx.fillRect(x + cell * q + 1.4 * U, y + 1.4 * U, cell - 2.8 * U, h - 2.8 * U);
-    ctx.fillStyle = '#0d1013'; ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = pg; _fillRectMetalG(ctx, x + cell * q + 1.4 * U, y + 1.4 * U, cell - 2.8 * U, h - 2.8 * U);
+    ctx.fillStyle = '#0d1013'; ctx.beginPath(); ctx.arc(fx, fy, fr, 0, Math.PI * 2); _fillMetalG(ctx);
     ctx.strokeStyle = '#8a949e'; ctx.lineWidth = 1.3 * U; ctx.stroke();
     ctx.save(); ctx.translate(fx, fy); ctx.rotate(on ? t * spd + q * 1.3 : q * 0.7);
     ctx.fillStyle = '#909ca6';
@@ -357,7 +357,7 @@ function _afrColumnTop(cx, cy, r, U) {
   }
   const g = ctx.createRadialGradient(cx - r * 0.4, cy - r * 0.45, r * 0.05, cx, cy, r);
   g.addColorStop(0, '#eef2f6'); g.addColorStop(0.55, '#a2acb6'); g.addColorStop(1, '#46505a');
-  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fill();
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); _fillMetalG(ctx);
   ctx.strokeStyle = '#14181c'; ctx.lineWidth = 0.9 * U; ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, TAU); ctx.stroke();
   ctx.fillStyle = '#353c44'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.18, 0, TAU); ctx.fill();
@@ -512,10 +512,10 @@ function renderAdvancedFusionReactor(e, px, py, t) {
       windows: true, lit: on, spin: on });
     const coldBox = (bx, by, bw, bh) => {
       ctx.fillStyle = 'rgba(0,0,0,0.34)'; ctx.fillRect(bx + 6 * U, by + 8 * U, bw, bh);
-      ctx.fillStyle = '#353c45'; ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#353c45'; _fillRectMetalG(ctx, bx, by, bw, bh);
       const g = ctx.createLinearGradient(bx, 0, bx + bw, 0);
       g.addColorStop(0, '#f4f8fa'); g.addColorStop(0.55, '#c6d2da'); g.addColorStop(1, '#7e8e9a');
-      ctx.fillStyle = g; ctx.fillRect(bx + 2.2 * U, by + 2.2 * U, bw - 4.4 * U, bh - 4.4 * U);
+      ctx.fillStyle = g; _fillRectMetalG(ctx, bx + 2.2 * U, by + 2.2 * U, bw - 4.4 * U, bh - 4.4 * U);
       ctx.strokeStyle = 'rgba(40,52,62,0.35)'; ctx.lineWidth = 0.7 * U; ctx.beginPath();
       for (let q = 1; q < 6; q++) { const sy = by + bh * q / 6; ctx.moveTo(bx + 2.2 * U, sy); ctx.lineTo(bx + bw - 2.2 * U, sy); }
       ctx.moveTo(bx + bw / 2, by + bh * 0.42); ctx.lineTo(bx + bw / 2, by + bh - 2.2 * U); ctx.stroke();
@@ -619,13 +619,13 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     for (let q = 0; q < n; q++) {
       const x = x0 + (x1 - x0) * q / (n - 1);
       // gate valve under the pump, handwheel to one side
-      ctx.fillStyle = '#2c323a'; ctx.fillRect(x - pr * 0.42, y + pr * 0.7, pr * 0.84, pr * 0.62);
+      ctx.fillStyle = '#2c323a'; _fillRectMetalG(ctx, x - pr * 0.42, y + pr * 0.7, pr * 0.84, pr * 0.62);
       ctx.strokeStyle = '#c03828'; ctx.lineWidth = 1.2 * U; ctx.beginPath(); ctx.arc(x + pr * 0.72, y + pr * 1.0, pr * 0.22, 0, TAU); ctx.stroke();
       const led = gen ? (Math.sin(t * 3 + q) > 0 ? '#9ff0ff' : '#3a6a7a') : (on ? '#ffb030' : '#2a3038');
       _afrVessel(x, y, pr, U, { bolts: 12, nozzle: false, lamp: led, frost: cold ? 0.35 : 0 });
       // cold head: finned stage on top of the pump
       const hx = x + pr * 0.28, hy = y - pr * 0.2, hr = pr * 0.32;
-      ctx.fillStyle = '#3a414a'; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3a414a'; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, TAU); _fillMetalG(ctx);
       ctx.strokeStyle = 'rgba(220,230,240,0.55)'; ctx.lineWidth = 0.6 * U;
       for (const f of [0.45, 0.7, 0.95]) { ctx.beginPath(); ctx.arc(hx, hy, hr * f, 0, TAU); ctx.stroke(); }
       if (gen) { ctx.fillStyle = 'rgba(160,240,255,0.25)'; ctx.beginPath(); ctx.arc(x, y, pr * 1.1, 0, TAU); ctx.fill(); }
@@ -650,7 +650,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     {
       const gx = fx0 + (tx - fx0) * 0.48, gy = fy0 + (ty - fy0) * 0.48;
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(gx - 7 * U + 2 * U, gy - 9 * U + 3 * U, 14 * U, 18 * U);
-      ctx.fillStyle = '#3a414a'; ctx.fillRect(gx - 7 * U, gy - 9 * U, 14 * U, 18 * U);
+      ctx.fillStyle = '#3a414a'; _fillRectMetalG(ctx, gx - 7 * U, gy - 9 * U, 14 * U, 18 * U);
       ctx.strokeStyle = '#14181c'; ctx.lineWidth = 0.8 * U; ctx.strokeRect(gx - 7 * U, gy - 9 * U, 14 * U, 18 * U);
       ctx.strokeStyle = '#c03828'; ctx.lineWidth = 1.4 * U; ctx.beginPath(); ctx.arc(gx, gy - 12 * U, 4.5 * U, 0, TAU);
       ctx.moveTo(gx - 4.5 * U, gy - 12 * U); ctx.lineTo(gx + 4.5 * U, gy - 12 * U); ctx.stroke();
@@ -664,7 +664,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     const dx = ix + iw * 0.42, dy = pIn[1], drr = ih * 0.36;
     _afrVessel(dx, dy, drr * 1.1, U, { bolts: 20, nozzle: false, shell: ['#dcd6ec', '#8c869e', '#3a3448'] });
     const vr = drr * 0.56;
-    ctx.fillStyle = '#0b0912'; ctx.beginPath(); ctx.arc(dx, dy, vr, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#0b0912'; ctx.beginPath(); ctx.arc(dx, dy, vr, 0, TAU); _fillMetalG(ctx);
     ctx.save(); ctx.beginPath(); ctx.arc(dx, dy, vr, 0, TAU); ctx.clip();
     ctx.translate(dx, dy);
     const ang = gen ? t * 14 : 0.4;
@@ -679,7 +679,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     ctx.strokeStyle = gen ? '#efe0ff' : '#5a5070'; ctx.lineWidth = 3.2 * U;
     ctx.beginPath(); ctx.moveTo(-vr * 0.88, 0); ctx.lineTo(vr * 0.88, 0); ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = gen ? accent : '#3a3448'; ctx.beginPath(); ctx.arc(dx, dy, drr * 0.16, 0, TAU); ctx.fill();
+    ctx.fillStyle = gen ? accent : '#3a3448'; ctx.beginPath(); ctx.arc(dx, dy, drr * 0.16, 0, TAU); _fillMetalG(ctx);
     const vg = ctx.createLinearGradient(dx - vr, dy - vr, dx + vr, dy + vr);
     vg.addColorStop(0, 'rgba(200,220,255,0.28)'); vg.addColorStop(0.5, 'rgba(120,140,190,0.06)'); vg.addColorStop(1, 'rgba(0,0,0,0.1)');
     ctx.fillStyle = vg; ctx.beginPath(); ctx.arc(dx, dy, vr, 0, TAU); ctx.fill();
@@ -689,7 +689,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     _afrVessel(ix + iw * 0.88, iy + ih * 0.25, ih * 0.13, U, { bolts: 8, frost: cold ? 0.7 : 0.15, lamp: gen ? '#80ffb0' : (on ? '#ffb030' : '#302820') });
     const px0 = ix + iw * 0.78, py0 = iy + ih * 0.55, pw = iw * 0.19, ph = ih * 0.36;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(px0 + 2 * U, py0 + 3 * U, pw, ph);
-    ctx.fillStyle = '#4a5260'; ctx.fillRect(px0, py0, pw, ph);
+    ctx.fillStyle = '#4a5260'; _fillRectMetalG(ctx, px0, py0, pw, ph);
     ctx.strokeStyle = '#14181c'; ctx.lineWidth = 0.8 * U; ctx.strokeRect(px0, py0, pw, ph);
     for (let q = 0; q < 3; q++) {
       const vx = px0 + pw * 0.5, vy = py0 + ph * (0.2 + q * 0.3);
@@ -722,7 +722,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
       const cg = ctx.createLinearGradient(-4 * S, 0, 4 * S, 0);
       cg.addColorStop(0, '#e0e6f0'); cg.addColorStop(1, '#7a8494');
       ctx.fillStyle = cg; ctx.strokeStyle = '#141820'; ctx.lineWidth = S;
-      ctx.beginPath(); ctx.roundRect(-4 * S, -19 * S, 8 * S, 38 * S, 3 * S); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(-4 * S, -19 * S, 8 * S, 38 * S, 3 * S); _fillMetalG(ctx); ctx.stroke();
       ctx.fillStyle = gen ? `rgba(200,150,255,${0.5 + 0.4 * Math.sin(t * 7 - q)})` : (charging ? '#ffc040' : '#6a5a40');
       ctx.fillRect(-1.2 * S, -16 * S, 2.4 * S, 32 * S);
       ctx.fillStyle = '#1a1e26'; ctx.fillRect(-4 * S, -21 * S, 8 * S, 3 * S); ctx.fillRect(-4 * S, 18 * S, 8 * S, 3 * S);
@@ -732,8 +732,8 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     // grids, cooling fins, and HV bushings on the electrode bus
     _afrSlab(d.dx, d.dy, d.dw, d.dh, U, 61 + i);
     const gx = d.dx + d.dw * 0.06, gy = d.dy + d.dh * 0.14, gw = d.dw * 0.66, gh = d.dh * 0.72;
-    ctx.fillStyle = '#2c2a36'; ctx.fillRect(gx - 3 * U, gy - 3 * U, gw + 6 * U, gh + 6 * U);
-    ctx.fillStyle = '#0d0a15'; ctx.fillRect(gx, gy, gw, gh);
+    ctx.fillStyle = '#2c2a36'; _fillRectMetalG(ctx, gx - 3 * U, gy - 3 * U, gw + 6 * U, gh + 6 * U);
+    ctx.fillStyle = '#0d0a15'; _fillRectMetalG(ctx, gx, gy, gw, gh);
     const slats = 16;
     for (let q = 0; q < slats; q++) {
       const sx = gx + gw * (q + 0.5) / slats;
@@ -766,14 +766,14 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(bx + 3 * U, by0 + 4 * U, bw, bh);
     const bg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
     bg.addColorStop(0, '#7a7494'); bg.addColorStop(1, '#3e3a50');
-    ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(bx, by0, bw, bh, 3 * U); ctx.fill();
+    ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(bx, by0, bw, bh, 3 * U); _fillMetalG(ctx);
     ctx.strokeStyle = '#141018'; ctx.lineWidth = 1 * U; ctx.stroke();
     for (let q = 0; q < 4; q++) {
       const ux = bx + bw / 2, uy = d.dy + d.dh * (0.27 + q * 0.14), ur = Math.min(bw * 0.38, d.dh * 0.06);
       const litB = gen && Math.sin(t * 6 + q + i) > 0;
       for (let s = 0; s < 4; s++) {
         ctx.fillStyle = s % 2 ? '#7a4a2e' : '#c8925e';
-        ctx.beginPath(); ctx.arc(ux, uy, ur * (1 - s * 0.2), 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(ux, uy, ur * (1 - s * 0.2), 0, TAU); _fillMetalG(ctx);
       }
       ctx.fillStyle = gen ? (litB ? gold : '#8a6a30') : '#3a3448';
       ctx.beginPath(); ctx.arc(ux, uy, ur * 0.3, 0, TAU); ctx.fill();
@@ -879,7 +879,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
       ctx.strokeStyle = 'rgba(0,0,0,0.38)'; ctx.lineWidth = rr * 0.46; ctx.beginPath(); ctx.arc(sx + 5 * U, sy + 6 * U, rr, 0, TAU); ctx.stroke();
       // dark bore with a support post
       ctx.save(); ctx.beginPath(); ctx.arc(sx, sy, rr * 0.78, 0, TAU); ctx.clip(); _afrGrate(sx - rr, sy - rr, rr * 2, rr * 2, U); ctx.restore();
-      ctx.fillStyle = '#4a525c'; ctx.beginPath(); ctx.arc(sx, sy, rr * 0.18, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#4a525c'; ctx.beginPath(); ctx.arc(sx, sy, rr * 0.18, 0, TAU); _fillMetalG(ctx);
       ctx.strokeStyle = '#1a1e24'; ctx.lineWidth = 1 * U; ctx.stroke();
       // cryostat jacket
       ctx.strokeStyle = '#1a1e24'; ctx.lineWidth = rr * 0.46; ctx.beginPath(); ctx.arc(sx, sy, rr, 0, TAU); ctx.stroke();
@@ -919,7 +919,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
       for (let fx = tx + tw * 0.72; fx < tx + tw - 2 * U; fx += 2 * U) { ctx.strokeStyle = fx % 4 < 2 ? '#6e8276' : '#26302a'; ctx.beginPath(); ctx.moveTo(fx, ty + 2 * U); ctx.lineTo(fx, ty + th - 2 * U); ctx.stroke(); }
       const tg = ctx.createLinearGradient(tx + tw * 0.3, ty, tx + tw * 0.7, ty + th);
       tg.addColorStop(0, '#8aa094'); tg.addColorStop(1, '#3e4c44');
-      ctx.fillStyle = tg; ctx.fillRect(tx + tw * 0.3, ty + 1.5 * U, tw * 0.4, th - 3 * U);
+      ctx.fillStyle = tg; _fillRectMetalG(ctx, tx + tw * 0.3, ty + 1.5 * U, tw * 0.4, th - 3 * U);
       for (let q = 0; q < 3; q++) {
         const ux = tx + tw * (0.38 + q * 0.12), uy = ty + th * 0.4;
         ctx.fillStyle = '#c8925e'; ctx.beginPath(); ctx.arc(ux, uy, 2.6 * U, 0, TAU); ctx.fill();
@@ -929,7 +929,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     }
     // capacitor racks
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x + w * 0.04 + 3 * U, y + h * 0.76 + 4 * U, w * 0.92, h * 0.19);
-    ctx.fillStyle = '#23282e'; ctx.fillRect(x + w * 0.04, y + h * 0.76, w * 0.92, h * 0.19);
+    ctx.fillStyle = '#23282e'; _fillRectMetalG(ctx, x + w * 0.04, y + h * 0.76, w * 0.92, h * 0.19);
     ctx.strokeStyle = '#5a626c'; ctx.lineWidth = 1 * U; ctx.beginPath();
     for (const fy of [0.78, 0.855, 0.93]) { ctx.moveTo(x + w * 0.04, y + h * fy); ctx.lineTo(x + w * 0.96, y + h * fy); }
     ctx.stroke();
@@ -971,7 +971,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     const cyl = (x, w, hh, c) => {
       const g = ctx.createLinearGradient(0, -hh, 0, hh);
       g.addColorStop(0, c[0]); g.addColorStop(0.35, c[1]); g.addColorStop(1, c[2]);
-      ctx.fillStyle = g; ctx.fillRect(x, -hh, w, hh * 2);
+      ctx.fillStyle = g; _fillRectMetalG(ctx, x, -hh, w, hh * 2);
       ctx.strokeStyle = '#11151a'; ctx.lineWidth = 1 * U; ctx.strokeRect(x, -hh, w, hh * 2);
     };
     // drift duct
@@ -994,7 +994,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     ctx.strokeStyle = '#11151a'; ctx.lineWidth = 1 * U; ctx.strokeRect(L * 0.46, -26 * S, L * 0.08, 52 * S);
     // ion source
     ctx.fillStyle = '#3a424e'; ctx.strokeStyle = '#121820'; ctx.lineWidth = 1.5 * S;
-    ctx.beginPath(); ctx.roundRect(-8 * S, -32 * S, L * 0.14 + 8 * S, 64 * S, 6 * S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(-8 * S, -32 * S, L * 0.14 + 8 * S, 64 * S, 6 * S); _fillMetalG(ctx); ctx.stroke();
     for (let s = 0; s < 4; s++) { ctx.fillStyle = s % 2 ? '#7a5a3a' : '#c8a070'; ctx.fillRect(-6 * S + s * 3 * S, -30 * S, 3 * S, 60 * S); }
     ctx.fillStyle = '#0c1016'; ctx.fillRect(8 * S, -21 * S, L * 0.14 - 14 * S, 42 * S);
     for (let q = -2; q <= 2; q++) {
@@ -1032,7 +1032,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(ex + 2 * U, ey + 3 * U, ew, eh);
       const g = ctx.createLinearGradient(ex, 0, ex + ew, 0);
       g.addColorStop(0, '#d8eef4'); g.addColorStop(0.6, '#8aaab8'); g.addColorStop(1, '#4a6270');
-      ctx.fillStyle = g; ctx.fillRect(ex + ew * 0.08, ey + eh * 0.12, ew * 0.84, eh * 0.76);
+      ctx.fillStyle = g; _fillRectMetalG(ctx, ex + ew * 0.08, ey + eh * 0.12, ew * 0.84, eh * 0.76);
       ctx.strokeStyle = 'rgba(20,40,50,0.5)'; ctx.lineWidth = 0.6 * U; ctx.beginPath();
       for (let s = 1; s < 10; s++) { const sy = ey + eh * (0.12 + 0.76 * s / 10); ctx.moveTo(ex + ew * 0.1, sy); ctx.lineTo(ex + ew * 0.9, sy); }
       ctx.stroke();
@@ -1055,8 +1055,8 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     const w = m * 0.15, h = m * 0.075, x = m * 0.05, y = m * 0.31;
     const rh = _afrRoof(x, y, w, h, U, t, { units: [[0.88, 0.72, 0.34]], vents: [[0.78, 0.82]], windows: true, lit: on, spin: on });
     const gx = x + w * 0.05, gy = y + rh * 0.16, gw = w * 0.66, gh = rh * 0.66;
-    ctx.fillStyle = '#161c22'; ctx.fillRect(gx - 1.6 * U, gy - 1.6 * U, gw + 3.2 * U, gh + 3.2 * U);
-    ctx.fillStyle = '#0a0e14'; ctx.fillRect(gx, gy, gw, gh);
+    ctx.fillStyle = '#161c22'; _fillRectMetalG(ctx, gx - 1.6 * U, gy - 1.6 * U, gw + 3.2 * U, gh + 3.2 * U);
+    ctx.fillStyle = '#0a0e14'; _fillRectMetalG(ctx, gx, gy, gw, gh);
     for (let q = 0; q < 6; q++) {
       const sx = gx + gw * (0.04 + q * 0.16), sy = gy + gh * 0.22, sw = gw * 0.12, sh = gh * 0.56;
       const col = on ? (gen ? (q % 2 ? '#7ad8ff' : '#c890ff') : '#ffb030') : '#1a2028';
@@ -1066,7 +1066,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
         ctx.fillStyle = sg; ctx.fillRect(sx - sw, sy - sh * 0.5, sw * 3, sh * 2);
       }
       ctx.fillStyle = col; ctx.globalAlpha = on ? 0.8 + 0.2 * Math.sin(t * 2 + q) : 1;
-      ctx.fillRect(sx, sy, sw, sh);
+      _fillRectMetalG(ctx, sx, sy, sw, sh);
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#2a3038'; ctx.fillRect(sx - sw * 0.1, sy + sh + 1.2 * U, sw * 1.2, gh * 0.12);   // desk
     }
@@ -1110,7 +1110,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.beginPath(); ctx.arc(cx + 12 * S, cy + 14 * S, R, 0, TAU); ctx.fill();
   const cg = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.35, R * 0.1, cx, cy, R);
   cg.addColorStop(0, '#767c90'); cg.addColorStop(0.7, '#383c4c'); cg.addColorStop(1, '#1c1e28');
-  ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fill();
+  ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); _fillMetalG(ctx);
   ctx.strokeStyle = '#8c90a8'; ctx.lineWidth = 3 * S; ctx.stroke();
   ctx.strokeStyle = '#20222c'; ctx.lineWidth = 2 * S; ctx.beginPath(); ctx.arc(cx, cy, R - 10 * S, 0, TAU); ctx.stroke();
   if (cold) {
@@ -1133,7 +1133,7 @@ function renderAdvancedFusionReactor(e, px, py, t) {
   }
 
   // ── Vacuum vessel (follows the twisted band) ──
-  ctx.fillStyle = '#05040a'; bandPath(1, 16 * S); ctx.fill('nonzero');
+  ctx.fillStyle = '#05040a'; bandPath(1, 16 * S); _fillMetalG(ctx, 'nonzero');
   ctx.strokeStyle = '#3a3850'; ctx.lineWidth = 2 * S;
   edgePath(1, 1, 16 * S); ctx.stroke(); edgePath(-1, 1, 16 * S); ctx.stroke();
 
@@ -1266,14 +1266,14 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.arc(cx + 8 * S, cy + 10 * S, hubR, 0, TAU); ctx.fill();
     const hg = ctx.createRadialGradient(cx - hubR * 0.4, cy - hubR * 0.4, 2, cx, cy, hubR);
     hg.addColorStop(0, '#eceff6'); hg.addColorStop(1, '#4a5064');
-    ctx.fillStyle = hg; deca(hubR); ctx.fill();
+    ctx.fillStyle = hg; deca(hubR); _fillMetalG(ctx);
     ctx.strokeStyle = '#141820'; ctx.lineWidth = 2 * S; ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1 * S; deca(hubR - 2 * S); ctx.stroke();
     _afrBolts(cx, cy, hubR * 0.88, 30, U, 1.3);
     // raised inner step
     const sg = ctx.createRadialGradient(cx - hubR * 0.3, cy - hubR * 0.3, 2, cx, cy, hubR * 0.74);
     sg.addColorStop(0, '#f4f6fa'); sg.addColorStop(1, '#6a7084');
-    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.74, 0, TAU); ctx.fill();
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.74, 0, TAU); _fillMetalG(ctx);
     ctx.strokeStyle = '#1a1e28'; ctx.lineWidth = 1.4 * S; ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1 * S; ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.72, Math.PI * 0.9, Math.PI * 1.6); ctx.stroke();
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(gen ? t * 0.5 : 0);
@@ -1286,11 +1286,11 @@ function renderAdvancedFusionReactor(e, px, py, t) {
     ctx.strokeStyle = '#d8b030'; ctx.lineWidth = 1 * S; ctx.strokeRect(-5 * S, -7 * S, 10 * S, 14 * S);
     ctx.restore();
     // core lens
-    ctx.fillStyle = '#1c2028'; ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.38, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#1c2028'; ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.38, 0, TAU); _fillMetalG(ctx);
     _afrBolts(cx, cy, hubR * 0.35, 16, U, 0.9);
     const coreA = gen ? 0.7 + 0.3 * Math.sin(t * 4) : 1;
     ctx.fillStyle = gen ? `rgba(220,190,255,${coreA})` : (charging ? '#ffd040' : '#2a2c3a');
-    ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.3, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, hubR * 0.3, 0, TAU); _fillMetalG(ctx);
     if (gen || charging) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, hubR * 0.6);

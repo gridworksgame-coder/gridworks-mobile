@@ -142,9 +142,32 @@ const SiteYard = (() => {
     // kerb
     g.fillStyle = kind === 'gravel' ? '#4a4438' : '#45433d';
     g.beginPath(); g.roundRect(X, Y, W, H, r); g.fill();
-    // surface
-    g.fillStyle = kind === 'gravel' ? P.gravel : P.concrete;
-    g.beginPath(); g.roundRect(X + 2, Y + 2, W - 4, H - 4, r - 1); g.fill();
+    // surface: the Poly Haven slab / gravel scans the zones use (lit in
+    // Blender, see GroundTextures.zoneTex), with the slab's saw-cut joints
+    // drawn on every 2 tiles; the painted swatches while those load.
+    const ZT = typeof GroundTextures !== 'undefined' && GroundTextures.zoneTex;
+    const photo = ZT && !_imageFillsOff && (kind === 'gravel' ? ZT.gravel : ZT.slab);
+    g.beginPath(); g.roundRect(X + 2, Y + 2, W - 4, H - 4, r - 1);
+    if (photo) {
+      g.fillStyle = photo; g.fill();
+      // a shade lighter, to the painted pads' tone
+      g.fillStyle = kind === 'gravel' ? 'rgba(255,248,232,0.16)' : 'rgba(255,252,244,0.04)'; g.fill();
+      if (kind !== 'gravel') {
+        g.save(); g.clip();
+        const J = TILE * 2, jx0 = Math.ceil(X / J) * J, jy0 = Math.ceil(Y / J) * J;
+        g.fillStyle = 'rgba(34,32,28,0.42)';
+        for (let jx = jx0; jx < X + W; jx += J) g.fillRect(jx, Y, 1, H);
+        for (let jy = jy0; jy < Y + H; jy += J) g.fillRect(X, jy, W, 1);
+        g.fillStyle = 'rgba(255,255,250,0.13)';
+        for (let jx = jx0; jx < X + W; jx += J) g.fillRect(jx + 1, Y, 0.7, H);
+        for (let jy = jy0; jy < Y + H; jy += J) g.fillRect(X, jy + 1, W, 0.7);
+        g.restore();
+        g.beginPath(); g.roundRect(X + 2, Y + 2, W - 4, H - 4, r - 1);   // the falloff below fills this again
+      }
+    } else {
+      g.fillStyle = kind === 'gravel' ? P.gravel : P.concrete;
+      g.fill();
+    }
     // daylight falloff across the slab, light from the top left as everywhere
     const lg = g.createLinearGradient(X, Y, X + W, Y + H);
     lg.addColorStop(0, 'rgba(255,250,235,0.08)'); lg.addColorStop(1, 'rgba(20,18,14,0.12)');
@@ -455,7 +478,7 @@ const SiteYard = (() => {
     _measuring = true;
     try {
       ctx = _cx; DayNight.hour = () => 13; DayNight.darkness = () => 0;
-      ContactShadow.without(() => SplitPhase.run('all', () => renderEntityAt(e, x, y, 0)));
+      withoutImageFills(() => ContactShadow.without(() => SplitPhase.run('all', () => renderEntityAt(e, x, y, 0))));
     } catch (_err) {
       return null;
     } finally {

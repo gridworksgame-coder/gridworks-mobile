@@ -128,12 +128,12 @@ function renderSpentFuelPool(e, px, py, t) {
   // Curb lip first so the water sits visibly BELOW the deck rather than
   // being painted onto it.
   ctx.fillStyle = '#1b1f22';
-  ctx.beginPath(); ctx.roundRect(ix - 3 * S, iy - 3 * S, iw + 6 * S, ih + 6 * S, 3 * S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(ix - 3 * S, iy - 3 * S, iw + 6 * S, ih + 6 * S, 3 * S); _fillMetalG(ctx);
   const water = ctx.createLinearGradient(0, iy, 0, iy + ih);
   water.addColorStop(0, on ? '#1d5a86' : '#1b3442');
   water.addColorStop(1, on ? '#062036' : '#0b1822');
   ctx.fillStyle = water;
-  ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 2.5 * S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 2.5 * S); _fillMetalG(ctx);
 
   ctx.save();
   ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 2.5 * S); ctx.clip();
@@ -444,12 +444,12 @@ function renderSpentFuelPool(e, px, py, t) {
   const cxY = 0.45 * v, cxH = 3.1 * v;
   _wfShadow(lsX, cxY, lsW, cxH, S, 3 * S);
   ctx.fillStyle = '#3c4644'; ctx.strokeStyle = '#141c1a'; ctx.lineWidth = 1.4 * S;
-  ctx.beginPath(); ctx.roundRect(lsX, cxY, lsW, cxH, 3 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(lsX, cxY, lsW, cxH, 3 * S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(150,170,164,0.22)'; ctx.lineWidth = 0.7 * S;
   for (let fy = cxY + 4 * S; fy < cxY + cxH - 3 * S; fy += 2.5 * S) { ctx.beginPath(); ctx.moveTo(lsX + 3 * S, fy); ctx.lineTo(lsX + lsW - 3 * S, fy); ctx.stroke(); }
   for (let q = 0; q < 2; q++) {
     const fx = lsX + lsW / 2, fy = cxY + cxH * (q + 0.5) / 2, fr = Math.min(lsW, cxH / 2) * 0.38;
-    ctx.fillStyle = '#1a2220'; ctx.beginPath(); ctx.arc(fx, fy, fr + 2 * S, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#1a2220'; ctx.beginPath(); ctx.arc(fx, fy, fr + 2 * S, 0, Math.PI * 2); _fillMetalG(ctx);
     _fcFan(fx, fy, fr, S, t + q * 0.5, on, 9);
   }
   [0.85, 1.75].forEach((dx, q) => {
@@ -458,7 +458,7 @@ function renderSpentFuelPool(e, px, py, t) {
   // pump skid
   ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(lsX + 0.25 * u + 2 * S, 5.2 * v + 2 * S, 1.6 * u, 0.6 * v);
   ctx.fillStyle = '#4c5257'; ctx.strokeStyle = '#14181b'; ctx.lineWidth = 0.9 * S;
-  ctx.fillRect(lsX + 0.25 * u, 5.2 * v, 1.6 * u, 0.6 * v); ctx.strokeRect(lsX + 0.25 * u, 5.2 * v, 1.6 * u, 0.6 * v);
+  _fillRectMetalG(ctx, lsX + 0.25 * u, 5.2 * v, 1.6 * u, 0.6 * v); ctx.strokeRect(lsX + 0.25 * u, 5.2 * v, 1.6 * u, 0.6 * v);
   [0.6, 1.25].forEach((dx, q) => {
     const pxx = lsX + dx * u, pyy = 5.5 * v, pr = Math.min(0.24 * v, 0.28 * u);
     ctx.fillStyle = '#2a3236'; ctx.beginPath(); ctx.arc(pxx, pyy, pr, 0, Math.PI * 2); ctx.fill();
@@ -468,7 +468,7 @@ function renderSpentFuelPool(e, px, py, t) {
   const psY = 6.15 * v, psH = 1.4 * v;
   _wfShadow(lsX, psY, lsW, psH, S, 2 * S);
   ctx.fillStyle = '#4c5257'; ctx.strokeStyle = '#14181b'; ctx.lineWidth = 1 * S;
-  ctx.beginPath(); ctx.roundRect(lsX, psY, lsW, psH, 2 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(lsX, psY, lsW, psH, 2 * S); _fillMetalG(ctx); ctx.stroke();
   for (let q = 0; q < 4; q++) {
     const fx = lsX + lsW * (q + 0.5) / 4;
     ctx.fillStyle = '#6c757a'; ctx.strokeStyle = '#1c2124'; ctx.lineWidth = 0.8 * S;
@@ -484,21 +484,21 @@ function renderSpentFuelPool(e, px, py, t) {
   const hg = ctx.createLinearGradient(rsX, chY, rsX + rsW, chY + chH);
   hg.addColorStop(0, '#848c92'); hg.addColorStop(1, '#565e64');
   ctx.fillStyle = hg; ctx.strokeStyle = '#181c1f'; ctx.lineWidth = 1.4 * S;
-  ctx.beginPath(); ctx.roundRect(rsX, chY, rsW, chH, 3 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(rsX, chY, rsW, chH, 3 * S); _fillMetalG(ctx); ctx.stroke();
   ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 0.8 * S;
   ctx.beginPath(); ctx.moveTo(rsX + 2 * S, chY + chH - 3 * S); ctx.lineTo(rsX + 2 * S, chY + 2 * S); ctx.lineTo(rsX + rsW - 2 * S, chY + 2 * S); ctx.stroke();
   ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 0.6 * S;
   for (let sx = rsX + 6 * S; sx < rsX + rsW - 2 * S; sx += 6 * S) { ctx.beginPath(); ctx.moveTo(sx, chY + 3 * S); ctx.lineTo(sx, chY + chH - 3 * S); ctx.stroke(); }
   // open roof hatch over the cask bay, the cart on its rails inside
   const htX = rsX + 0.12 * rsW, htY = 1.6 * v, htW = 0.76 * rsW, htH = 1.8 * v;
-  ctx.fillStyle = '#14181b'; ctx.fillRect(htX, htY, htW, htH);
+  ctx.fillStyle = '#14181b'; _fillRectMetalG(ctx, htX, htY, htW, htH);
   _wfHazardStripe(htX, htY - 3 * S, htW, 3 * S, S);
   _wfHazardStripe(htX, htY + htH, htW, 3 * S, S);
   ctx.fillStyle = '#3a3e42';
   ctx.fillRect(htX, 2.1 * v, htW, 1.6 * S); ctx.fillRect(htX, 2.9 * v, htW, 1.6 * S);
   const cartX = htX + htW * 0.5, cartY = 2.5 * v + 0.8 * S, cartR = Math.min(htW, htH) * 0.3;
   ctx.fillStyle = '#c8a828'; ctx.strokeStyle = '#4a3a10'; ctx.lineWidth = S;
-  ctx.fillRect(cartX - cartR * 1.3, cartY - cartR * 1.15, cartR * 2.6, cartR * 2.3); ctx.strokeRect(cartX - cartR * 1.3, cartY - cartR * 1.15, cartR * 2.6, cartR * 2.3);
+  _fillRectMetalG(ctx, cartX - cartR * 1.3, cartY - cartR * 1.15, cartR * 2.6, cartR * 2.3); ctx.strokeRect(cartX - cartR * 1.3, cartY - cartR * 1.15, cartR * 2.6, cartR * 2.3);
   if (ready > 0) {
     const kg = ctx.createRadialGradient(cartX - cartR * 0.3, cartY - cartR * 0.3, 1, cartX, cartY, cartR);
     kg.addColorStop(0, '#8a949a'); kg.addColorStop(1, '#2a3034');
@@ -511,7 +511,7 @@ function renderSpentFuelPool(e, px, py, t) {
   // roof unit and vent stack
   const ruX = rsX + rsW * 0.5, ruY = 0.95 * v, ruR = Math.min(rsW * 0.18, 0.32 * v);
   ctx.fillStyle = '#6a7278'; ctx.strokeStyle = '#22272a'; ctx.lineWidth = 0.8 * S;
-  ctx.fillRect(ruX - ruR * 1.3, ruY - ruR * 1.3, ruR * 2.6, ruR * 2.6); ctx.strokeRect(ruX - ruR * 1.3, ruY - ruR * 1.3, ruR * 2.6, ruR * 2.6);
+  _fillRectMetalG(ctx, ruX - ruR * 1.3, ruY - ruR * 1.3, ruR * 2.6, ruR * 2.6); ctx.strokeRect(ruX - ruR * 1.3, ruY - ruR * 1.3, ruR * 2.6, ruR * 2.6);
   _fcFan(ruX, ruY, ruR, S, t, on, 7);
   const vsX = rsX + rsW * 0.5, vsY = 4.0 * v, vsR = Math.min(rsW * 0.16, 0.3 * v);
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(vsX + 3 * S, vsY + 4 * S, vsR, 0, Math.PI * 2); ctx.fill();
@@ -522,7 +522,7 @@ function renderSpentFuelPool(e, px, py, t) {
   _fcBuilding(rsX, cbY, rsW, cbH, S, t, { lit: on, spin: on, wall: '#2e3438', roof0: '#7e868c', roof1: '#565e64', units: [[0.78, 0.84]] });
   const pnX = rsX + 4 * S, pnY = cbY + 4 * S, pnW = rsW - 8 * S, pnH = (cbH - 4 * S) * 0.62;
   ctx.fillStyle = '#04100c'; ctx.strokeStyle = '#123848'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(pnX, pnY, pnW, pnH, 2 * S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(pnX, pnY, pnW, pnH, 2 * S); _fillMetalG(ctx); ctx.stroke();
   // status lights under the readout: intake, cooling, cooled fuel out
   const lamps = [
     !!e._hasSpentFuel ? '#60e090' : '#2c3234',

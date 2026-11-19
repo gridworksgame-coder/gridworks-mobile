@@ -490,7 +490,7 @@ function renderGeoWell(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(cx + 3*S, cy + 4*S, 14*S, 0, Math.PI*2); ctx.fill();
     const cg = ctx.createRadialGradient(cx - 4*S, cy - 4*S, 1, cx, cy, 14*S);
     cg.addColorStop(0, '#c8c4bc'); cg.addColorStop(1, '#6a665e');
-    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, 14*S, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, cy, 14*S, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.fillStyle = '#3a3a3e'; ctx.beginPath(); ctx.arc(cx, cy, 9*S, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#8a8c90';
     for (let k = 0; k < 8; k++) { const a = k*Math.PI/4; ctx.beginPath(); ctx.arc(cx + Math.cos(a)*7*S, cy + Math.sin(a)*7*S, 1*S, 0, Math.PI*2); ctx.fill(); }
@@ -577,7 +577,7 @@ function renderGeoTurbine(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.roundRect(hallX + 5*S, hallY + 6*S, hallW, hallH, 8*S); ctx.fill();
     const rg = ctx.createLinearGradient(0, hallY, 0, hallY + hallH);
     rg.addColorStop(0, '#7a8a92'); rg.addColorStop(0.45, '#c8d4da'); rg.addColorStop(0.55, '#a8b6bc'); rg.addColorStop(1, '#5a6a72');
-    ctx.fillStyle = rg; ctx.beginPath(); ctx.roundRect(hallX, hallY, hallW, hallH, 8*S); ctx.fill();
+    ctx.fillStyle = rg; ctx.beginPath(); ctx.roundRect(hallX, hallY, hallW, hallH, 8*S); _fillMetalG(ctx);
     ctx.strokeStyle = '#2a3438'; ctx.lineWidth = 1.2*S; ctx.stroke();
     ctx.strokeStyle = 'rgba(30,40,46,0.25)'; ctx.lineWidth = S;
     for (let k = 1; k < 12; k++) { const x = hallX + hallW*k/12; ctx.beginPath(); ctx.moveTo(x, hallY + 3*S); ctx.lineTo(x, hallY + hallH - 3*S); ctx.stroke(); }
@@ -592,10 +592,10 @@ function renderGeoTurbine(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.roundRect(tcX + 4*S, trainY - tcH/2 + 5*S, tcW, tcH, tcH*0.45); ctx.fill();
     const tg = ctx.createLinearGradient(0, trainY - tcH/2, 0, trainY + tcH/2);
     tg.addColorStop(0, '#6a5a4a'); tg.addColorStop(0.45, running ? '#f0c898' : '#b8aa98'); tg.addColorStop(1, '#3a2e24');
-    ctx.fillStyle = tg; ctx.beginPath(); ctx.roundRect(tcX, trainY - tcH/2, tcW, tcH, tcH*0.45); ctx.fill();
+    ctx.fillStyle = tg; ctx.beginPath(); ctx.roundRect(tcX, trainY - tcH/2, tcW, tcH, tcH*0.45); _fillMetalG(ctx);
     ctx.strokeStyle = '#1a1410'; ctx.lineWidth = S; ctx.stroke();
     const rotX = tcX + tcW*0.5, rotR = tcH*0.34;
-    ctx.fillStyle = '#141414'; ctx.beginPath(); ctx.arc(rotX, trainY, rotR + 1.5*S, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#141414'; ctx.beginPath(); ctx.arc(rotX, trainY, rotR + 1.5*S, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.save(); ctx.translate(rotX, trainY); ctx.rotate(running ? t*5 : 0.2);
     ctx.strokeStyle = running ? hot(1) : '#8a8a8a'; ctx.lineWidth = 1.6*S;
     for (let i = 0; i < 10; i++) { ctx.rotate(Math.PI/5); ctx.beginPath(); ctx.moveTo(rotR*0.2, 0); ctx.quadraticCurveTo(rotR*0.6, rotR*0.2, rotR*0.9, 0); ctx.stroke(); }
@@ -611,7 +611,7 @@ function renderGeoTurbine(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.roundRect(genX + 4*S, trainY - genH/2 + 5*S, genW, genH, 4*S); ctx.fill();
     const gg = ctx.createLinearGradient(0, trainY - genH/2, 0, trainY + genH/2);
     gg.addColorStop(0, '#2a4a70'); gg.addColorStop(0.45, '#7aa8d8'); gg.addColorStop(1, '#162a44');
-    ctx.fillStyle = gg; ctx.beginPath(); ctx.roundRect(genX, trainY - genH/2, genW, genH, 4*S); ctx.fill();
+    ctx.fillStyle = gg; ctx.beginPath(); ctx.roundRect(genX, trainY - genH/2, genW, genH, 4*S); _fillMetalG(ctx);
     ctx.strokeStyle = 'rgba(10,20,34,0.55)'; ctx.lineWidth = 0.8*S;
     for (let x = genX + 3*S; x < genX + genW - 2*S; x += 3*S) { ctx.beginPath(); ctx.moveTo(x, trainY - genH/2 + 2*S); ctx.lineTo(x, trainY - genH*0.15); ctx.stroke(); }
     ctx.fillStyle = running ? `rgba(140,220,255,${0.7 + 0.3*Math.sin(t*6)})` : '#1a2a3a';
@@ -638,11 +638,11 @@ function renderGeoTurbine(e, px, py, t) {
     // ── Air-cooled condenser ──
     _wfPipe([[tcX + tcW*0.5, trainY + tcH/2], [tcX + tcW*0.5, py + h*0.94], [accX + accW*0.5, py + h*0.94], [accX + accW*0.5, accY + accH]], S, t, running, 'rgba(150,200,230,0.9)');
     ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.roundRect(accX + 4*S, accY + 5*S, accW, accH, 3*S); ctx.fill();
-    ctx.fillStyle = '#4a5a62'; ctx.beginPath(); ctx.roundRect(accX, accY, accW, accH, 3*S); ctx.fill();
+    ctx.fillStyle = '#4a5a62'; ctx.beginPath(); ctx.roundRect(accX, accY, accW, accH, 3*S); _fillMetalG(ctx);
     ctx.strokeStyle = '#1a2428'; ctx.lineWidth = S; ctx.stroke();
     [0.27, 0.73].forEach((f, i) => {
       const fx = accX + accW*0.5, fy = accY + accH*f, fr = Math.min(accW, accH*0.5)*0.40;
-      ctx.fillStyle = '#10181c'; ctx.beginPath(); ctx.arc(fx, fy, fr + 1.5*S, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#10181c'; ctx.beginPath(); ctx.arc(fx, fy, fr + 1.5*S, 0, Math.PI*2); _fillMetalG(ctx);
       ctx.strokeStyle = '#8a9aa2'; ctx.lineWidth = 1.2*S; ctx.stroke();
       ctx.save(); ctx.translate(fx, fy); ctx.rotate(t*(running ? 1.2 + 4.5*duty : 0) + i);
       ctx.fillStyle = '#9ab0b8';
@@ -660,7 +660,7 @@ function renderGeoTurbine(e, px, py, t) {
 
     // ── Output dial ──
     const dX = px + w*0.85, dY = py + h*0.80, dR = Math.min(h*0.10, 13*S);
-    ctx.fillStyle = '#0c1012'; ctx.beginPath(); ctx.arc(dX, dY, dR + 3*S, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0c1012'; ctx.beginPath(); ctx.arc(dX, dY, dR + 3*S, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = '#5a6a72'; ctx.lineWidth = S; ctx.stroke();
     const a0 = Math.PI * 0.75, a1 = a0 + Math.PI * 1.5;
     ctx.strokeStyle = 'rgba(140,170,185,0.25)'; ctx.lineWidth = 2.5*S;

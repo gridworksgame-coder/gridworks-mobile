@@ -123,16 +123,16 @@ function renderSuperconductorMill(e, px, py, t) {
     units: [[0.12, 0.13], [0.3, 0.13], [0.7, 0.13], [0.88, 0.13], [0.2, 0.86], [0.8, 0.86]], spin: on });
   const lineY = Y(2.65), gy0 = Y(1.85), gy1 = Y(3.45);
   // interior seen through the glazing
-  ctx.fillStyle = '#16141c'; ctx.fillRect(hx + 4*S, gy0, hw - 8*S, gy1 - gy0);
+  ctx.fillStyle = '#16141c'; _fillRectMetalG(ctx, hx + 4*S, gy0, hw - 8*S, gy1 - gy0);
   const payX = X(1.7), takeX = X(8.0), reelR = V*0.62;
   const chX0 = X(2.6), chX1 = X(6.1), chH = V*0.62;
   const bathX0 = X(6.35), bathX1 = X(7.35), bathH = V*0.55;
   ctx.strokeStyle = active ? '#e0b878' : '#6a5a40'; ctx.lineWidth = 1.6*S;
   ctx.beginPath(); ctx.moveTo(payX, lineY - reelR*0.7); ctx.lineTo(takeX, lineY - reelR*0.7); ctx.stroke();
   [[payX, 1], [takeX, -1]].forEach(([rx, d], i) => {
-    ctx.fillStyle = '#3a3640'; ctx.beginPath(); ctx.arc(rx, lineY, reelR, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a3640'; ctx.beginPath(); ctx.arc(rx, lineY, reelR, 0, Math.PI*2); _fillMetalG(ctx);
     const wound = i === 0 ? 0.85 - 0.3*fill : 0.45 + 0.4*fill;
-    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(rx, lineY, reelR*wound, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(rx, lineY, reelR*wound, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.save(); ctx.translate(rx, lineY); ctx.rotate(active ? t*2.4*d : 0.3);
     ctx.strokeStyle = 'rgba(40,30,20,0.6)'; ctx.lineWidth = S;
     for (let k = 0; k < 3; k++) { ctx.rotate(Math.PI/3); ctx.beginPath(); ctx.moveTo(-reelR*wound, 0); ctx.lineTo(reelR*wound, 0); ctx.stroke(); }
@@ -142,7 +142,7 @@ function renderSuperconductorMill(e, px, py, t) {
   const cg = ctx.createLinearGradient(0, lineY - chH/2, 0, lineY + chH/2);
   cg.addColorStop(0, '#b8bcc8'); cg.addColorStop(0.5, '#6a6e7a'); cg.addColorStop(1, '#30323a');
   ctx.fillStyle = cg; ctx.strokeStyle = '#0e1014'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(chX0, lineY - chH/2, chX1 - chX0, chH, chH/2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(chX0, lineY - chH/2, chX1 - chX0, chH, chH/2); _fillMetalG(ctx); ctx.stroke();
   const winX = chX0 + (chX1 - chX0)*0.1, winW = (chX1 - chX0)*0.8;
   ctx.fillStyle = '#120c1a'; ctx.fillRect(winX, lineY - chH*0.2, winW, chH*0.4);
   if (active) {
@@ -157,7 +157,7 @@ function renderSuperconductorMill(e, px, py, t) {
   ctx.fillStyle = '#3a3c44';
   for (const f of [0.06, 0.94]) ctx.fillRect(chX0 + (chX1 - chX0)*f - 2*S, lineY - chH/2 - 2*S, 4*S, chH + 4*S);
   ctx.fillStyle = '#d8e4ee'; ctx.strokeStyle = '#4a5a68'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(bathX0, lineY - bathH/2, bathX1 - bathX0, bathH, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(bathX0, lineY - bathH/2, bathX1 - bathX0, bathH, 3*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = active ? '#a8c8f0' : '#6a7a88'; ctx.fillRect(bathX0 + 3*S, lineY - bathH*0.28, bathX1 - bathX0 - 6*S, bathH*0.56);
   if (active) for (let k = 0; k < 4; k++) {
     const ph = (t*0.5 + k/4) % 1;
@@ -177,14 +177,14 @@ function renderSuperconductorMill(e, px, py, t) {
   {
     const rx = X(8.95), ry = Y(0.85), rw = X(11.65) - rx, rh = Y(4.25) - ry;
     ctx.fillStyle = 'rgba(0,0,0,0.33)'; ctx.fillRect(rx + 4*S, ry + 5*S, rw, rh);
-    ctx.fillStyle = '#3a3640'; ctx.fillRect(rx, ry, rw, rh);
+    ctx.fillStyle = '#3a3640'; _fillRectMetalG(ctx, rx, ry, rw, rh);
     ctx.strokeStyle = '#14121a'; ctx.lineWidth = 1.2*S; ctx.strokeRect(rx, ry, rw, rh);
     ctx.fillStyle = '#5a5664'; for (let k = 1; k < 4; k++) ctx.fillRect(rx, ry + rh*k/4 - 0.8*S, rw, 1.6*S);
     const cols = 3, rows = 4, lit = Math.round(fill*cols*rows);
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       const idx = (rows - 1 - r)*cols + c;
       const sx = rx + rw*(c + 0.5)/cols, sy = ry + rh*(r + 0.5)/rows, sr = Math.min(rw/cols, rh/rows)*0.36;
-      ctx.fillStyle = idx < lit ? '#d0a868' : '#24212a'; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = idx < lit ? '#d0a868' : '#24212a'; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); _fillMetalG(ctx);
       if (idx < lit) { ctx.strokeStyle = 'rgba(90,60,20,0.6)'; ctx.lineWidth = 0.6*S; ctx.beginPath(); ctx.arc(sx, sy, sr*0.68, 0, Math.PI*2); ctx.stroke(); }
       ctx.fillStyle = '#16141a'; ctx.beginPath(); ctx.arc(sx, sy, sr*0.3, 0, Math.PI*2); ctx.fill();
     }
@@ -222,7 +222,7 @@ function renderSuperconductorMill(e, px, py, t) {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     const vx = X(7.25), vy = Y(5.3), vw = X(8.55) - vx, vh = Y(6.75) - vy;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(vx + 3*S, vy + 4*S, vw, vh);
-    ctx.fillStyle = '#a8b4c0'; ctx.fillRect(vx, vy, vw, vh);
+    ctx.fillStyle = '#a8b4c0'; _fillRectMetalG(ctx, vx, vy, vw, vh);
     const n = 6;
     for (let k = 0; k < n; k++) for (let j = 0; j < 4; j++) {
       const cx = vx + vw*(k + 0.5)/n, cy = vy + vh*(j + 0.5)/4;
@@ -236,8 +236,8 @@ function renderSuperconductorMill(e, px, py, t) {
   for (let k = 0; k < 3; k++) {
     const cx = X(9.35) + k*U*0.95, cy = Y(5.5), r = Math.min(U, V)*0.38;
     ctx.fillStyle = 'rgba(0,0,0,0.33)'; ctx.fillRect(cx - r - 2*S + 3*S, cy - r - 2*S + 4*S, r*2 + 4*S, r*2 + 4*S);
-    ctx.fillStyle = '#6a7078'; ctx.fillRect(cx - r - 2*S, cy - r - 2*S, r*2 + 4*S, r*2 + 4*S);
-    ctx.fillStyle = '#1e2228'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6a7078'; _fillRectMetalG(ctx, cx - r - 2*S, cy - r - 2*S, r*2 + 4*S, r*2 + 4*S);
+    ctx.fillStyle = '#1e2228'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(on ? t*8 + k : k);
     ctx.fillStyle = '#9aa2aa';
     for (let b = 0; b < 4; b++) { ctx.rotate(Math.PI/2); ctx.beginPath(); ctx.ellipse(r*0.48, 0, r*0.44, r*0.16, 0.4, 0, Math.PI*2); ctx.fill(); }
@@ -302,18 +302,18 @@ function renderCoreWorks(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.18)';                                            // sawtooth north lights
     for (let k = 0; k < 5; k++) ctx.fillRect(hx + 2*S, hy + 3*S + k*(hh - 8*S)/5, hw - 4*S, 2.2*S);
     const gx0 = hx + hw*0.12, gx1 = hx + hw*0.88, gy0 = Y(2.0), gy1 = Y(3.05);
-    ctx.fillStyle = '#14181e'; ctx.fillRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
+    ctx.fillStyle = '#14181e'; _fillRectMetalG(ctx, gx0, gy0, gx1 - gx0, gy1 - gy0);
     const my = (gy0 + gy1)/2, mH = (gy1 - gy0)*0.5, mx0 = gx0 + (gx1 - gx0)*0.25, mx1 = gx0 + (gx1 - gx0)*0.78;
     const mg = ctx.createLinearGradient(0, my - mH/2, 0, my + mH/2);
     mg.addColorStop(0, '#c8ccd4'); mg.addColorStop(0.5, '#70747c'); mg.addColorStop(1, '#30343a');
-    ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(mx0, my - mH/2, mx1 - mx0, mH, mH/2); ctx.fill();
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(mx0, my - mH/2, mx1 - mx0, mH, mH/2); _fillMetalG(ctx);
     ctx.save(); ctx.beginPath(); ctx.roundRect(mx0, my - mH/2, mx1 - mx0, mH, mH/2); ctx.clip();
     ctx.fillStyle = 'rgba(210,170,100,0.75)';
     const off = winding ? (t*16*S) % (5*S) : 0;
     for (let x = mx0 - 5*S + off; x < mx1; x += 5*S) ctx.fillRect(x, my - mH/2, 2*S, mH);
     ctx.restore();
     ctx.fillStyle = '#2a2e34'; ctx.fillRect(mx0 - 4*S, my - mH*0.8, 4*S, mH*1.6); ctx.fillRect(mx1, my - mH*0.8, 4*S, mH*1.6);
-    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(gx0 + 6*S, my, mH*0.55, 0, Math.PI*2); ctx.fill();    // supply reel
+    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(gx0 + 6*S, my, mH*0.55, 0, Math.PI*2); _fillMetalG(ctx);    // supply reel
     ctx.strokeStyle = 'rgba(200,210,220,0.75)'; ctx.lineWidth = 1.1*S; ctx.strokeRect(gx0, gy0, gx1 - gx0, gy1 - gy0);
     ctx.fillStyle = 'rgba(180,210,240,0.12)'; ctx.fillRect(gx0, gy0, gx1 - gx0, (gy1 - gy0)*0.35);
   }
@@ -321,7 +321,7 @@ function renderCoreWorks(e, px, py, t) {
   // ── Test cells: four open-topped cells behind blast walls ──
   const cx0 = X(5.5), cy0 = Y(0.85), cw = X(11.55) - cx0, chh = Y(4.6) - cy0;
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(cx0 + 5*S, cy0 + 6*S, cw, chh);
-  ctx.fillStyle = '#9a978e'; ctx.fillRect(cx0, cy0, cw, chh);                                      // walls
+  ctx.fillStyle = '#9a978e'; _fillRectMetalG(ctx, cx0, cy0, cw, chh);                                      // walls
   ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(cx0, cy0, cw, 1.5*S); ctx.fillRect(cx0, cy0, 1.5*S, chh);
   const wall = 4*S;
   for (let i = 0; i < 4; i++) {
@@ -329,11 +329,11 @@ function renderCoreWorks(e, px, py, t) {
     const col = i % 2, row = Math.floor(i/2);
     const bx = cx0 + wall + col*(cw - wall)/2, by = cy0 + wall + row*(chh - wall)/2;
     const bw = (cw - wall)/2 - wall, bh = (chh - wall)/2 - wall;
-    ctx.fillStyle = '#2a2e34'; ctx.fillRect(bx, by, bw, bh);                                      // cell floor
+    ctx.fillStyle = '#2a2e34'; _fillRectMetalG(ctx, bx, by, bw, bh);                                      // cell floor
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(bx, by, bw, 3*S); ctx.fillRect(bx, by, 3*S, bh);  // wall shadow
     _wfHazardStripe(bx, by + bh - 2.4*S, bw, 2.4*S, S*0.6);
     const ccx = bx + bw/2, ccy = by + bh/2, br = Math.min(bw, bh)*0.3;
-    ctx.fillStyle = '#0e1216'; ctx.beginPath(); ctx.arc(ccx, ccy, br*1.25, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0e1216'; ctx.beginPath(); ctx.arc(ccx, ccy, br*1.25, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = '#4a5464'; ctx.lineWidth = S; ctx.stroke();
     if (c.state !== 'empty') {
       const can = c.state === 'spent' ? '#7a6a50' : '#a8b4c0';
@@ -383,9 +383,9 @@ function renderCoreWorks(e, px, py, t) {
   // ── Tape spool stand (stock fills the reel) ──
   {
     const sx = X(1.5), sy = Y(5.65), r = Math.min(U, V)*0.68;
-    ctx.fillStyle = '#4a4e54'; ctx.fillRect(sx - r - 3*S, sy - r - 3*S, r*2 + 6*S, r*2 + 6*S);
+    ctx.fillStyle = '#4a4e54'; _fillRectMetalG(ctx, sx - r - 3*S, sy - r - 3*S, r*2 + 6*S, r*2 + 6*S);
     ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(sx + 3*S, sy + 4*S, r, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#3a3640'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a3640'; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.arc(sx, sy, r*(0.35 + 0.6*stock), 0, Math.PI*2); ctx.fill();
     ctx.strokeStyle = 'rgba(90,60,20,0.5)'; ctx.lineWidth = 0.5*S;
     for (let k = 0.45; k < 0.35 + 0.6*stock; k += 0.12) { ctx.beginPath(); ctx.arc(sx, sy, r*k, 0, Math.PI*2); ctx.stroke(); }
@@ -420,7 +420,7 @@ function renderCoreWorks(e, px, py, t) {
   {
     const dx = X(7.2), dy = Y(6.35), r = Math.min(U*1.15, V*1.15);
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(dx + 3*S, dy + 4*S, r, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#3a3e44'; ctx.beginPath(); ctx.arc(dx, dy, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#3a3e44'; ctx.beginPath(); ctx.arc(dx, dy, r, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = '#e8e4d8'; ctx.lineWidth = 1.4*S; ctx.beginPath(); ctx.arc(dx, dy, r*0.78, 0, Math.PI*2); ctx.stroke();
     ctx.fillStyle = '#e8e4d8'; ctx.font = `bold ${Math.max(6, r*0.75)}px Arial, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('H', dx, dy + r*0.04);
@@ -435,7 +435,7 @@ function renderCoreWorks(e, px, py, t) {
   // ── Truck dock ──
   {
     const kx = X(9.0), ky = Y(5.5), kw = X(11.6) - kx, kh = Y(7.45) - ky;
-    ctx.fillStyle = '#2e3238'; ctx.fillRect(kx, ky, kw, kh);
+    ctx.fillStyle = '#2e3238'; _fillRectMetalG(ctx, kx, ky, kw, kh);
     _wfHazardStripe(kx, ky, kw, 3*S, S);
     ctx.strokeStyle = 'rgba(240,240,230,0.7)'; ctx.lineWidth = 1*S;
     for (let k = 1; k < 3; k++) { ctx.beginPath(); ctx.moveTo(kx + kw*k/3, ky + 4*S); ctx.lineTo(kx + kw*k/3, ky + kh); ctx.stroke(); }

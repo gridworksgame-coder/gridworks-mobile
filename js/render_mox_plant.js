@@ -59,7 +59,7 @@ function _moxTread(x, y, w, h, S, on) {
     _moxTreadPat = g.createPattern(c, 'repeat');
   }
   _moxTreadPat.setTransform(new DOMMatrix([S * 0.8, 0, 0, S * 0.8, x, y]));
-  ctx.fillStyle = _moxTreadPat; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = _moxTreadPat; _fillRectMetalG(ctx, x, y, w, h);
   if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(x, y, w, h); }
 }
 
@@ -128,7 +128,7 @@ function renderMoxPlant(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.fillRect(x - m + 1.5*S, y - m + 2*S, pw2 + m*2, ph2 + m*2);
     ctx.fillStyle = on ? '#555958' : '#3a3d3c';
-    ctx.beginPath(); ctx.roundRect(x - m, y - m, pw2 + m*2, ph2 + m*2, 1.5*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(x - m, y - m, pw2 + m*2, ph2 + m*2, 1.5*S); _fillMetalG(ctx);
     ctx.fillStyle = on ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.05)';
     ctx.fillRect(x - m + 1*S, y - m + 0.6*S, pw2 + m*2 - 2*S, 0.9*S);
     ctx.fillStyle = on ? '#8a8e8c' : '#4a4e4c';
@@ -151,7 +151,7 @@ function renderMoxPlant(e, px, py, t) {
     fg.addColorStop(0, on ? '#4c504f' : '#363938');
     fg.addColorStop(1, on ? '#3b3f3f' : '#2a2d2d');
     ctx.fillStyle = fg;
-    ctx.fillRect(fx0, wallY, fw, fy1 - wallY);
+    _fillRectMetalG(ctx, fx0, wallY, fw, fy1 - wallY);
     // Epoxy bays: every other 2×2-tile bay a shade lighter.
     const bay = TILE * 2;
     ctx.fillStyle = on ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.012)';
@@ -230,7 +230,7 @@ function renderMoxPlant(e, px, py, t) {
     // Airlock lobby, straddling the wall near the HPU end.
     const alX = px + w*0.135, alW = w*0.060, alY = wallY - h*0.040, alH = h*0.080;
     ctx.fillStyle = on ? '#3e4446' : '#272b2c';
-    ctx.fillRect(alX, alY, alW, alH);
+    _fillRectMetalG(ctx, alX, alY, alW, alH);
     ctx.strokeStyle = on ? '#9a9c98' : '#5a5c58'; ctx.lineWidth = 2*S;
     ctx.strokeRect(alX, alY, alW, alH);
     // The two sliding doors: interlocked, never both open. The outer one
@@ -306,7 +306,7 @@ function renderMoxPlant(e, px, py, t) {
    [px + w*0.700, py + h*0.115, uColor,    !!e._hasUranium,   1.10]].forEach(([cx, cy, col, fed, sz]) => {
     const pw2 = w*0.062, ph2 = h*0.072;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(cx - pw2/2 + 2*S, cy - ph2/2 + 2.5*S, pw2, ph2);
-    ctx.fillStyle = on ? '#7a6248' : '#4a3e30'; ctx.fillRect(cx - pw2/2, cy - ph2/2, pw2, ph2);
+    ctx.fillStyle = on ? '#7a6248' : '#4a3e30'; _fillRectMetalG(ctx, cx - pw2/2, cy - ph2/2, pw2, ph2);
     ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 0.6*S;
     ctx.beginPath();
     for (let q = 1; q < 4; q++) { const ly = cy - ph2/2 + ph2*q/4; ctx.moveTo(cx - pw2/2, ly); ctx.lineTo(cx + pw2/2, ly); }
@@ -354,7 +354,7 @@ function renderMoxPlant(e, px, py, t) {
     else    { fg.addColorStop(0, '#2c2732'); fg.addColorStop(1, '#1a1620'); }
     ctx.fillStyle = fg;
     ctx.beginPath(); ctx.moveTo(hx - hw, topY); ctx.lineTo(hx + hw, topY);
-    ctx.lineTo(hx, botY); ctx.closePath(); ctx.fill();
+    ctx.lineTo(hx, botY); ctx.closePath(); _fillMetalG(ctx);
     ctx.strokeStyle = on ? col : '#3a3040'; ctx.lineWidth = 1.4 * S; ctx.stroke();
 
     // Corrugated ribs following the taper.
@@ -480,7 +480,7 @@ function renderMoxPlant(e, px, py, t) {
       _wfShadow(gbX, gbY, gbW, gbH + h*0.075, S, 2*S);
       const gg = ctx.createLinearGradient(gbX, 0, gbX + gbW, 0);
       gg.addColorStop(0, on ? '#5a6a52' : '#2e3630'); gg.addColorStop(1, on ? '#2c3628' : '#1a201a');
-      ctx.fillStyle = gg; ctx.beginPath(); ctx.roundRect(gbX, gbY, gbW, gbH, 2*S); ctx.fill();
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.roundRect(gbX, gbY, gbW, gbH, 2*S); _fillMetalG(ctx);
       ctx.strokeStyle = on ? '#9ab08a' : '#3a4438'; ctx.lineWidth = 0.9*S; ctx.stroke();
       ctx.fillStyle = on ? '#c4c8b8' : '#4a4e48';
       [[0.2, 0.15], [0.8, 0.15], [0.2, 0.85], [0.8, 0.85]].forEach(([u, v]) => { ctx.beginPath(); ctx.arc(gbX + gbW*u, gbY + gbH*v, 1*S, 0, Math.PI*2); ctx.fill(); });
@@ -488,7 +488,7 @@ function renderMoxPlant(e, px, py, t) {
       const moY = gbY + gbH + 2*S, moH = h*0.070;
       const mg = ctx.createLinearGradient(gbX, 0, gbX + gbW, 0);
       mg.addColorStop(0, on ? '#4a6a8a' : '#262e38'); mg.addColorStop(0.45, on ? '#6a8aaa' : '#303a46'); mg.addColorStop(1, on ? '#2a3a4a' : '#181e26');
-      ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(gbX + gbW*0.08, moY, gbW*0.84, moH, 2*S); ctx.fill();
+      ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(gbX + gbW*0.08, moY, gbW*0.84, moH, 2*S); _fillMetalG(ctx);
       ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.7*S;
       ctx.beginPath();
       for (let q = 1; q < 6; q++) { const fy = moY + moH*q/6; ctx.moveTo(gbX + gbW*0.12, fy); ctx.lineTo(gbX + gbW*0.88, fy); }
@@ -517,7 +517,7 @@ function renderMoxPlant(e, px, py, t) {
       plate.addColorStop(1, '#121016');
     }
     ctx.fillStyle = plate;
-    ctx.beginPath(); ctx.roundRect(millX - mw, millY - mh, mw*2, mh*2, 3*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(millX - mw, millY - mh, mw*2, mh*2, 3*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? accent : '#3a3040'; ctx.lineWidth = 1.5 * S; ctx.stroke();
     // Machined lip inside the housing.
     ctx.strokeStyle = on ? 'rgba(255,210,180,0.28)' : 'rgba(90,80,100,0.35)';
@@ -526,7 +526,7 @@ function renderMoxPlant(e, px, py, t) {
 
     // Recessed well the drum sits in.
     ctx.fillStyle = on ? '#0e0c14' : '#0a090e';
-    ctx.beginPath(); ctx.roundRect(millX - mw*0.86, millY - mh*0.84, mw*1.72, mh*1.68, 2*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(millX - mw*0.86, millY - mh*0.84, mw*1.72, mh*1.68, 2*S); _fillMetalG(ctx);
 
     // Corner fasteners.
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
@@ -557,7 +557,7 @@ function renderMoxPlant(e, px, py, t) {
     dg.addColorStop(0.5, on ? '#3e384c' : '#262230');
     dg.addColorStop(1, '#100e16');
     ctx.fillStyle = dg;
-    ctx.beginPath(); ctx.arc(millX, millY, drR, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(millX, millY, drR, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = on ? '#b7aec8' : '#3a3444'; ctx.lineWidth = 2*S; ctx.stroke();
     ctx.strokeStyle = '#0c0a10'; ctx.lineWidth = 1*S;
     ctx.beginPath(); ctx.arc(millX, millY, drR - 2.6*S, 0, Math.PI*2); ctx.stroke();
@@ -586,7 +586,7 @@ function renderMoxPlant(e, px, py, t) {
     ctx.save();
     ctx.beginPath(); ctx.arc(millX, millY, bore, 0, Math.PI*2); ctx.clip();
     ctx.fillStyle = '#07060c';
-    ctx.fillRect(millX - bore - 2, millY - bore - 2, bore*2 + 4, bore*2 + 4);
+    _fillRectMetalG(ctx, millX - bore - 2, millY - bore - 2, bore*2 + 4, bore*2 + 4);
 
     if (on) {
       const bed = ctx.createRadialGradient(millX, millY + bore*0.35, bore*0.05, millX, millY + bore*0.15, bore);
@@ -649,7 +649,7 @@ function renderMoxPlant(e, px, py, t) {
           lg.addColorStop(0, '#5a5464'); lg.addColorStop(1, '#2a2630');
         }
         ctx.fillStyle = lg;
-        ctx.beginPath(); ctx.roundRect(-arm, -thick * 0.5, arm * 2, thick, thick * 0.45); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(-arm, -thick * 0.5, arm * 2, thick, thick * 0.45); _fillMetalG(ctx);
         ctx.fillStyle = active ? '#fff6d8' : (on ? '#a89880' : '#4a4450');
         [-1, 1].forEach(side => {
           ctx.beginPath();
@@ -704,7 +704,7 @@ function renderMoxPlant(e, px, py, t) {
     const hx = hpuX, hy = hpuY, hw2 = hpuW, hh2 = hpuH;
     const tg = ctx.createLinearGradient(hx, 0, hx + hw2, 0);
     tg.addColorStop(0, on ? '#3a4a5a' : '#222a32'); tg.addColorStop(1, on ? '#1e2832' : '#141a20');
-    ctx.fillStyle = tg; ctx.beginPath(); ctx.roundRect(hx, hy, hw2, hh2, 1.5*S); ctx.fill();
+    ctx.fillStyle = tg; ctx.beginPath(); ctx.roundRect(hx, hy, hw2, hh2, 1.5*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? '#6a8aa8' : '#333a44'; ctx.lineWidth = 1*S; ctx.stroke();
     const mR = Math.min(hw2, hh2) * 0.26;
     _fcFan(hx + hw2*0.36, hy + hh2*0.34, mR, S, t, active, 6);
@@ -741,7 +741,7 @@ function renderMoxPlant(e, px, py, t) {
     body.addColorStop(0.48, on ? '#2c2836' : '#1b1922');
     body.addColorStop(1, on ? '#14121a' : '#100e14');
     ctx.fillStyle = body;
-    ctx.beginPath(); ctx.roundRect(presX - pw, presY - ph, pw*2, ph*2, 2*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(presX - pw, presY - ph, pw*2, ph*2, 2*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? accent : '#3a3040'; ctx.lineWidth = 1.3*S; ctx.stroke();
     ctx.strokeStyle = on ? 'rgba(255,210,180,0.22)' : 'rgba(80,70,90,0.3)'; ctx.lineWidth = 0.7*S;
     ctx.beginPath(); ctx.roundRect(presX - pw + 2.4*S, presY - ph + 2.4*S, pw*2 - 4.8*S, ph*2 - 4.8*S, 1.4*S); ctx.stroke();
@@ -809,7 +809,7 @@ function renderMoxPlant(e, px, py, t) {
     // Die: a recessed throat with a beveled mouth, and the green pellet in it.
     const dieX = presX - pw*0.7, dieY = presY + ph*0.22, dieW = pw*1.4, dieH = ph*0.5;
     ctx.fillStyle = on ? '#2a241c' : '#1a1614';
-    ctx.beginPath(); ctx.roundRect(dieX, dieY, dieW, dieH, 1.3*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(dieX, dieY, dieW, dieH, 1.3*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? '#8a7050' : '#3a3440'; ctx.lineWidth = 0.9*S; ctx.stroke();
     const throatX = presX - pw*0.4, throatY = dieY + dieH*0.22, throatW = pw*0.8, throatH = dieH*0.62;
     ctx.fillStyle = '#07060a';
@@ -848,11 +848,11 @@ function renderMoxPlant(e, px, py, t) {
     shell.addColorStop(0.5, on ? '#242832' : '#161820');
     shell.addColorStop(1, on ? '#161a22' : '#101218');
     ctx.fillStyle = shell;
-    ctx.beginPath(); ctx.roundRect(gx - gw, gloveY - gh, gw*2, gh*2, 2*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(gx - gw, gloveY - gh, gw*2, gh*2, 2*S); _fillMetalG(ctx);
 
     const winX = gx - gw*0.80, winY = gloveY - gh*0.76, winW = gw*1.60, winH = gh*0.98;
     ctx.fillStyle = '#07090e';
-    ctx.fillRect(winX, winY, winW, winH);
+    _fillRectMetalG(ctx, winX, winY, winW, winH);
     ctx.fillStyle = active ? 'rgba(255,186,96,0.42)' : (on ? 'rgba(150,160,180,0.16)' : 'rgba(80,88,100,0.08)');
     ctx.fillRect(winX, winY, winW, winH);
     // Bench kit inside the window: a balance on the left, tongs hung right,
@@ -951,7 +951,7 @@ function renderMoxPlant(e, px, py, t) {
     const cols = 3, rows = 2;
     const cr = Math.min(gasW / (cols*2.6), gasH / (rows*3.1));
     ctx.fillStyle = on ? '#2e3236' : '#1c1e20';
-    ctx.beginPath(); ctx.roundRect(gasX, gasY, gasW, gasH, 1.5*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(gasX, gasY, gasW, gasH, 1.5*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? '#7a8a96' : '#33383e'; ctx.lineWidth = 1*S; ctx.stroke();
     // Cage mesh.
     ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.6*S;
@@ -969,7 +969,7 @@ function renderMoxPlant(e, px, py, t) {
         ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(cx + 1.2*S, ry + 1.6*S, cr, 0, Math.PI*2); ctx.fill();
         const cg = ctx.createRadialGradient(cx - cr*0.35, ry - cr*0.35, cr*0.1, cx, ry, cr);
         cg.addColorStop(0, on ? '#5a5e64' : '#34363a'); cg.addColorStop(1, on ? '#1e2024' : '#141518');
-        ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, ry, cr, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(cx, ry, cr, 0, Math.PI*2); _fillMetalG(ctx);
         ctx.strokeStyle = on ? shoulder : '#3a3a3a'; ctx.lineWidth = cr*0.35;
         ctx.beginPath(); ctx.arc(cx, ry, cr*0.72, 0, Math.PI*2); ctx.stroke();
         ctx.fillStyle = on ? '#d8c890' : '#4a4638';
@@ -1048,7 +1048,7 @@ function renderMoxPlant(e, px, py, t) {
     shell.addColorStop(0.45, on ? '#2b231c' : '#1b1714');
     shell.addColorStop(1, on ? '#16120e' : '#100e0c');
     ctx.fillStyle = shell;
-    ctx.beginPath(); ctx.roundRect(kilnX, kilnY, kilnW, kilnH, 3*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(kilnX, kilnY, kilnW, kilnH, 3*S); _fillMetalG(ctx);
     // Charge and discharge bells.
     ctx.fillStyle = on ? '#1a1612' : '#100e0c';
     ctx.fillRect(kilnX, kilnY + 2*S, bell, kilnH - 4*S);
@@ -1070,7 +1070,7 @@ function renderMoxPlant(e, px, py, t) {
     } else {
       gg.addColorStop(0, '#221a16'); gg.addColorStop(1, '#2c221c');
     }
-    ctx.fillStyle = gg; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = gg; _fillRectMetalG(ctx, bx, by, bw, bh);
     // Boat rails along the bore floor.
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.8*S;
     ctx.beginPath(); ctx.moveTo(bx, by + bh*0.18); ctx.lineTo(bx + bw, by + bh*0.18); ctx.moveTo(bx, by + bh*0.82); ctx.lineTo(bx + bw, by + bh*0.82); ctx.stroke();
@@ -1173,14 +1173,14 @@ function renderMoxPlant(e, px, py, t) {
     bank.addColorStop(0.5, on ? '#2a3038' : '#1a1e24');
     bank.addColorStop(1, on ? '#1a2028' : '#12161c');
     ctx.fillStyle = bank;
-    ctx.beginPath(); ctx.roundRect(ogX, ogY, ogW, ogH, 2*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(ogX, ogY, ogW, ogH, 2*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? '#8aa0b4' : '#333a44'; ctx.lineWidth = 1.3*S; ctx.stroke();
     ctx.font = font(3.8);
     for (let q = 0; q < 4; q++) {
       const cyF = ogY + ogH*(q + 0.5)/4;
       const cartH = ogH*0.18;
       ctx.fillStyle = on ? '#141a20' : '#101418';
-      ctx.beginPath(); ctx.roundRect(ogX + 3*S, cyF - cartH*0.62, ogW - 6*S, cartH*1.24, 1.2*S); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(ogX + 3*S, cyF - cartH*0.62, ogW - 6*S, cartH*1.24, 1.2*S); _fillMetalG(ctx);
       ctx.fillStyle = on ? '#4a5664' : '#2a3038';
       ctx.fillRect(ogX + 6*S, cyF - cartH*0.4, ogW*0.50, cartH*0.8);
       ctx.strokeStyle = on ? 'rgba(220,230,240,0.4)' : 'rgba(120,130,145,0.2)'; ctx.lineWidth = 0.7*S;
@@ -1257,7 +1257,7 @@ function renderMoxPlant(e, px, py, t) {
     rack.addColorStop(0, on ? '#3a342c' : '#221e18');
     rack.addColorStop(1, on ? '#1c1814' : '#12100e');
     ctx.fillStyle = rack;
-    ctx.beginPath(); ctx.roundRect(bayX - bw, bayY - bh, bw*2, bh*2, 2*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(bayX - bw, bayY - bh, bw*2, bh*2, 2*S); _fillMetalG(ctx);
     // Cradle rails the rods sit between.
     ctx.fillStyle = on ? '#5a5044' : '#332e28';
     ctx.fillRect(bayX - bw + 6*S, bayY - bh*0.62, bw*2 - 12*S, 1.6*S);
@@ -1324,7 +1324,7 @@ function renderMoxPlant(e, px, py, t) {
     cg.addColorStop(0.35, on ? '#c8ccd0' : '#5a5e62');
     cg.addColorStop(1, on ? '#2a2e34' : '#16181a');
     ctx.fillStyle = cg;
-    ctx.beginPath(); ctx.roundRect(cx - cl, cy - cr, cl*2, cr*2, cr*0.5); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(cx - cl, cy - cr, cl*2, cr*2, cr*0.5); _fillMetalG(ctx);
     // Cooling fins.
     ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 0.8*S;
     ctx.beginPath();
@@ -1341,7 +1341,7 @@ function renderMoxPlant(e, px, py, t) {
     // Open bore while the bay holds rods (it is being loaded), lid on otherwise.
     const loading = moxFill > 0 && on;
     ctx.fillStyle = loading ? '#0a0806' : (on ? '#9a9ea2' : '#3a3c3e');
-    ctx.beginPath(); ctx.arc(cx, cy, cr*0.55, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, cr*0.55, 0, Math.PI*2); _fillMetalG(ctx);
     if (loading) {
       ctx.fillStyle = moxColor;
       for (let q = 0; q < 7; q++) {
@@ -1365,10 +1365,10 @@ function renderMoxPlant(e, px, py, t) {
   // Feeds and the product buffer at a glance, with the rod count spelled out.
   {
     ctx.fillStyle = on ? '#2a2731' : '#1b1922';
-    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, 2*S); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(panX, panY, panW, panH, 2*S); _fillMetalG(ctx);
     ctx.strokeStyle = on ? accent : '#3a3040'; ctx.lineWidth = 1.2*S; ctx.stroke();
     ctx.fillStyle = '#0d0806';
-    ctx.fillRect(panX + 3*S, panY + 3*S, panW - 6*S, panH - 6*S);
+    _fillRectMetalG(ctx, panX + 3*S, panY + 3*S, panW - 6*S, panH - 6*S);
     ctx.font = font(4.6, false);
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     const rows = [

@@ -47,6 +47,7 @@ function renderGasStorage(e, px, py, t) {
     ctx.strokeStyle = '#d8b030'; ctx.beginPath(); ctx.moveTo(q, 0); ctx.lineTo(q + h, h); ctx.stroke();
   }
   ctx.fillStyle = '#5c6268'; ctx.beginPath(); ctx.roundRect(w*0.04 + 5*S, h*0.04 + 5*S, w*0.92 - 10*S, h*0.92 - 10*S, 4*S); ctx.fill();
+  _bldGrain(ctx, 'mottle', 0.5);
   ctx.restore();
   // expansion joints
   ctx.strokeStyle = 'rgba(30,34,38,0.45)'; ctx.lineWidth = S;
@@ -110,7 +111,7 @@ function renderGasStorage(e, px, py, t) {
   // ── The sphere ──
   const sg = ctx.createRadialGradient(cx - R*0.38, cy - R*0.42, R*0.08, cx, cy, R);
   sg.addColorStop(0, '#ffffff'); sg.addColorStop(0.35, '#dfe6eb'); sg.addColorStop(0.8, '#98a6b0'); sg.addColorStop(1, '#5c6a74');
-  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); _fillMetalG(ctx);
   // inner gas glow, stronger the fuller it is
   if (gas && fill > 0) {
     const ig = ctx.createRadialGradient(cx, cy + R*0.2, 0, cx, cy, R);

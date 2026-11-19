@@ -526,6 +526,8 @@
     background: rgba(5,8,12,0.82); backdrop-filter: blur(4px);
   }
   #load-game-modal.visible { display: flex; }
+  #load-game-search { margin-bottom: 8px; font-size: 12px; padding: 7px 10px; }
+  #load-game-search[hidden] { display: none; }
 
   /* ── Save Game picker (in-game: overwrite a file, or create a new one) ── */
   #save-game-modal {
@@ -5903,6 +5905,7 @@ const StudioIntro = (() => {
       <button class="pause-close" id="load-game-close">✕ Close</button>
     </div>
     <div class="pause-section">
+      <input type="search" id="load-game-search" class="cn-input" placeholder="Search saves…" autocomplete="off" spellcheck="false" aria-label="Search saves">
       <div class="menu-saves-list" id="load-game-list"></div>
     </div>
     <div class="pause-section">

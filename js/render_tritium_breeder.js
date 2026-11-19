@@ -537,9 +537,9 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   const hg = ctx.createLinearGradient(hpX, 0, hpX + hpW, 0);
   hg.addColorStop(0, '#8a8e96'); hg.addColorStop(0.45, '#c4c8ce'); hg.addColorStop(1, '#5a5e66');
   ctx.fillStyle = hg; ctx.strokeStyle = '#1e2226'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(hpX, hpY, hpW, hpH, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(hpX, hpY, hpW, hpH, 3*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = e._hasCompound ? '#8a6ad0' : '#3a3444';
-  ctx.beginPath(); ctx.roundRect(hpX + hpW*0.18, hpY + hpH*0.1, hpW*0.64, hpH*0.3, 2*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(hpX + hpW*0.18, hpY + hpH*0.1, hpW*0.64, hpH*0.3, 2*S); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.8*S;
   for (let q = 1; q < 4; q++) { const by = hpY + hpH*(0.45 + q*0.13); ctx.beginPath(); ctx.moveTo(hpX + 2*S, by); ctx.lineTo(hpX + hpW - 2*S, by); ctx.stroke(); }
 
@@ -552,7 +552,7 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
     const kg = ctx.createLinearGradient(0, kyY, 0, kyY + kyH);
     kg.addColorStop(0, '#3e4a58'); kg.addColorStop(1, '#222a34');
     ctx.fillStyle = kg; ctx.strokeStyle = '#0e1216'; ctx.lineWidth = 1*S;
-    ctx.beginPath(); ctx.roundRect(kx - kw/2, kyY, kw, kyH, 2*S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(kx - kw/2, kyY, kw, kyH, 2*S); _fillMetalG(ctx); ctx.stroke();
     // copper klystron body and its status light, lighting in a travelling wave
     ctx.fillStyle = '#b87a40'; ctx.beginPath(); ctx.roundRect(kx - kw*0.2, kyY + kyH*0.15, kw*0.4, kyH*0.55, kw*0.2); ctx.fill();
     const lit = run && (Math.floor(t*6) % nKy) === q;
@@ -584,9 +584,9 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   const ig = ctx.createLinearGradient(0, isY, 0, isY + isH);
   ig.addColorStop(0, '#9aa6b0'); ig.addColorStop(1, '#4a545c');
   ctx.fillStyle = ig; ctx.strokeStyle = '#1a2026'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(isX, isY, isW, isH, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(isX, isY, isW, isH, 3*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = run ? beam : '#34404a';
-  ctx.beginPath(); ctx.arc(isX + isW*0.5, midY, Math.min(isW, isH)*0.22, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(isX + isW*0.5, midY, Math.min(isW, isH)*0.22, 0, Math.PI*2); _fillMetalG(ctx);
   if (run) {
     const gg = ctx.createRadialGradient(isX + isW*0.5, midY, 0, isX + isW*0.5, midY, isH*0.6);
     gg.addColorStop(0, 'rgba(154,232,255,0.45)'); gg.addColorStop(1, 'rgba(154,232,255,0)');
@@ -613,8 +613,8 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   // ── Accelerator tunnel: concrete, cut away to show the beam tube ──
   _wfShadow(tnX, tnY, tnW, tnH, S, 3*S);
   ctx.fillStyle = '#6a6e6a'; ctx.strokeStyle = '#2a2e2a'; ctx.lineWidth = 1.2*S;
-  ctx.beginPath(); ctx.roundRect(tnX, tnY, tnW, tnH, 3*S); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#1a1e22'; ctx.fillRect(tnX + 3*S, tnY + tnH*0.22, tnW - 6*S, tnH*0.56);
+  ctx.beginPath(); ctx.roundRect(tnX, tnY, tnW, tnH, 3*S); _fillMetalG(ctx); ctx.stroke();
+  ctx.fillStyle = '#1a1e22'; _fillRectMetalG(ctx, tnX + 3*S, tnY + tnH*0.22, tnW - 6*S, tnH*0.56);
   // accelerating cavities: copper rings along the tube
   const tubeY0 = midY - tnH*0.12, tubeH = tnH*0.24;
   const tg = ctx.createLinearGradient(0, tubeY0, 0, tubeY0 + tubeH);
@@ -662,14 +662,14 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   const sg = ctx.createLinearGradient(tbX, 0, tbX + tbW, 0);
   sg.addColorStop(0, '#6e7270'); sg.addColorStop(0.5, '#8a8e8a'); sg.addColorStop(1, '#4e5250');
   ctx.fillStyle = sg; ctx.strokeStyle = '#1e2220'; ctx.lineWidth = 1.4*S;
-  ctx.beginPath(); ctx.roundRect(tbX, tbY, tbW, tbH, 4*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(tbX, tbY, tbW, tbH, 4*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = '#5a5e5c';
-  ctx.beginPath(); ctx.roundRect(tbX + tbW*0.1, tbY + tbH*0.08, tbW*0.8, tbH*0.84, 3*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(tbX + tbW*0.1, tbY + tbH*0.08, tbW*0.8, tbH*0.84, 3*S); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 0.8*S;
   for (let q = 1; q < 6; q++) { const by = tbY + tbH*q/6; ctx.beginPath(); ctx.moveTo(tbX + 2*S, by); ctx.lineTo(tbX + tbW - 2*S, by); ctx.stroke(); }
   // beam line into the block, and the blanket window where it lands
   const wx = tbX + tbW*0.5, wr = Math.min(tbW, tbH)*0.26;
-  ctx.fillStyle = '#10161a'; ctx.beginPath(); ctx.arc(wx, midY, wr, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#10161a'; ctx.beginPath(); ctx.arc(wx, midY, wr, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.strokeStyle = '#c8a048'; ctx.lineWidth = 1.6*S; ctx.beginPath(); ctx.arc(wx, midY, wr - 1.5*S, 0, Math.PI*2); ctx.stroke();
   if (run) {
     const pulse = 0.75 + 0.25*Math.sin(t*9);
@@ -679,7 +679,7 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
     rg.addColorStop(1, 'rgba(128,255,192,0)');
     ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(wx, midY, wr*1.1, 0, Math.PI*2); ctx.fill();
   } else {
-    ctx.fillStyle = on ? '#1e3a30' : '#161c1a'; ctx.beginPath(); ctx.arc(wx, midY, wr*0.55, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = on ? '#1e3a30' : '#161c1a'; ctx.beginPath(); ctx.arc(wx, midY, wr*0.55, 0, Math.PI*2); _fillMetalG(ctx);
   }
   ctx.fillStyle = '#10161a'; ctx.fillRect(tnX + tnW, midY - 2*S, wx - wr - (tnX + tnW), 4*S);
   if (run) { ctx.fillStyle = 'rgba(154,232,255,0.75)'; ctx.fillRect(tnX + tnW, midY - 0.8*S, wx - wr - (tnX + tnW), 1.6*S); }
@@ -722,11 +722,11 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   if (detail) {
     // radiation trefoil on the upper shielding
     const rx = wx, ry = tbY + tbH*0.2, rr = Math.min(tbW, tbH)*0.1;
-    ctx.fillStyle = '#e8c030'; ctx.beginPath(); ctx.arc(rx, ry, rr, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#e8c030'; ctx.beginPath(); ctx.arc(rx, ry, rr, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.fillStyle = '#1a1a1a';
     for (let q = 0; q < 3; q++) {
       const a0 = -Math.PI/2 + q*2*Math.PI/3 - Math.PI/6;
-      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.arc(rx, ry, rr*0.85, a0, a0 + Math.PI/3); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.arc(rx, ry, rr*0.85, a0, a0 + Math.PI/3); ctx.closePath(); _fillMetalG(ctx);
     }
     ctx.fillStyle = '#e8c030'; ctx.beginPath(); ctx.arc(rx, ry, rr*0.28, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.arc(rx, ry, rr*0.16, 0, Math.PI*2); ctx.fill();
@@ -735,14 +735,14 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   // ── Glovebox extraction skid: windowed box with glove ports ──
   _wfShadow(gbX, gbY, gbW, gbH, S, 2*S);
   ctx.fillStyle = '#c8ccd0'; ctx.strokeStyle = '#3a3e42'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(gbX, gbY, gbW, gbH, 2*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(gbX, gbY, gbW, gbH, 2*S); _fillMetalG(ctx); ctx.stroke();
   ctx.fillStyle = run ? 'rgba(128,255,192,0.28)' : 'rgba(60,80,90,0.5)';
   ctx.fillRect(gbX + gbW*0.1, gbY + gbH*0.12, gbW*0.8, gbH*0.46);
   ctx.fillStyle = '#2a2e32';
-  for (const gx of [0.32, 0.68]) { ctx.beginPath(); ctx.arc(gbX + gbW*gx, gbY + gbH*0.78, gbH*0.1, 0, Math.PI*2); ctx.fill(); }
+  for (const gx of [0.32, 0.68]) { ctx.beginPath(); ctx.arc(gbX + gbW*gx, gbY + gbH*0.78, gbH*0.1, 0, Math.PI*2); _fillMetalG(ctx); }
 
   // ── Tritium bottle rack: gold-capped cylinders fill with the buffer ──
-  ctx.fillStyle = '#34383a'; ctx.beginPath(); ctx.roundRect(rkX, rkY, rkW, rkH, 2*S); ctx.fill();
+  ctx.fillStyle = '#34383a'; ctx.beginPath(); ctx.roundRect(rkX, rkY, rkW, rkH, 2*S); _fillMetalG(ctx);
   for (let q = 0; q < nB; q++) {
     const bx = rkX + rkW*(q + 0.5)/nB, filled = (q + 1)/nB <= fill + 0.001;
     ctx.fillStyle = filled ? '#d8e4de' : '#6a706c';
@@ -781,7 +781,7 @@ function _renderTritiumBreederLegacy(e, px, py, t) {
   // ── Chiller for the cavities ──
   _wfShadow(chX, chY, chW, chH, S, 3*S);
   ctx.fillStyle = '#3e464e'; ctx.strokeStyle = '#141a1e'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(chX, chY, chW, chH, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(chX, chY, chW, chH, 3*S); _fillMetalG(ctx); ctx.stroke();
   _fcFan(chX + chW*0.3, chY + chH*0.5, Math.min(chW, chH)*0.3, S, t, on, 6);
   _fcFan(chX + chW*0.72, chY + chH*0.5, Math.min(chW, chH)*0.3, S, t + 0.3, on, 6);
 

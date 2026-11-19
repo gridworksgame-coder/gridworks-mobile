@@ -73,7 +73,7 @@ function renderCokeOven(e, px, py, t) {
 
   // ── Ground: ballast beds and rails for the two machine tracks ──
   const track = (x0, x1, y, gauge) => {
-    ctx.fillStyle = '#4a4640'; ctx.fillRect(x0, y - gauge*0.9, x1 - x0, gauge*1.8);
+    ctx.fillStyle = '#4a4640'; _fillRectMetalG(ctx, x0, y - gauge*0.9, x1 - x0, gauge*1.8);
     if (detail) {
       ctx.fillStyle = '#2e2a24';
       for (let x = x0 + 2*S; x < x1; x += 5*S) ctx.fillRect(x, y - gauge*0.75, 2.4*S, gauge*1.5);
@@ -97,7 +97,7 @@ function renderCokeOven(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.ellipse(cx + 12*S, cy + 14*S, r*1.05, r*0.9, 0.6, 0, Math.PI*2); ctx.fill();
     const g = ctx.createRadialGradient(cx - r*0.4, cy - r*0.4, r*0.1, cx, cy, r);
     g.addColorStop(0, '#e8e0d8'); g.addColorStop(1, '#8a8078');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = '#b8261c'; ctx.lineWidth = 2.6*S; ctx.beginPath(); ctx.arc(cx, cy, r*0.78, 0, Math.PI*2); ctx.stroke();
     ctx.strokeStyle = '#f0ece6'; ctx.lineWidth = 1.6*S; ctx.beginPath(); ctx.arc(cx, cy, r*0.6, 0, Math.PI*2); ctx.stroke();
     if (e._scrubber) {
@@ -114,10 +114,10 @@ function renderCokeOven(e, px, py, t) {
   {
     const bx = X(10.2), by = Y(6.55), bw = X(12.0) - bx, bh = Y(7.95) - by;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(bx + 4*S, by + 5*S, bw, bh);
-    ctx.fillStyle = '#6a6660'; ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = '#6a6660'; _fillRectMetalG(ctx, bx, by, bw, bh);
     const wg = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
     wg.addColorStop(0, '#3a4a50'); wg.addColorStop(1, '#22282c');
-    ctx.fillStyle = wg; ctx.fillRect(bx + 3*S, by + 3*S, bw - 6*S, bh - 6*S);
+    ctx.fillStyle = wg; _fillRectMetalG(ctx, bx + 3*S, by + 3*S, bw - 6*S, bh - 6*S);
     ctx.fillStyle = 'rgba(20,18,16,0.55)';                                      // settled coke breeze
     ctx.beginPath(); ctx.ellipse(bx + bw*0.3, by + bh*0.7, bw*0.22, bh*0.18, 0, 0, Math.PI*2); ctx.fill();
     if (active && detail) {
@@ -135,7 +135,7 @@ function renderCokeOven(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(wx + 4*S, wy + 5*S, ww, wh);
     const g = ctx.createLinearGradient(0, wy, 0, wy + wh);
     g.addColorStop(0, '#7a5a48'); g.addColorStop(1, '#4a3a30');
-    ctx.fillStyle = g; ctx.fillRect(wx, wy, ww, wh);
+    ctx.fillStyle = g; _fillRectMetalG(ctx, wx, wy, ww, wh);
     if (detail) {
       ctx.strokeStyle = 'rgba(30,20,14,0.35)'; ctx.lineWidth = 0.6*S;
       for (let yy = wy + 4*S; yy < wy + wh; yy += 4*S) { ctx.beginPath(); ctx.moveTo(wx, yy); ctx.lineTo(wx + ww, yy); ctx.stroke(); }
@@ -199,7 +199,7 @@ function renderCokeOven(e, px, py, t) {
     // heat in the flues shows through it
     const dg = ctx.createLinearGradient(bx0, by0, bx1, by1);
     dg.addColorStop(0, '#4e4642'); dg.addColorStop(0.5, '#38302c'); dg.addColorStop(1, '#241e1a');
-    ctx.fillStyle = dg; ctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+    ctx.fillStyle = dg; _fillRectMetalG(ctx, bx0, by0, bx1 - bx0, by1 - by0);
     // whole-deck heat haze, breathing
     if (heat > 0.05) {
       const hz = ctx.createRadialGradient((bx0 + bx1)/2, (by0 + by1)/2, 0, (bx0 + bx1)/2, (by0 + by1)/2, (bx1 - bx0)*0.6);
@@ -285,7 +285,7 @@ function renderCokeOven(e, px, py, t) {
       const lx = bx0 + 8*S + span*s, ly = (by0 + by1)/2, lw = Math.max(ow*1.8, 11*S), lh = (by1 - by0)*0.62;
       const speed = Math.abs(Math.cos(t*0.32));
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(lx - lw/2 + 3*S, ly - lh/2 + 4*S, lw, lh);
-      ctx.fillStyle = '#d8a020'; ctx.fillRect(lx - lw/2, ly - lh/2, lw, lh);
+      ctx.fillStyle = '#d8a020'; _fillRectMetalG(ctx, lx - lw/2, ly - lh/2, lw, lh);
       ctx.strokeStyle = '#4a3408'; ctx.lineWidth = 0.9*S; ctx.strokeRect(lx - lw/2, ly - lh/2, lw, lh);
       ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(lx - lw/2, ly - lh/2, lw, 1.4*S);
       for (let l = 0; l < 4; l++) {
@@ -307,13 +307,13 @@ function renderCokeOven(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fillRect(tx + 8*S, ty + 9*S, tw, th);
     const g = ctx.createLinearGradient(tx, ty, tx + tw, ty + th);
     g.addColorStop(0, '#d4d0c8'); g.addColorStop(1, '#8e8a82');
-    ctx.fillStyle = g; ctx.fillRect(tx, ty, tw, th);
+    ctx.fillStyle = g; _fillRectMetalG(ctx, tx, ty, tw, th);
     ctx.strokeStyle = '#2a2824'; ctx.lineWidth = 1.2*S; ctx.strokeRect(tx, ty, tw, th);
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.8*S;
     ctx.beginPath(); ctx.moveTo(tx + 1.5*S, ty + th - 1.5*S); ctx.lineTo(tx + 1.5*S, ty + 1.5*S); ctx.lineTo(tx + tw - 1.5*S, ty + 1.5*S); ctx.stroke();
     // open hatch on the roof: the coal inside, filling with the bunker
     const hx = tx + tw*0.18, hy = ty + th*0.12, hw = tw*0.64, hh = th*0.36;
-    ctx.fillStyle = '#141210'; ctx.fillRect(hx, hy, hw, hh);
+    ctx.fillStyle = '#141210'; _fillRectMetalG(ctx, hx, hy, hw, hh);
     if (bunkFill > 0.02) {
       const cg = ctx.createRadialGradient(hx + hw*0.4, hy + hh*0.4, 1, hx + hw/2, hy + hh/2, Math.max(hw, hh)*0.6);
       cg.addColorStop(0, '#4a4642'); cg.addColorStop(1, '#0e0c0a');
@@ -347,7 +347,7 @@ function renderCokeOven(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(mx - mw/2 + 4*S, my - mh/2 + 5*S, mw, mh);
     const pg = ctx.createLinearGradient(0, my - mh/2, 0, my + mh/2);
     pg.addColorStop(0, '#e07a3a'); pg.addColorStop(1, '#8a3e18');
-    ctx.fillStyle = pg; ctx.fillRect(mx - mw/2, my - mh/2, mw, mh);
+    ctx.fillStyle = pg; _fillRectMetalG(ctx, mx - mw/2, my - mh/2, mw, mh);
     ctx.strokeStyle = '#2a1408'; ctx.lineWidth = 1*S; ctx.strokeRect(mx - mw/2, my - mh/2, mw, mh);
     ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(mx - mw/2, my - mh/2, mw, 1.4*S);
     // door extractor arm, leveller bar housing, cab
@@ -415,10 +415,10 @@ function renderCokeOven(e, px, py, t) {
     ctx.fillStyle = on ? '#a8e0ff' : '#2a3a44'; ctx.fillRect(lx + 5*S, carY - ch*0.3, 2.4*S, ch*0.6);
     ctx.fillStyle = '#f0c020'; ctx.fillRect(lx + 8*S, carY - ch*0.42, 1*S, ch*0.84);
     // the car: a steel tub with a sloping floor, its load glowing
-    ctx.fillStyle = '#4a4a4e'; ctx.fillRect(carX - cw/2, carY - ch/2, cw, ch);
+    ctx.fillStyle = '#4a4a4e'; _fillRectMetalG(ctx, carX - cw/2, carY - ch/2, cw, ch);
     ctx.strokeStyle = '#1a1a1c'; ctx.lineWidth = 1*S; ctx.strokeRect(carX - cw/2, carY - ch/2, cw, ch);
     const ix = carX - cw/2 + 2*S, iy = carY - ch/2 + 2*S, iw = cw - 4*S, ih = ch - 4*S;
-    ctx.fillStyle = '#1e1e20'; ctx.fillRect(ix, iy, iw, ih);
+    ctx.fillStyle = '#1e1e20'; _fillRectMetalG(ctx, ix, iy, iw, ih);
     if (load > 0.01) {
       const lw2 = iw*load;
       const g = ctx.createLinearGradient(ix, 0, ix + lw2, 0);
@@ -460,11 +460,11 @@ function renderCokeOven(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.42)'; ctx.fillRect(qx + 9*S, qy + 10*S, qw, qh);
     const g = ctx.createLinearGradient(qx, qy, qx + qw, qy + qh);
     g.addColorStop(0, '#b4aca2'); g.addColorStop(1, '#6e665e');
-    ctx.fillStyle = g; ctx.fillRect(qx, qy, qw, qh);
+    ctx.fillStyle = g; _fillRectMetalG(ctx, qx, qy, qw, qh);
     ctx.strokeStyle = '#26221e'; ctx.lineWidth = 1.2*S; ctx.strokeRect(qx, qy, qw, qh);
     // the open stack: a dark grid of baffles you look down into
     const sx = qx + qw*0.16, sy = qy + qh*0.12, sw = qw*0.68, sh = qh*0.5;
-    ctx.fillStyle = '#16181a'; ctx.fillRect(sx, sy, sw, sh);
+    ctx.fillStyle = '#16181a'; _fillRectMetalG(ctx, sx, sy, sw, sh);
     ctx.strokeStyle = '#4a4a46'; ctx.lineWidth = 1*S;
     for (let i = 1; i < 5; i++) { const yy = sy + sh*i/5; ctx.beginPath(); ctx.moveTo(sx, yy); ctx.lineTo(sx + sw, yy); ctx.stroke(); }
     // water curtain catching the light while quenching

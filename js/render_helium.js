@@ -59,6 +59,10 @@ function renderHeliumWell(e, px, py, t) {
   };
   const seed = (e.col || 0) * 0.37 + (e.row || 0) * 0.11;
   const breathe = 0.65 + 0.35 * Math.sin(t * 1.7 + seed);
+  // Scanned surfaces over the path just filled (Poly Haven, see _metalGrain):
+  // steel gets scratches, chips and rust, concrete its mottle. Up close only.
+  const M = (a) => { if (detail) _metalGrain(ctx, a); };
+  const C = (a) => { if (detail) _bldGrain(ctx, 'mottle', a); };
 
   ctx.save();
   ctx.save(); f.apply();
@@ -68,6 +72,7 @@ function renderHeliumWell(e, px, py, t) {
   const pg = ctx.createLinearGradient(0, U(5), U(235), U(235));
   pg.addColorStop(0, '#46464e'); pg.addColorStop(1, '#2e2e36');
   rr(5, 5, 230, 230, 7, pg, '#17171c', 1.4);
+  C(0.45);
   ctx.fillStyle = 'rgba(0,0,0,0.22)';
   for (let x = 43; x < 235; x += 38) ctx.fillRect(U(x), U(6), U(0.8), U(228));              // slab joints
   for (let y = 43; y < 235; y += 38) ctx.fillRect(U(6), U(y), U(228), U(0.8));
@@ -112,6 +117,7 @@ function renderHeliumWell(e, px, py, t) {
   // ── The vent cellar: steel ring, gas glowing up through the grating ──
   circ(WX + 2, WY + 3, 36, 'rgba(0,0,0,0.4)');
   circ(WX, WY, 34, '#3e4048', '#14141a', 1.4);
+  M(1);
   circ(WX, WY, 28, '#0e0a14', '#6a6c76', 1.2);
   const glowA = (flowing ? 0.55 + 0.4 * breathe : on ? 0.2 : 0.08);
   const vg = ctx.createRadialGradient(U(WX), U(WY), U(4), U(WX), U(WY), U(28));
@@ -142,7 +148,9 @@ function renderHeliumWell(e, px, py, t) {
   const tg = ctx.createRadialGradient(U(WX - 3), U(WY - 3), U(1), U(WX), U(WY), U(11));
   tg.addColorStop(0, '#e4eaf0'); tg.addColorStop(1, '#5a646e');
   rr(WX - 24, WY - 4, 48, 8, 2.5, '#8a949e', '#2a2e34', 0.9);                                 // wing valves
+  M(0.8);
   circ(WX, WY, 10.5, tg, '#1e2226', 1.1);                                                      // master valve body
+  M(0.6);
   wheel(WX - 20, WY, 5.5, '#d04a3a'); wheel(WX + 20, WY, 5.5, '#d04a3a');
   wheel(WX, WY, 6.5, '#e05a40');
   circ(WX + 9, WY - 15, 4.6, '#f4f4ee', '#2a2e34', 0.9);                                       // pressure gauge
@@ -150,6 +158,7 @@ function renderHeliumWell(e, px, py, t) {
   ctx.strokeStyle = '#c02020'; ctx.lineWidth = 0.8 * k; ctx.beginPath(); ctx.moveTo(U(WX + 9), U(WY - 15)); ctx.lineTo(U(WX + 9 + Math.cos(needle - 2)*3.6), U(WY - 15 + Math.sin(needle - 2)*3.6)); ctx.stroke();
   for (const [lx, ly] of [[WX - 30, WY - 30], [WX + 30, WY - 30], [WX - 30, WY + 30], [WX + 30, WY + 30]]) {   // derrick footings
     rr(lx - 5, ly - 5, 10, 10, 1.2, '#5a5e66', '#22262c', 0.8);
+    M(1);
     circ(lx, ly, 2, '#2a2e34');
   }
 
@@ -158,6 +167,7 @@ function renderHeliumWell(e, px, py, t) {
   const cg = ctx.createLinearGradient(0, U(CY0), 0, U(CY0 + CH));
   cg.addColorStop(0, '#6c7a8a'); cg.addColorStop(1, '#3a4654');
   rr(CX0, CY0, CW, CH, 3, cg, '#1a2028', 1.1);
+  M(1);
   ctx.fillStyle = 'rgba(255,255,255,0.1)'; for (let q = 1; q < 5; q++) ctx.fillRect(U(CX0 + 3), U(CY0 + q*8), U(14), U(0.9));   // louvres
   for (const fx of [CX0 + 34, CX0 + 62]) {
     circ(fx, CY0 + CH/2, 14.5, '#2a323a');
@@ -168,13 +178,17 @@ function renderHeliumWell(e, px, py, t) {
   // ── Membrane separation skid: eight glowing cartridges between headers ──
   shadow(MX0, MY0, MW, MH, 3);
   rr(MX0, MY0, MW, MH, 3, '#3a3448', '#141018', 1.1);
+  M(1);
   rr(MX0 + 4, MY0 + 4, MW - 8, 7, 3.5, '#9a94a8', '#2a2434', 0.7);                              // feed header
+  M(0.7);
   rr(MX0 + 4, MY0 + MH - 11, MW - 8, 7, 3.5, '#c8a8e0', '#2a2434', 0.7);                        // permeate header
+  M(0.7);
   for (let q = 0; q < 8; q++) {
     const x = MX0 + 7 + q * (MW - 14) / 8, cw = (MW - 14) / 8 - 2.2;
     const mg = ctx.createLinearGradient(U(x), 0, U(x + cw), 0);
     mg.addColorStop(0, '#d8d0e8'); mg.addColorStop(0.45, '#ffffff'); mg.addColorStop(1, '#7a7490');
     rr(x, MY0 + 12, cw, MH - 24, cw / 2, mg, '#2a2438', 0.7);
+    M(0.45);
     if (flowing) {
       const a = 0.22 + 0.2 * Math.sin(t * 2 + q * 0.8);
       rr(x + 1, MY0 + 13, cw - 2, MH - 26, (cw - 2) / 2, `rgba(220,150,255,${a.toFixed(3)})`);
@@ -187,6 +201,7 @@ function renderHeliumWell(e, px, py, t) {
   // ── Control shed, dish on the roof ──
   shadow(SX0, SY0, SW, SH, 1.5);
   rr(SX0, SY0, SW, SH, 1.5, '#c8c0b0', '#3a3630', 0.9);
+  M(0.6);
   rr(SX0 - 1, SY0 - 1, SW + 2, 5, 1, '#5a5e64');                                                // roof edge
   rr(SX0 + 4, SY0 + 9, 11, 7, 0.7, on && night ? '#ffe2a0' : '#3a4a58', '#2a2a2a', 0.6);         // window
   rr(SX0 + 22, SY0 + 9, 9, 16, 0.7, '#5a4a3a', '#2a2218', 0.6);                                 // door
@@ -211,6 +226,7 @@ function renderHeliumWell(e, px, py, t) {
     const bg = ctx.createLinearGradient(0, U(y), 0, U(y + 22));
     bg.addColorStop(0, '#f6f2fa'); bg.addColorStop(0.35, '#ffffff'); bg.addColorStop(1, '#8a80a0');
     rr(TX0, y, TW, 22, 11, bg, '#4a4058', 1);
+    M(0.6);
     rr(TX0 + 8, y + 7.5, TW - 16, 7, 3.5, '#1a1224', '#4a4058', 0.6);                            // sight glass
     if (fill > 0) {
       const a = on ? 0.75 + 0.25 * breathe : 0.35;
@@ -219,6 +235,7 @@ function renderHeliumWell(e, px, py, t) {
     }
   }
   rr(TX0 + TW, TY0 + 2, 6, 70, 2.5, '#5a5e66', '#22262c', 0.9);                                 // outlet manifold
+  M(1);
 
   // ── Flare stack (top down: base, guy wires, knock-out drum) ──
   for (const [gx, gy] of [[FX - 16, FY - 18], [FX + 16, FY - 18], [FX + 12, FY + 24], [FX - 20, FY + 16]]) {
@@ -227,8 +244,10 @@ function renderHeliumWell(e, px, py, t) {
     circ(gx, gy, 1.5, '#6a6a6a');
   }
   circ(FX - 8, 76, 8, '#7a8088', '#2a2e34', 0.9);                                                // knock-out drum
+  M(1);
   circ(FX + 2, FY + 2, 6.5, 'rgba(0,0,0,0.35)');
   circ(FX, FY, 6, '#5a5e64', '#22262a', 0.9);
+  M(1);
   circ(FX, FY, 3.2, '#1a1a1a');
   ctx.restore();
 
@@ -390,6 +409,10 @@ function renderHeliumWell2(e, px, py, t) {
     for (let q = 1; q <= 2; q++) { ctx.beginPath(); ctx.arc(U(x), U(y), U(r * q / 3), 0, Math.PI*2); ctx.stroke(); }
   };
 
+  const detail = typeof Camera === 'undefined' || Camera.zoom > 0.5;
+  const M = (a) => { if (detail) _metalGrain(ctx, a); };          // as the MK1
+  const C = (a) => { if (detail) _bldGrain(ctx, 'mottle', a); };
+
   ctx.save();
   ctx.save(); f.apply();
 
@@ -398,6 +421,7 @@ function renderHeliumWell2(e, px, py, t) {
   const pg = ctx.createLinearGradient(0, 0, U(320), U(320));
   pg.addColorStop(0, '#4c5560'); pg.addColorStop(1, '#353c46');
   rr(6, 6, 308, 308, 10, pg, '#1c2128', 1.6);
+  C(0.45);
   ctx.fillStyle = 'rgba(0,0,0,0.14)';
   for (let x = 46; x < 314; x += 40) ctx.fillRect(U(x), U(7), U(0.7), U(306));
   for (let y = 46; y < 314; y += 40) ctx.fillRect(U(7), U(y), U(306), U(0.7));
@@ -433,13 +457,16 @@ function renderHeliumWell2(e, px, py, t) {
   // ── Twin wellheads ──
   for (const [x, y] of [W1, W2]) {
     rr(x - 22, y - 22, 44, 44, 3, '#22252a', '#141618', 1.4);
+    M(1);
     ctx.strokeStyle = 'rgba(120,126,136,0.45)'; ctx.lineWidth = 0.7 * k;
     for (let q = -19; q <= 19; q += 4) { ctx.beginPath(); ctx.moveTo(U(x + q), U(y - 20)); ctx.lineTo(U(x + q), U(y + 20)); ctx.stroke(); }
     circ(x + 2, y + 3, 12, 'rgba(0,0,0,0.4)');
     const tg = ctx.createRadialGradient(U(x - 4), U(y - 4), U(1), U(x), U(y), U(12));
     tg.addColorStop(0, '#e8eef4'); tg.addColorStop(1, '#5a646e');
     circ(x, y, 11, tg, '#1e2226', 1.2);
+    M(0.6);
     rr(x - 20, y - 4, 40, 8, 2, '#8a949e', '#2a2e34', 0.9);
+    M(0.8);
     wheel(x - 17, y, 5, '#d04a3a'); wheel(x + 17, y, 5, '#d04a3a'); wheel(x, y, 6.5, '#e05a40');
     circ(x + 8, y - 13, 4.4, '#f4f4ee', '#2a2e34', 0.9);
     const nd = (on ? 0.6 + 0.08*Math.sin(t*3.1 + x) + 0.04*Math.sin(t*11) : -0.9) + fill * 0.4;
@@ -451,20 +478,24 @@ function renderHeliumWell2(e, px, py, t) {
   const rg = ctx.createLinearGradient(0, U(CH.y), 0, U(CH.y + CH.h));
   rg.addColorStop(0, '#5e6a78'); rg.addColorStop(1, '#3c4652');
   rr(CH.x, CH.y, CH.w, CH.h, 4, rg, '#1a2028', 1.4);
+  if (detail) _corrugatedGrain(ctx, 1);                                    // corrugated roof sheets
   ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 0.8 * k;
   for (let x = CH.x + 6; x < CH.x + CH.w; x += 6) { ctx.beginPath(); ctx.moveTo(U(x), U(CH.y + 2)); ctx.lineTo(U(x), U(CH.y + CH.h - 2)); ctx.stroke(); }
   fan(CH.x + 32, CH.y + CH.h / 2, 20);
   fan(CH.x + 88, CH.y + CH.h / 2, 20);
   rr(CH.x + 55, CH.y + 8, 10, CH.h - 16, 2, '#2a3038', '#14181c', 0.8);           // vent ridge
+  M(1);
 
   // ── Cryogenic cold box: frosted column, rings, walkway ──
   circ(CB.x + 8, CB.y + 10, CB.r + 4, 'rgba(0,0,0,0.35)');
   circ(CB.x, CB.y, CB.r + 6, '#2c3440', '#161c24', 1.4);                           // walkway deck
+  M(1);
   ctx.strokeStyle = '#8a96a4'; ctx.lineWidth = 1.2 * k;                             // handrail
   ctx.beginPath(); ctx.arc(U(CB.x), U(CB.y), U(CB.r + 5), 0, Math.PI*2); ctx.stroke();
   const cg = ctx.createRadialGradient(U(CB.x - 16), U(CB.y - 18), U(4), U(CB.x), U(CB.y), U(CB.r));
   cg.addColorStop(0, '#ffffff'); cg.addColorStop(0.45, '#d8f2ff'); cg.addColorStop(1, '#6a9ab8');
   circ(CB.x, CB.y, CB.r, cg, '#2a4a60', 1.4);
+  M(0.4);
   ctx.strokeStyle = 'rgba(40,90,120,0.35)'; ctx.lineWidth = 1 * k;                  // stiffening rings
   for (const r of [CB.r * 0.78, CB.r * 0.56, CB.r * 0.34]) { ctx.beginPath(); ctx.arc(U(CB.x), U(CB.y), U(r), 0, Math.PI*2); ctx.stroke(); }
   rr(CB.x - 3, CB.y - CB.r - 8, 6, 20, 1, '#5a646e', '#22262c', 0.6);               // ladder cage
@@ -487,6 +518,7 @@ function renderHeliumWell2(e, px, py, t) {
     const sg = ctx.createRadialGradient(U(sp.x - sp.r * 0.4), U(sp.y - sp.r * 0.45), U(2), U(sp.x), U(sp.y), U(sp.r));
     sg.addColorStop(0, '#ffffff'); sg.addColorStop(0.4, '#f2eaf8'); sg.addColorStop(1, '#8a7ea0');
     circ(sp.x, sp.y, sp.r, sg, '#3a3048', 1.3);
+    M(0.55);
     ctx.strokeStyle = 'rgba(144,224,255,0.6)'; ctx.lineWidth = 2.4 * k;             // cyan equator band
     ctx.beginPath(); ctx.ellipse(U(sp.x), U(sp.y), U(sp.r - 1), U(sp.r * 0.28), 0, 0, Math.PI*2); ctx.stroke();
     ctx.lineWidth = 3 * k; ctx.strokeStyle = 'rgba(20,16,28,0.7)';                    // gauge track
@@ -497,16 +529,20 @@ function renderHeliumWell2(e, px, py, t) {
     }
   }
   rr(SP[0].x + SP[0].r - 6, oY - 10, 12, 20, 3, '#5a5e66', '#22262c', 0.9);         // outlet manifold block
+  M(1);
 
   // ── Control room ──
   const CR = { x: 22, y: 220, w: 92, h: 78 };
   shadow(CR.x, CR.y, CR.w, CR.h, 4);
   rr(CR.x, CR.y, CR.w, CR.h, 4, '#d4d8dc', '#5a6068', 1.2);
+  C(0.8);
   rr(CR.x + 4, CR.y + 4, CR.w - 8, CR.h - 8, 2, '#b8bec6');
   for (let q = 0; q < 4; q++) rr(CR.x + 10 + q * 20, CR.y + 10, 14, 9, 1, on && night ? '#ffe8a8' : '#3a4a5a', '#2a2e34', 0.5);   // skylights
   rr(CR.x + 10, CR.y + 30, 34, 22, 2, '#8a929c', '#3a4048', 0.8);                    // AC units
+  M(0.9);
   fan(CR.x + 27, CR.y + 41, 7);
   rr(CR.x + 52, CR.y + 30, 30, 38, 2, '#9aa2ac', '#3a4048', 0.8);
+  M(0.9);
   circ(CR.x + 67, CR.y + 49, 6, '#c8d0d8', '#3a4048', 0.8);                           // mast base
   circ(CR.x + 67, CR.y + 49, 2.4, on && Math.sin(t * 5) > 0 ? '#ff4040' : '#601818');  // mast beacon
   if (on && night) {
@@ -524,6 +560,7 @@ function renderHeliumWell2(e, px, py, t) {
   }
   circ(FX + 2, FY + 2, 7, 'rgba(0,0,0,0.35)');
   circ(FX, FY, 6.5, '#5a5e64', '#22262a', 0.9);
+  M(1);
   circ(FX, FY, 3.4, '#1a1a1a');
   ctx.restore();
 
@@ -672,6 +709,7 @@ function renderCryoPlant(e, px, py, t) {
   const sg = ctx.createLinearGradient(0, 0, X(400), Y(360));
   sg.addColorStop(0, '#5a6066'); sg.addColorStop(1, '#40464c');
   rect(4, 4, 392, 352, 8, sg, '#22262a', 1.4);
+  _bldGrain(ctx, 'mottle', 0.5);
   ctx.fillStyle = 'rgba(0,0,0,0.13)';
   for (let x = 44; x < 396; x += 40) ctx.fillRect(X(x), Y(5), Rr(0.7), 350 * ky);              // expansion joints
   for (let y = 44; y < 356; y += 40) ctx.fillRect(X(5), Y(y), 390 * kx, Rr(0.7));
@@ -681,9 +719,9 @@ function renderCryoPlant(e, px, py, t) {
   ctx.fillRect(X(156), Y(264), 144 * kx, 6 * ky);
   // hazard border round the cold zone
   ctx.save(); ctx.beginPath(); ctx.rect(X(160), Y(14), 142 * kx, 246 * ky); ctx.rect(X(164), Y(18), 134 * kx, 238 * ky); ctx.clip('evenodd');
-  ctx.fillStyle = '#1a1608'; ctx.fillRect(X(160), Y(14), 142 * kx, 246 * ky);
+  ctx.fillStyle = '#1a1608'; _fillRectMetalG(ctx, X(160), Y(14), 142 * kx, 246 * ky);
   ctx.fillStyle = '#d8a820';
-  for (let i = -260; i < 420; i += 10) { ctx.beginPath(); ctx.moveTo(X(160 + i), Y(260)); ctx.lineTo(X(165 + i), Y(260)); ctx.lineTo(X(165 + i + 246), Y(14)); ctx.lineTo(X(160 + i + 246), Y(14)); ctx.closePath(); ctx.fill(); }
+  for (let i = -260; i < 420; i += 10) { ctx.beginPath(); ctx.moveTo(X(160 + i), Y(260)); ctx.lineTo(X(165 + i), Y(260)); ctx.lineTo(X(165 + i + 246), Y(14)); ctx.lineTo(X(160 + i + 246), Y(14)); ctx.closePath(); _fillMetalG(ctx); }
   ctx.restore();
   // frost bloom on the cold zone floor
   if (run) {
@@ -718,7 +756,7 @@ function renderCryoPlant(e, px, py, t) {
   for (const [cx, cy] of [[34, 20], [122, 20], [34, 104], [122, 104]]) circ(cx, cy, 2.4, '#7a8088', '#22262a', 0.6);
   const bg = ctx.createRadialGradient(X(68), Y(48), 0, X(78), Y(60), Rr(44 * bag));
   bg.addColorStop(0, '#ffffff'); bg.addColorStop(0.6, '#e8e4f0'); bg.addColorStop(1, '#a8a0b8');
-  ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(X(78), Y(62), Rr(42 * bag), Rr(36 * bag), 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(X(78), Y(62), Rr(42 * bag), Rr(36 * bag), 0, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(120,110,140,0.4)'; ctx.lineWidth = Rr(0.7);
   for (let q = -2; q <= 2; q++) { ctx.beginPath(); ctx.ellipse(X(78), Y(62), Rr(42 * bag * Math.abs(q) / 2.5 + 0.5), Rr(36 * bag), 0, -Math.PI/2, Math.PI/2, q < 0); ctx.stroke(); }
   ctx.strokeStyle = 'rgba(200,140,255,0.55)'; ctx.lineWidth = Rr(2);                          // lilac seam band
@@ -782,7 +820,7 @@ function renderCryoPlant(e, px, py, t) {
   circ(CX + 6, CY + 8, CR + 10, 'rgba(0,0,0,0.35)');
   ctx.beginPath();                                                                               // octagonal deck
   for (let q = 0; q < 8; q++) { const a = q * Math.PI / 4 + Math.PI / 8; const xx = X(CX + Math.cos(a) * (CR + 12)), yy = Y(CY + Math.sin(a) * (CR + 12)); q ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
-  ctx.closePath(); ctx.fillStyle = '#262e36'; ctx.fill(); ctx.strokeStyle = '#11161b'; ctx.lineWidth = Rr(1.4); ctx.stroke();
+  ctx.closePath(); ctx.fillStyle = '#262e36'; _fillMetalG(ctx); ctx.strokeStyle = '#11161b'; ctx.lineWidth = Rr(1.4); ctx.stroke();
   if (detail) {
     ctx.save(); ctx.clip();
     ctx.strokeStyle = 'rgba(110,124,138,0.35)'; ctx.lineWidth = Rr(0.6); ctx.beginPath();
@@ -1005,7 +1043,7 @@ function renderHe3Separator(e, px, py, t) {
     ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.beginPath(); ctx.arc(x + r*0.12 + 2*S, y + r*0.16 + 3*S, r, 0, Math.PI*2); ctx.fill();
     const g = ctx.createRadialGradient(x - r*0.35, y - r*0.35, r*0.08, x, y, r);
     g.addColorStop(0, c0); g.addColorStop(0.62, c1); g.addColorStop(1, c2);
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); _fillMetalG(ctx);
     ctx.strokeStyle = edge || 'rgba(20,16,28,0.8)'; ctx.lineWidth = 1*S; ctx.stroke();
   };
   const glowAt = (x, y, r, rgb, a) => {
@@ -1081,8 +1119,8 @@ function renderHe3Separator(e, px, py, t) {
   const cg = ctx.createLinearGradient(0, cpY, 0, cpY + cpH);
   cg.addColorStop(0, '#8a78a4'); cg.addColorStop(1, '#3a3050');
   ctx.fillStyle = cg; ctx.strokeStyle = '#1a1424'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(cpX, cpY, cpW, cpH, 3*S); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#2a2238'; ctx.fillRect(cpX + cpW*0.55, cpY + cpH*0.14, cpW*0.4, cpH*0.72);
+  ctx.beginPath(); ctx.roundRect(cpX, cpY, cpW, cpH, 3*S); _fillMetalG(ctx); ctx.stroke();
+  ctx.fillStyle = '#2a2238'; _fillRectMetalG(ctx, cpX + cpW*0.55, cpY + cpH*0.14, cpW*0.4, cpH*0.72);
   ctx.strokeStyle = 'rgba(200,180,230,0.3)'; ctx.lineWidth = 0.8*S;
   for (let q = 1; q < 8; q++) { const fx = cpX + cpW*(0.55 + 0.4*q/8); ctx.beginPath(); ctx.moveTo(fx, cpY + cpH*0.16); ctx.lineTo(fx, cpY + cpH*0.84); ctx.stroke(); }
   _fcFan(cpX + cpW*0.27, cpY + cpH*0.5, Math.min(cpW, cpH)*0.3, S, t, on, 7);
@@ -1110,7 +1148,7 @@ function renderHe3Separator(e, px, py, t) {
   // ── Radiator fan bank ──
   _wfShadow(w*0.32, h*0.045, w*0.35, h*0.08, S, 3*S);
   ctx.fillStyle = '#5a5e68'; ctx.strokeStyle = '#22242a'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(w*0.32, h*0.045, w*0.35, h*0.08, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(w*0.32, h*0.045, w*0.35, h*0.08, 3*S); _fillMetalG(ctx); ctx.stroke();
   fans.forEach(([x, y], i) => _fcFan(x, y, m*0.032, S, t + i*0.7, run, 9));
 
   // ── Distillation columns round the ring ──
@@ -1135,7 +1173,7 @@ function renderHe3Separator(e, px, py, t) {
   ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.beginPath(); ctx.arc(CX + 5*S, CY + 7*S, R, 0, Math.PI*2); ctx.fill();
   const shell = ctx.createRadialGradient(CX - R*0.4, CY - R*0.45, R*0.1, CX, CY, R);
   shell.addColorStop(0, '#ffffff'); shell.addColorStop(0.55, '#d4e2ea'); shell.addColorStop(1, '#7c8e9a');
-  ctx.fillStyle = shell; ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = shell; ctx.beginPath(); ctx.arc(CX, CY, R, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.strokeStyle = '#3a4a56'; ctx.lineWidth = 1.4*S; ctx.stroke();
   // bolted flange ring
   ctx.strokeStyle = 'rgba(70,90,104,0.6)'; ctx.lineWidth = 1*S;
@@ -1146,7 +1184,7 @@ function renderHe3Separator(e, px, py, t) {
   ctx.beginPath(); ctx.arc(CX, CY, R*0.78, 0, Math.PI*2); ctx.stroke();
   // viewing well
   const WR = R*0.66;
-  ctx.fillStyle = '#060a14'; ctx.beginPath(); ctx.arc(CX, CY, WR, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#060a14'; ctx.beginPath(); ctx.arc(CX, CY, WR, 0, Math.PI*2); _fillMetalG(ctx);
   ctx.save(); ctx.beginPath(); ctx.arc(CX, CY, WR, 0, Math.PI*2); ctx.clip();
   const wellG = ctx.createRadialGradient(CX, CY, 0, CX, CY, WR);
   wellG.addColorStop(0, on ? 'rgba(60,120,200,0.55)' : 'rgba(30,40,60,0.4)'); wellG.addColorStop(1, 'rgba(10,20,40,0.2)');
@@ -1208,7 +1246,7 @@ function renderHe3Separator(e, px, py, t) {
   });
 
   // ── Bottle rack ──
-  ctx.fillStyle = '#34303a'; ctx.beginPath(); ctx.roundRect(rk.x, rk.y, rk.w, rk.h, 2*S); ctx.fill();
+  ctx.fillStyle = '#34303a'; ctx.beginPath(); ctx.roundRect(rk.x, rk.y, rk.w, rk.h, 2*S); _fillMetalG(ctx);
   const nB = 9;
   for (let q = 0; q < nB; q++) {
     const bx = rk.x + rk.w*(q + 0.5)/nB, filled = (q + 1)/nB <= fill + 0.001;
@@ -1220,9 +1258,9 @@ function renderHe3Separator(e, px, py, t) {
   // ── Vacuum pump skid ──
   _wfShadow(vp.x, vp.y, vp.w, vp.h, S, 3*S);
   ctx.fillStyle = '#3a3640'; ctx.strokeStyle = '#1a1620'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(vp.x, vp.y, vp.w, vp.h, 3*S); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = '#7a6a90'; ctx.beginPath(); ctx.roundRect(vp.x + vp.w*0.06, vp.y + vp.h*0.14, vp.w*0.34, vp.h*0.72, 3*S); ctx.fill();
-  ctx.fillStyle = '#2a2a34'; ctx.beginPath(); ctx.roundRect(vp.x + vp.w*0.48, vp.y + vp.h*0.18, vp.w*0.46, vp.h*0.64, 6*S); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(vp.x, vp.y, vp.w, vp.h, 3*S); _fillMetalG(ctx); ctx.stroke();
+  ctx.fillStyle = '#7a6a90'; ctx.beginPath(); ctx.roundRect(vp.x + vp.w*0.06, vp.y + vp.h*0.14, vp.w*0.34, vp.h*0.72, 3*S); _fillMetalG(ctx);
+  ctx.fillStyle = '#2a2a34'; ctx.beginPath(); ctx.roundRect(vp.x + vp.w*0.48, vp.y + vp.h*0.18, vp.w*0.46, vp.h*0.64, 6*S); _fillMetalG(ctx);
   ctx.strokeStyle = 'rgba(160,180,210,0.3)'; ctx.lineWidth = 0.8*S;
   for (let q = 1; q < 7; q++) { const fx = vp.x + vp.w*(0.48 + 0.46*q/7); ctx.beginPath(); ctx.moveTo(fx, vp.y + vp.h*0.22); ctx.lineTo(fx, vp.y + vp.h*0.78); ctx.stroke(); }
   _fcFan(vp.x + vp.w*0.23, vp.y + vp.h*0.5, Math.min(vp.w, vp.h)*0.3, S, t, run, 5);
@@ -1241,9 +1279,9 @@ function renderHe3Separator(e, px, py, t) {
   // ── Control room: windows, mass-spec screen with the He-3 peak ──
   _wfShadow(cr.x, cr.y, cr.w, cr.h, S, 3*S);
   ctx.fillStyle = on ? '#2e3038' : '#1e2026'; ctx.strokeStyle = '#14161a'; ctx.lineWidth = 1*S;
-  ctx.beginPath(); ctx.roundRect(cr.x, cr.y, cr.w, cr.h, 3*S); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(cr.x, cr.y, cr.w, cr.h, 3*S); _fillMetalG(ctx); ctx.stroke();
   const scr = { x: cr.x + cr.w*0.07, y: cr.y + cr.h*0.12, w: cr.w*0.58, h: cr.h*0.56 };
-  ctx.fillStyle = '#0a0c10'; ctx.fillRect(scr.x, scr.y, scr.w, scr.h);
+  ctx.fillStyle = '#0a0c10'; _fillRectMetalG(ctx, scr.x, scr.y, scr.w, scr.h);
   ctx.strokeStyle = run ? 'rgba(255,210,160,0.9)' : 'rgba(110,90,70,0.5)'; ctx.lineWidth = 1.1*S;
   ctx.beginPath();
   for (let q = 0; q <= 30; q++) {
