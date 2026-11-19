@@ -191,12 +191,20 @@ const PhotoGround = (() => {
       const g = c.getContext('2d');
       g.filter = filter;
       g.drawImage(im, 0, 0);
-      out = new Image();
-      out.onload = () => { _spritesLoaded++; };
-      out.src = c.toDataURL();
+      try {
+        out = new Image();
+        out.onload = () => { _spritesLoaded++; };
+        out.src = c.toDataURL();
+      } catch (_e) {
+        // The game opened straight from its folder (file://): every image is
+        // "cross-origin" there, so the canvas can't be exported. Use the
+        // canvas itself — slower to draw, but it works (an uncaught throw
+        // here, mid-render, blacked out the whole world).
+        out = c; out._ready = true;
+      }
       m.set(filter, out);
     }
-    return out.complete && out.naturalWidth ? out : im;
+    return out._ready || (out.complete && out.naturalWidth) ? out : im;
   }
 
   // Drop a patch once its owner has baked it into something of its own.

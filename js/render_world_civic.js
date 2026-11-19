@@ -8051,6 +8051,14 @@ const _WILLOW_PHOTO_ASPECT   = 900 / 1200;
 const _willowPhotoSprites  = ['a', 'b', 'c'].map(k => _seasonImg(`img/willow_var_${k}.png`));
 const _willowAutumnSprites = ['a', 'b', 'c'].map(k => _seasonImg(`img/willow_var_${k}_autumn.png`));
 const _willowWinterSprites = ['a', 'b', 'c'].map(k => _seasonImg(`img/willow_var_${k}_winter.png`));
+// The soil every tree grows out of (scripts/tree_base_png.py, from a Poly
+// Haven soil scan): a mound with root flares, drawn under the tree, and its
+// front lip, drawn over the foot of the trunk so the trunk goes into the
+// ground instead of standing on it. Four of each, 128×56 = 4× world size,
+// the trunk's foot at (64, 24).
+const _treeBaseSprites = ['a', 'b', 'c', 'd'].map(k => _seasonImg(`img/tree_base_${k}.png`));
+const _treeBaseLips    = ['a', 'b', 'c', 'd'].map(k => _seasonImg(`img/tree_base_${k}_lip.png`));
+const _TREE_BASE_W = 32, _TREE_BASE_H = 14, _TREE_BASE_AY = 24 / 56;
 
 // Which tree grows on a tile, from the land (TerrainSystem): 2 a willow on
 // the banks of rivers and lakes, 1 a fir up on high, dry and rocky ground,
@@ -8408,11 +8416,20 @@ function renderTree(e, px, py, t) {
       ctx.save();
       ctx.globalAlpha = baseAlpha * _detailT;
 
+      // The soil mound and roots it grows out of (lip drawn after the tree).
+      const _bi = Math.floor(h3 * 7919) % 4;
+      const _bw = _TREE_BASE_W * scale, _bh = _TREE_BASE_H * scale;
+      const _bx = cx - _bw / 2, _by = py + TILE - 3 - _TREE_BASE_AY * _bh;
+      const _base = _treeBaseSprites[_bi];
+      if (_base.loaded) ctx.drawImage(_base, _bx, _by, _bw, _bh);
+
       // Ground contact shadow — grounds the tree against the terrain. Drawn
       // live (not baked into the cached sprite) because it must stay flat on
       // the ground and NOT rotate along with the sway transform below.
+      // Faint once the soil mound is down (it does the grounding then; at
+      // full strength this hard-edged disc made the mound read as a hole).
       ctx.save();
-      ctx.globalAlpha *= 0.3;
+      ctx.globalAlpha *= _base.loaded ? 0.1 : 0.3;
       ctx.fillStyle = '#000';
       ctx.beginPath();
       ctx.ellipse(cx + 2, py + TILE - 3, TILE*0.3*scale, TILE*0.1*scale, 0, 0, Math.PI*2);
@@ -8452,6 +8469,8 @@ function renderTree(e, px, py, t) {
         }
       }
       ctx.restore();
+      const _lip = _treeBaseLips[_bi];
+      if (_lip.loaded) ctx.drawImage(_lip, _bx, _by, _bw, _bh);
 
       ctx.restore();
     }

@@ -1733,7 +1733,7 @@ RenderSystem.render = function (t, inputState) {
         // ever compared with !==, so a composite key is fine.
         // ...and the season: the canopies painted into zone ground turn,
         // drop and regrow in a handful of steps (Seasons.foliageStep).
-        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + DepositGround.version() + ':' + IslandGround.version() + ':' + LandCover.version() + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
+        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + DepositGround.version() + ':' + IslandGround.version() + ':' + LandCover.version() + ':' + GroundTextures.grassDetailLoaded + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
         const _zoom = Camera.zoom;
 
         const ZOOM_SETTLE_MS = 160;

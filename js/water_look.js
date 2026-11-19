@@ -477,12 +477,25 @@ const WaterLook = (() => {
   // (destination-in), and the result goes onto the screen in one drawImage.
   // No patterns and no 'lighter' anywhere near the main canvas: that
   // combination is what the old caustics were cut for (render_main_loop.js).
-  const RIP = 256;              // world pixels per texture tile
+  const RIP = 256;              // world pixels per texture tile (keep a power of two: an
+                                // odd-sized repeating image is far slower on some GPUs)
   let ripTex = null, ripCv = null, ripCtx = null;
+  // The surface itself: real waves from Blender (scripts/render_water_tile.py
+  // — an Ocean-modifier patch, periodic so it tiles), its normals shaded
+  // offline by scripts/water_surface_png.py into pale lit slopes, dark-blue
+  // shaded ones and a few sun glints, all in alpha, 256 px. Until it has
+  // loaded the drawn strokes below stand in; its arrival rebuilds the tile.
+  // Only drawn, never read back (fine opened from the folder, file://).
+  const _ripImg = new Image();
+  _ripImg.onload = () => { ripTex = null; };
+  _ripImg.src = 'img/water_surface.png';
   function buildRipples() {
     ripTex = document.createElement('canvas');
     ripTex.width = ripTex.height = RIP;
+    ripCv = document.createElement('canvas');
+    ripCtx = ripCv.getContext('2d');
     const g = ripTex.getContext('2d');
+    if (_ripImg.complete && _ripImg.naturalWidth) { g.drawImage(_ripImg, 0, 0, RIP, RIP); return; }
     g.lineCap = 'round';
     let seed = 7;
     const rnd = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) / 4294967296;
@@ -499,8 +512,6 @@ const WaterLook = (() => {
         g.beginPath(); g.moveTo(cx - len * 0.8, cy + bow + 2); g.quadraticCurveTo(cx, cy - bow + 2, cx + len * 0.8, cy + bow + 2); g.stroke();
       }
     }
-    ripCv = document.createElement('canvas');
-    ripCtx = ripCv.getContext('2d');
   }
   // `drawn` as recorded by draw(); m the world->device transform. `shades`
   // maps an alpha to a world-space Path2D to darken by it first (how full

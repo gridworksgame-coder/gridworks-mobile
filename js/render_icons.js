@@ -1676,8 +1676,11 @@ RenderSystem.renderIcon = function (iconCanvas, type) {
       ctx = savedCtx;
       DayNight.hour = savedHour; DayNight.darkness = savedDark; Camera.zoom = savedZoom;
     }
-    // Blank or near-blank result → fall back to the hand-drawn icon
-    const d = off.getContext('2d').getImageData(0, 0, SIZE, SIZE).data;
+    // Blank or near-blank result → fall back to the hand-drawn icon. So does
+    // a canvas that can't be read back (the game opened from its folder,
+    // file://, taints any canvas a sprite image is drawn on).
+    let d;
+    try { d = off.getContext('2d').getImageData(0, 0, SIZE, SIZE).data; } catch (_e) { return null; }
     let alpha = 0, x0 = SIZE, y0 = SIZE, x1 = -1, y1 = -1;
     for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
       const a = d[(y * SIZE + x) * 4 + 3];

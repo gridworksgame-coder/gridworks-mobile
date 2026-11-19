@@ -396,6 +396,44 @@ const GroundTextures = (() => {
 
   const api = { grassPatternA, grassPatternB, cloverPattern, strawPattern, flowerSprites, plantSprites, pebbleSprites, dirtSprites, photoGrassPatternA: null, photoGrassPatternB: null };
 
+  // Blender grass detail (scripts/render_grass_tile.py): Poly Haven's
+  // scanned grass clumps scattered and rendered top-down into seamless
+  // tiles (greyscale light-and-shadow maps centred on mid-grey), laid over
+  // the ground colour so the biome and season colours still show. Three
+  // kinds, mixed over the map by the biomes (render_core.js,
+  // _grassDetailDraw): meadow everywhere, lush in valleys and by water, dry
+  // on the golden slopes. grassDetailLoaded counts arrivals (ground cache key).
+  //
+  // COST — measured 2026-11-19 on an Intel HD 630, panning a fixed path
+  // (old dashes: ~0.1 s of long tasks): a 200 px pattern cost ~16 s, a
+  // 256 px one ~0.1 s. A repeating pattern whose size is NOT a power of two
+  // has its repeat emulated slowly on the GPU. So the game loads ready-made
+  // 256 px PNGs (img/grass_detail_<kind>.png: black shadow and white
+  // highlight with alpha, made from the Blender JPGs ahead of time — a
+  // plain normal blend; 'overlay' cost ~3x), copies each onto an ordinary
+  // (GPU) canvas, and uses it with no scale or rotation. One repeat = 256
+  // world px; the kinds are only shifted so their repeats never line up.
+  // No pixels are read back at load: opened from its folder (file://) the
+  // browser forbids that, and it threw.
+  const GRASS_DETAIL_PX = 256;                         // keep a power of two (see above)
+  const GRASS_DETAIL_SHIFT = { meadow: [0, 0], lush: [97, 41], dry: [173, 139] };
+  api.grassDetail = { meadow: null, lush: null, dry: null };
+  api.grassDetailLoaded = 0;
+  for (const kind of ['meadow', 'lush', 'dry']) {
+    const img = new Image();
+    img.onload = () => {
+      const s = GRASS_DETAIL_PX;
+      const c = document.createElement('canvas'); c.width = c.height = s;
+      c.getContext('2d').drawImage(img, 0, 0, s, s);
+      const pat = c.getContext('2d').createPattern(c, 'repeat');
+      const [ox, oy] = GRASS_DETAIL_SHIFT[kind];
+      if (ox || oy) pat.setTransform(new DOMMatrix().translate(ox, oy));
+      api.grassDetail[kind] = pat;
+      api.grassDetailLoaded++;
+    };
+    img.src = `img/grass_detail_${kind}.png`;
+  }
+
   if (USE_PHOTO_GRASS_TEXTURE) {
     _loadImagePattern('img/grass_tile_a.png', 0,  p => { api.photoGrassPatternA = p; });
     _loadImagePattern('img/grass_tile_b.png', 37, p => { api.photoGrassPatternB = p; });

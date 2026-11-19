@@ -25,6 +25,71 @@ const SIMPLE_GROUND_MODE = false;
 // the actual noise math never re-runs for that tile again.
 const _grassBucketCache = new Map(); // tile key (c*10000+r) -> "qR,qG,qB"
 let _grassBiomeKey = null;           // terrain version the cached colours were worked out for
+
+// ── Blender grass detail: drawing a band ────────────────────────────
+// The ground's grass texture is three Blender renders of real grass
+// (GroundTextures.grassDetail: meadow, lush, dry — black shadow and white
+// highlight with alpha). For a band of the ground cache this lays the
+// meadow detail over the whole band, then the lush and dry details wherever
+// the land calls for them: lush along water and on valley floors, dry up
+// the golden slopes (TerrainSystem.biome), each pushed about by its own
+// slow noise so even one biome has patches of the others, each clipped to
+// a union of circles per tile. Normal blending. Cost per band: one fill,
+// plus one clipped fill for each of lush / dry the band has (see the cost
+// notes in ground_textures.js: the patterns must be 256 px).
+const GRASS_DETAIL_ALPHA = 0.55;
+const GD_BLOCK = 3;                  // lush/dry mask: one circle per 3×3 tiles
+const GD_MAX_CIRCLES = 1200;         // more than this in a band: meadow only (GPU hang guard)
+const _grassVarCache = new Map();    // tile key -> [lush, dry] blend weights (cleared with _grassBucketCache)
+const _gdHash = (x, y, s) => { const v = Math.sin(x * 127.1 + y * 311.7 + s * 74.3) * 43758.5453; return v - Math.floor(v); };
+function _gdNoise(c, r, cell, s) {
+  const x = c / cell, y = r / cell, x0 = Math.floor(x), y0 = Math.floor(y);
+  const fx = x - x0, fy = y - y0, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+  const a = _gdHash(x0, y0, s), b = _gdHash(x0 + 1, y0, s), c2 = _gdHash(x0, y0 + 1, s), d = _gdHash(x0 + 1, y0 + 1, s);
+  const top = a + (b - a) * ux;
+  return top + (c2 + (d - c2) * ux - top) * uy;
+}
+function _grassVarW(c, r) {
+  const key = c * 10000 + r;
+  let w = _grassVarCache.get(key);
+  if (w) return w;
+  const b = typeof TerrainSystem !== 'undefined' ? TerrainSystem.biome(c, r) : [0, 0, 0];
+  let lush = Math.max(0, Math.min(1, b[0] * 0.85 + (_gdNoise(c, r, 13, 31) - 0.6) * 2.4));
+  let dry  = Math.max(0, Math.min(1, b[1] * 0.85 + (_gdNoise(c, r, 13, 47) - 0.6) * 2.4));
+  if (lush + dry > 1) { const k = 1 / (lush + dry); lush *= k; dry *= k; }
+  w = [lush, dry];
+  _grassVarCache.set(key, w);
+  return w;
+}
+function _grassDetailDraw(tc, GD, c0, c1, r0, r1, alpha) {
+  const gx = c0 * TILE, gy = r0 * TILE, gw = (c1 - c0) * TILE, gh = (r1 - r0) * TILE;
+  // Meadow: the whole band, one fill.
+  tc.globalCompositeOperation = 'source-over';
+  tc.globalAlpha = alpha;
+  tc.fillStyle = GD.meadow;
+  tc.fillRect(gx, gy, gw, gh);
+  // Lush / dry: one fill each, clipped to a union of circles sized by how
+  // much of it there is — the clover/straw trick, no extra canvases. One
+  // circle per BLOCK of GD_BLOCK×GD_BLOCK tiles, not per tile, and none at
+  // all past GD_MAX_CIRCLES: a zoomed-out band was 5–10 thousand circles,
+  // 0.3–2 s of GPU path work, enough to hang an integrated GPU and black
+  // the screen (2026-11-19).
+  const B = GD_BLOCK;
+  const lushP = new Path2D(), dryP = new Path2D();
+  let nL = 0, nD = 0;
+  const bc0 = Math.floor((c0 - 1) / B), bc1 = Math.floor(c1 / B), br0 = Math.floor((r0 - 1) / B), br1 = Math.floor(r1 / B);
+  if ((bc1 - bc0 + 1) * (br1 - br0 + 1) * 2 > GD_MAX_CIRCLES * 2) return;      // far too big a band: meadow only
+  for (let br = br0; br <= br1; br++) for (let bc = bc0; bc <= bc1; bc++) {
+    const c = bc * B + (B >> 1), r = br * B + (B >> 1);
+    const w = _grassVarW(c, r);
+    const cx = (c + 0.5) * TILE, cy = (r + 0.5) * TILE;
+    if (w[0] > 0.12) { const rad = TILE * B * (0.35 + w[0] * 0.45); lushP.moveTo(cx + rad, cy); lushP.arc(cx, cy, rad, 0, Math.PI * 2); nL++; }
+    if (w[1] > 0.12) { const rad = TILE * B * (0.35 + w[1] * 0.45); dryP.moveTo(cx + rad, cy); dryP.arc(cx, cy, rad, 0, Math.PI * 2); nD++; }
+  }
+  if (nL + nD > GD_MAX_CIRCLES) return;
+  if (nL && GD.lush) { tc.fillStyle = GD.lush; tc.fill(lushP, 'nonzero'); }
+  if (nD && GD.dry)  { tc.fillStyle = GD.dry;  tc.fill(dryP, 'nonzero'); }
+}
 // Same idea for the ground-cover patch masks (clover / straw / wildflower
 // meadow strengths) — pure functions of c,r, so sample the noise once.
 const _groundCoverCache = new Map(); // tile key -> [clover, straw, flower] each 0..1
@@ -3808,7 +3873,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     // worked out afresh rather than read from the cache.
     {
       const bk = TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x');
-      if (bk !== _grassBiomeKey) { _grassBucketCache.clear(); _grassBiomeKey = bk; }
+      if (bk !== _grassBiomeKey) { _grassBucketCache.clear(); _grassVarCache.clear(); _grassBiomeKey = bk; }
     }
     if (SIMPLE_GROUND_MODE) {
       const _grassT0 = performance.now();
@@ -3970,12 +4035,21 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     if (_grassLOD > 0) {
       const _gx = cStart * TILE, _gy = rStart * TILE, _gw = (cEnd - cStart) * TILE, _gh = (rEnd - rStart) * TILE;
       targetCtx.save();
+      const _GD = GroundTextures.grassDetail;
+      if (_GD && _GD.meadow) {
+        // Blender grass (ground_textures.js): meadow everywhere, lush and dry
+        // blended in by the biomes (_grassDetailDraw), normal blending.
+        const _gdT0 = performance.now();
+        _grassDetailDraw(targetCtx, _GD, cStart, cEnd, rStart, rEnd, _grassLOD * (GRASS_DETAIL_ALPHA - _dark * 0.25));
+        PerfMonitor.record('BG grass detail', performance.now() - _gdT0);
+      } else {
       targetCtx.globalAlpha = _grassLOD * (0.62 - _dark * 0.27);
       targetCtx.fillStyle = GroundTextures.grassPatternA;
       targetCtx.fillRect(_gx, _gy, _gw, _gh);
       targetCtx.globalAlpha = _grassLOD * (0.5 - _dark * 0.22);
       targetCtx.fillStyle = GroundTextures.grassPatternB;
       targetCtx.fillRect(_gx, _gy, _gw, _gh);
+      }
       // Photo-real Blender layer, composited on top of the procedural
       // dashes rather than replacing them — crisp zoom-independent dashes
       // for the base texture, photo layer adds depth/mottling on top.
