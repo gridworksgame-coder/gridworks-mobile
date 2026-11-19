@@ -203,6 +203,22 @@ const DepositGround = (() => {
   // A deposit's own rendered rocks (photo_ground.js), untinted.
   const OIL_FRAME = 1.25;   // the pool spans 1/OIL_FRAME of an oil_seep/oil_pool sprite (render_oil_pools.py)
   const _spriteRock = (prefix, u) => typeof PhotoGround !== 'undefined' ? PhotoGround.sprite(prefix, u) : null;
+  // A rendered rock with the style's colour filter, filtered once and kept
+  // (PhotoGround.filtered): never ctx.filter on the ground canvas itself.
+  const _rockImg = (k, sp) => k.rockFilter && sp ? PhotoGround.filtered(sp, k.rockFilter) : sp;
+  // paint(k) drawn soft-edged: baked once per deposit onto a small canvas
+  // (PhotoGround.soft) and laid on scaled up, in place of a blur filter —
+  // which some phones run over the whole ground canvas per draw.
+  function _softly(k, name, softPx, paint) {
+    const f = k.f, size = f.R * 2.4, x = f.cx - size / 2, y = f.cy - size / 2;
+    const c = PhotoGround.soft(k.key + ':' + name, x, y, size, softPx, g => {
+      const tc = k.tc; k.tc = g;
+      try { paint(k); } finally { k.tc = tc; }
+    });
+    k.tc.save(); k.tc.imageSmoothingEnabled = true;
+    k.tc.drawImage(c, x, y, size, size);
+    k.tc.restore();
+  }
   // Rock — irregular, lit from the upper left, with a contact shadow.
   function _rocks(k, n, tones, bigChance = 0.1, sizeMul = 1, spread = 0.45) {
     const { tc, f, H } = k;
@@ -213,9 +229,7 @@ const DepositGround = (() => {
                  : _tintedRock(H(900 + i), tones[Math.floor(H(700 + i) * tones.length)]);
         if (sp) {
           const disp = sz * 2 * LandCover.ROCK_FRAME;
-          if (k.rockFilter) tc.filter = k.rockFilter;   // bake-time only
-          tc.drawImage(sp, sx - disp / 2, sy - disp / 2, disp, disp);
-          if (k.rockFilter) tc.filter = 'none';
+          tc.drawImage(_rockImg(k, sp), sx - disp / 2, sy - disp / 2, disp, disp);
           continue;
         }
       }
@@ -288,12 +302,15 @@ const DepositGround = (() => {
         }
         // Coal dust: black smudges, heaviest round the seam itself
         const nd = 5 + Math.round(Rt * 0.4);
-        for (let i = 0; i < nd; i++) {
-          const [bx, by] = k.polar(H(2600 + i) * Math.PI * 2, f.R * Math.pow(H(2650 + i), 1.6) * 0.6);
-          _blob(k, bx, by, TILE * (0.6 + H(2680 + i) * 1.6), 6500 + i * 16, 10, 0.7, 0.6 + H(2690 + i) * 0.4, H(2695 + i) * 6.3);
-          if (k.photo) { tc.save(); tc.filter = `blur(${(TILE * 0.12).toFixed(1)}px)`; tc.fillStyle = 'rgba(10,10,12,0.16)'; tc.fill(); tc.restore(); }   // soft over the photo (bake-time only)
-          else { tc.fillStyle = 'rgba(14,14,16,0.30)'; tc.fill(); }
-        }
+        const dust = (k, fill) => {
+          for (let i = 0; i < nd; i++) {
+            const [bx, by] = k.polar(H(2600 + i) * Math.PI * 2, f.R * Math.pow(H(2650 + i), 1.6) * 0.6);
+            _blob(k, bx, by, TILE * (0.6 + H(2680 + i) * 1.6), 6500 + i * 16, 10, 0.7, 0.6 + H(2690 + i) * 0.4, H(2695 + i) * 6.3);
+            k.tc.fillStyle = fill; k.tc.fill();
+          }
+        };
+        if (k.photo) _softly(k, 'dust', TILE * 0.12, k => dust(k, 'rgba(10,10,12,0.16)'));   // soft and faint over the photo
+        else dust(k, 'rgba(14,14,16,0.30)');
       },
       detail(k) {
         const { tc, f, H, Rt } = k;
@@ -373,10 +390,8 @@ const DepositGround = (() => {
       features(k) {
         const { tc, f, H, Rt } = k;
         // Mineral stain — yellow-green blotches where the ore weathers out
-        if (k.photo) {   // soft and faint over the photo (bake-time blur)
-          tc.save(); tc.filter = `blur(${(TILE * 0.25).toFixed(1)}px)`;
-          _blobs(k, 5 + Math.round(Rt * 0.4), 2100, 0.5, 1.0, ['rgba(176,170,60,0.12)', 'rgba(140,150,70,0.10)'], 0.55);
-          tc.restore();
+        if (k.photo) {   // soft and faint over the photo
+          _softly(k, 'stain', TILE * 0.25, k => _blobs(k, 5 + Math.round(Rt * 0.4), 2100, 0.5, 1.0, ['rgba(176,170,60,0.12)', 'rgba(140,150,70,0.10)'], 0.55));
         } else _blobs(k, 6 + Math.round(Rt * 0.6), 2100, 0.6, 1.2, ['rgba(176,170,60,0.20)', 'rgba(140,168,70,0.18)'], 0.6);
         // Granite tors — big rounded boulders, pinkish grey, shaded lower right
         const n = 4 + Math.round(Rt * 0.4);
@@ -386,9 +401,7 @@ const DepositGround = (() => {
           const tor = k.photo ? _spriteRock('rock_granite', H(2760 + i)) : null;
           if (tor) {   // a rendered granite boulder (smaller than the painted tor: real ones dwarfed the ore)
             const disp = br * 1.1 * PhotoGround.SPRITE_FRAME;
-            if (k.rockFilter) tc.filter = k.rockFilter;
-            tc.drawImage(tor, bx - disp / 2, by - disp / 2, disp, disp);
-            tc.filter = 'none';
+            tc.drawImage(_rockImg(k, tor), bx - disp / 2, by - disp / 2, disp, disp);
             continue;
           }
           _blob(k, bx + br * 0.25, by + br * 0.3, br, 6600 + i * 16, 10, 0.4, 0.8, rot);
@@ -430,10 +443,8 @@ const DepositGround = (() => {
       features(k) {
         const { Rt } = k;
         if (k.photo) {
-          // Faint sulphur staining spread over the crust (blurred, bake-time)
-          k.tc.save(); k.tc.filter = `blur(${(TILE * 0.3).toFixed(1)}px)`;
-          _blobs(k, 5 + Math.round(Rt * 0.5), 2600, 0.8, 1.4, ['rgba(206,182,58,0.13)', 'rgba(170,120,50,0.08)'], 0.6);
-          k.tc.restore();
+          // Faint sulphur staining spread over the crust, soft
+          _softly(k, 'stain', TILE * 0.3, k => _blobs(k, 5 + Math.round(Rt * 0.5), 2600, 0.8, 1.4, ['rgba(206,182,58,0.13)', 'rgba(170,120,50,0.08)'], 0.6));
           return;
         }
         // White evaporite crust under the sulphur
@@ -601,12 +612,13 @@ const DepositGround = (() => {
     return list;
   }
 
+  const _baked = new Map();   // deposit key -> { cv, ver, x, y, size }: its whole photo ground, baked
   function draw(tc, e, lod) {
     const s = STYLES[e.type];
     if (!s) return;
     const f = fieldFor(e);
     const H = n => _hash(e.col, e.row, n);
-    const k = { tc, f, H, Rt: f.R / TILE, polar: (a, rr) => [f.cx + Math.cos(a) * rr, f.cy + Math.sin(a) * rr], rockSprites: s.rockSprites, rockFilter: s.rockFilter };
+    const k = { tc, f, H, Rt: f.R / TILE, polar: (a, rr) => [f.cx + Math.cos(a) * rr, f.cy + Math.sin(a) * rr], rockSprites: s.rockSprites, rockFilter: s.rockFilter, key: e.type + ':' + e.col + ',' + e.row };
 
     // Fringe — the grass dying back into the new ground
     let g = tc.createRadialGradient(f.cx, f.cy, f.R * 0.55, f.cx, f.cy, f.R * 1.12);
@@ -617,22 +629,44 @@ const DepositGround = (() => {
 
     // Photo-scanned ground (photo_ground.js) where the style has it, in place
     // of the painted base and blotches; the painted ground while it loads.
-    const ph = s.photo && typeof PhotoGround !== 'undefined'
-      ? PhotoGround.patch({ key: e.type + ':' + e.col + ',' + e.row, cx: f.cx, cy: f.cy, R: f.R, outline: sc => pathFor(f, sc), ...s.photo })
-      : null;
-    if (ph) {
-      k.photo = true;
-      tc.save();
-      tc.imageSmoothingEnabled = true;
-      tc.drawImage(ph.cv, ph.x, ph.y, ph.size, ph.size);
-      tc.restore();
-      tc.save();
-      tc.clip(pathFor(f, 0.97));
-      s.features(k);
-      if (lod > 0) s.detail(k);
-      tc.restore();
-      _tufts(k, s, lod);
-      return;
+    // The whole of it — photo, stains, rocks, tufts — is baked once into a
+    // picture of its own per deposit (and image-load state; always at full
+    // detail, so zooming across the grass-LOD line never re-bakes it),
+    // so a ground-cache re-bake, which comes round often while panning, is
+    // one drawImage per deposit. Drawn fresh, a deposit's ground was tens of
+    // draws, and on phones that showed as freezes near deposits.
+    if (s.photo && typeof PhotoGround !== 'undefined') {
+      const ver = PhotoGround.version();
+      let b = _baked.get(k.key);
+      if (!b || b.ver !== ver) {
+        const ph = PhotoGround.patch({ key: k.key, cx: f.cx, cy: f.cy, R: f.R, outline: sc => pathFor(f, sc), ...s.photo });
+        if (ph) {
+          const px = ph.cv.width, sc = px / ph.size;
+          const cv = b && b.cv.width === px ? b.cv : document.createElement('canvas');
+          cv.width = cv.height = px;                       // (also clears a reused one)
+          const bg = cv.getContext('2d');
+          bg.imageSmoothingEnabled = true;
+          bg.drawImage(ph.cv, 0, 0);
+          bg.setTransform(sc, 0, 0, sc, -ph.x * sc, -ph.y * sc);
+          const kb = Object.assign({}, k, { tc: bg, photo: true });
+          bg.save();
+          bg.clip(pathFor(f, 0.97));
+          s.features(kb);
+          s.detail(kb);
+          bg.restore();
+          _tufts(kb, s, 1);
+          PhotoGround.forget(k.key);                       // the bake holds it now
+          b = { cv, ver, x: ph.x, size: ph.size, y: ph.y };
+          _baked.set(k.key, b);
+        }
+      }
+      if (b && b.ver === ver) {
+        tc.save();
+        tc.imageSmoothingEnabled = true;
+        tc.drawImage(b.cv, b.x, b.y, b.size, b.size);
+        tc.restore();
+        return;
+      }
     }
 
     // Base — strongest round the deposit, fading out at the rim

@@ -39,6 +39,10 @@ const _groundCoverCache = new Map(); // tile key -> [clover, straw, flower] each
 // the grass, so it costs nothing per frame. The cache is keyed partly on
 // GeoField.version() (see render_main_loop.js) so a fresh survey repaints
 // the ground instead of leaving the new deposits sitting on green.
+// Each geothermal field's photo ground, baked whole (see the field loop in
+// drawStaticBackgroundLayer): key -> { cv, ver, x, y, size }.
+const _geoBaked = new Map();
+
 const GeoField = (() => {
   const MIN_R = 8, MAX_R = 20;
   const NV    = 18;               // outline vertices — enough to read ragged
@@ -4060,7 +4064,34 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       const f = GeoField.fieldFor(_ge);
       const H = n => GeoField.hash(_ge.col, _ge.row, n);
       const Rt = f.R / TILE;                       // radius in tiles (8–20)
-      const tc = targetCtx;
+      // Over the photo ground the whole field is baked once into a picture
+      // of its own (per image-load state, at full detail so zooming never
+      // re-bakes it), so a ground-cache
+      // re-bake is one drawImage per field rather than its every channel,
+      // vent and rock — those re-bakes come round often while panning, and
+      // on phones the full redraw showed as freezes (see DepositGround.draw).
+      const _gkey = 'geo:' + _ge.col + ',' + _ge.row;
+      const _gver = typeof PhotoGround !== 'undefined' ? PhotoGround.version() : 0;
+      const _gb = _geoBaked.get(_gkey);
+      if (_gb && _gb.ver === _gver) {
+        targetCtx.save(); targetCtx.imageSmoothingEnabled = true;
+        targetCtx.drawImage(_gb.cv, _gb.x, _gb.y, _gb.size, _gb.size);
+        targetCtx.restore();
+        continue;
+      }
+      const _gspec = { key: _gkey, cx: f.cx, cy: f.cy, R: f.R,
+            outline: sc => GeoField.pathFor(f, sc), rim: 'ground_geo_rim', inner: 'ground_geo_altered',
+            span: TILE * 5, innerFrom: 0.12, innerTo: 0.62, shade: 0.12, edge: 0.12 };
+      const _gph = typeof PhotoGround !== 'undefined' ? PhotoGround.patch(_gspec) : null;
+      let tc = targetCtx, _gbake = null;
+      if (_gph) {
+        const px = _gph.cv.width, sc = px / _gph.size;
+        const cv = document.createElement('canvas'); cv.width = cv.height = px;
+        tc = cv.getContext('2d');
+        tc.imageSmoothingEnabled = true;
+        tc.setTransform(sc, 0, 0, sc, -_gph.x * sc, -_gph.y * sc);
+        _gbake = { cv, ver: _gver, x: _gph.x, y: _gph.y, size: _gph.size };
+      }
       // A smooth, lumpy closed blob around (x, y) — curves through the
       // midpoints of noisy vertices, so nothing reads as an ellipse or polygon.
       const blob = (x, y, r, seed, nv, rough, squash, rot) => {
@@ -4097,11 +4128,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       // ground toward the spring (ground_grey), both baked lit from the
       // upper left by scripts/bake_ground_tex.py. Replaces the painted soil,
       // blotches, crusts, grain and cracks; the painted ground while it loads.
-      const ph = typeof PhotoGround !== 'undefined'
-        ? PhotoGround.patch({ key: 'geo:' + _ge.col + ',' + _ge.row, cx: f.cx, cy: f.cy, R: f.R,
-            outline: sc => GeoField.pathFor(f, sc), rim: 'ground_geo_rim', inner: 'ground_geo_altered',
-            span: TILE * 5, innerFrom: 0.12, innerTo: 0.62, shade: 0.12, edge: 0.12 })
-        : null;
+      const ph = _gph;
       if (ph) {
         tc.save();
         tc.imageSmoothingEnabled = true;
@@ -4183,7 +4210,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       }
 
       tc.globalAlpha = 1;
-      if (_grassLOD > 0) {
+      if (_grassLOD > 0 || _gbake) {   // a bake is always full detail
         if (!ph) {
         // Grain — fine speckle so the soil has texture up close
         const nGrain = Math.min(2600, Math.round(Rt * Rt * 6));
@@ -4254,9 +4281,9 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
           const rsp = ph ? PhotoGround.sprite('rock_geo', H(650 + i)) : null;
           if (rsp) {
             const disp = sz * 2 * PhotoGround.SPRITE_FRAME;
-            tc.filter = 'saturate(0.45) brightness(0.92)';   // greyed to the cooked ground (bake-time only)
-            tc.drawImage(rsp, sx - disp / 2, sy - disp / 2, disp, disp);
-            tc.filter = 'none';
+            // Greyed to the cooked ground: filtered once and kept, never
+            // ctx.filter on the ground canvas (a freeze per re-bake on phones).
+            tc.drawImage(PhotoGround.filtered(rsp, 'saturate(0.45) brightness(0.92)'), sx - disp / 2, sy - disp / 2, disp, disp);
             continue;
           }
           const nv = 6;
@@ -4282,7 +4309,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       tc.restore();
 
       // Dead grass tufts along the fringe (outside the soil clip)
-      if (_grassLOD > 0) {
+      if (_grassLOD > 0 || _gbake) {   // a bake is always full detail
         tc.lineCap = 'round';
         const nTuft = Math.round(Rt * 9);
         for (let i = 0; i < nTuft; i++) {
@@ -4299,6 +4326,13 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
           }
           tc.stroke();
         }
+      }
+      if (_gbake) {
+        _geoBaked.set(_gkey, _gbake);
+        PhotoGround.forget(_gkey);                 // the bake holds it now
+        targetCtx.save(); targetCtx.imageSmoothingEnabled = true;
+        targetCtx.drawImage(_gbake.cv, _gbake.x, _gbake.y, _gbake.size, _gbake.size);
+        targetCtx.restore();
       }
     }
 

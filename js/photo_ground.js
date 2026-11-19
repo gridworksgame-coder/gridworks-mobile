@@ -111,14 +111,13 @@ const PhotoGround = (() => {
     }
 
     // 4. Cut to the ragged outline, edge blurred soft.
-    const mc = mk(), mg = mc.getContext('2d');
-    toWorld(mg);
-    mg.filter = `blur(${Math.max(1, spec.R * spec.edge * px / size)}px)`;
-    mg.fillStyle = '#000';
-    mg.fill(spec.outline(1));
+    // The softness comes from drawing the outline small and scaling it up,
+    // not from a blur filter: canvas filters cost seconds on some phones.
+    const mc = softMask(spec.outline(1), x, y, size, spec.R * spec.edge);
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalCompositeOperation = 'destination-in';
-    g.drawImage(mc, 0, 0);
+    g.imageSmoothingEnabled = true;
+    g.drawImage(mc, 0, 0, px, px);
     g.globalCompositeOperation = 'source-over';
 
     p = { cv, x, y, size };
@@ -134,20 +133,77 @@ const PhotoGround = (() => {
     let m = _holes.get(key);
     if (m) return m;
     const size = f.R * 2.6, x = f.cx - size / 2, y = f.cy - size / 2;
-    const px = Math.max(16, Math.min(320, Math.ceil(size / 3)));
-    const cv = document.createElement('canvas'); cv.width = cv.height = px;
-    const g = cv.getContext('2d');
-    g.filter = `blur(${Math.max(1, f.R * 0.1 * px / size).toFixed(1)}px)`;
-    g.scale(px / size, px / size); g.translate(-x, -y);
-    g.fillStyle = '#000';
-    g.fill(outline(0.97));
-    m = { cv, x, y, size };
+    m = { cv: softMask(outline(0.97), x, y, size, f.R * 0.1), x, y, size };
     _holes.set(key, m);
     return m;
   }
 
+  // A filled path as a soft-edged mask: drawn small (one pixel per `soft`
+  // world px) so that scaling it up blurs its edge by about that much.
+  // Used instead of ctx.filter blur, which some phones run on the CPU over
+  // a whole canvas-sized layer per draw: seconds, every ground re-bake.
+  function softMask(path, x, y, size, soft) {
+    const px = Math.max(8, Math.min(256, Math.ceil(size / Math.max(1, soft))));
+    const c = document.createElement('canvas'); c.width = c.height = px;
+    const g = c.getContext('2d');
+    g.scale(px / size, px / size); g.translate(-x, -y);
+    g.fillStyle = '#000';
+    g.fill(path);
+    return c;
+  }
+
+  // Soft-edged drawing kept per key: draw(g) paints in world coordinates
+  // onto a small canvas over (x, y, size), one pixel per `soft` world px;
+  // drawn back scaled up, its edges come out blurred by about `soft`.
+  // For the deposits' faint stains, baked once instead of blurred with a
+  // canvas filter on every ground re-bake.
+  const _soft = new Map();
+  function soft(key, x, y, size, softPx, draw) {
+    let c = _soft.get(key);
+    if (!c) {
+      const px = Math.max(8, Math.min(512, Math.ceil(size / Math.max(1, softPx))));
+      c = document.createElement('canvas'); c.width = c.height = px;
+      const g = c.getContext('2d');
+      g.scale(px / size, px / size); g.translate(-x, -y);
+      draw(g);
+      _soft.set(key, c);
+    }
+    return c;
+  }
+
+  // A sprite with a CSS filter applied once, kept: drawing through
+  // ctx.filter onto the big ground canvas costs a full-canvas pass per draw
+  // on some phones (75 rocks round a coal seam = a multi-second freeze on
+  // every re-bake). The filtered copy is turned back into an Image: a canvas
+  // as a drawImage source is several times slower than an image (measured
+  // ~120 µs against ~12 µs a rock). Until it has decoded the plain sprite
+  // is returned, and its arrival bumps version() so the ground re-bakes.
+  // Browsers without canvas filters get the plain sprite.
+  const _filtered = new WeakMap();
+  function filtered(im, filter) {
+    if (!im || !filter) return im;
+    let m = _filtered.get(im);
+    if (!m) { m = new Map(); _filtered.set(im, m); }
+    let out = m.get(filter);
+    if (!out) {
+      const c = document.createElement('canvas');
+      c.width = im.naturalWidth || im.width; c.height = im.naturalHeight || im.height;
+      const g = c.getContext('2d');
+      g.filter = filter;
+      g.drawImage(im, 0, 0);
+      out = new Image();
+      out.onload = () => { _spritesLoaded++; };
+      out.src = c.toDataURL();
+      m.set(filter, out);
+    }
+    return out.complete && out.naturalWidth ? out : im;
+  }
+
+  // Drop a patch once its owner has baked it into something of its own.
+  function forget(key) { _patches.delete(key); }
+
   return {
-    img, pattern, patch, sprite, hole,
+    img, pattern, patch, sprite, hole, soft, filtered, forget,
     SPRITE_FRAME: 1.4,
     version: () => _loaded + ':' + _spritesLoaded,
   };
