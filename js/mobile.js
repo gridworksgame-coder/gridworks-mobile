@@ -796,22 +796,42 @@
       };
       chopRaf = requestAnimationFrame(step);
     }
-    // Wires: the first tap on a network lights it up (the hover highlight
-    // a mouse gives on PC), a second tap on the same network opens the
-    // wire's panel. Returns true for a first tap.
-    let wireArmed = -1;
+    // Wires, pipes and belts: the first tap on a line lights it up (the
+    // hover highlight a mouse gives on PC), a second tap on the same line
+    // opens its panel. Returns true for a first tap. A wire's line is its
+    // networkId; a pipe's or belt's is the run the renderer lit for the
+    // last hover (_prevPipeHighlighted / _prevConveyorHighlighted),
+    // snapshotted at touchstart (litSnap) before this touch's own hover
+    // relights it.
+    let lineArmed = null;   // { kind: 'wire', net } | { kind: 'pipe' | 'belt' }
+    let litSnap = null;     // { pipe: Set, belt: Set }
+    function snapLit() {
+      if (!lineArmed || lineArmed.kind === 'wire') { litSnap = null; return; }
+      litSnap = { pipe: new Set(gameGlobal('_prevPipeHighlighted') || []),
+                  belt: new Set(gameGlobal('_prevConveyorHighlighted') || []) };
+    }
     function wireFirstTap(x, y) {
-      if (tool()) { wireArmed = -1; return false; }
+      if (tool()) { lineArmed = null; return false; }
       try {
         const Cam = gameGlobal('Camera'), GM = gameGlobal('GridManager'), T = gameGlobal('T');
         const TL = gameGlobal('TILE') || 40, r = cv.getBoundingClientRect();
         const w = Cam.screenToWorld(x - r.left, y - r.top);
         const ent = GM.getEntity(Math.floor(w.x / TL), Math.floor(w.y / TL));
-        const net = ent && ent.type === T.WIRE && ent.networkId >= 0 ? ent.networkId : -1;
-        if (net < 0 || net === wireArmed) { wireArmed = -1; return false; }
-        wireArmed = net;
+        let line = null, same = false;
+        if (ent && ent.type === T.WIRE && ent.networkId >= 0) {
+          line = { kind: 'wire', net: ent.networkId };
+          same = !!lineArmed && lineArmed.kind === 'wire' && lineArmed.net === ent.networkId;
+        } else if (ent && (ent.type === T.PIPE || ent.type === T.UNDERGNDPIPE)) {
+          line = { kind: 'pipe' };
+          same = !!lineArmed && lineArmed.kind === 'pipe' && !!litSnap && litSnap.pipe.has(ent);
+        } else if (ent && ent.type === T.CONVEYOR) {
+          line = { kind: 'belt' };
+          same = !!lineArmed && lineArmed.kind === 'belt' && !!litSnap && litSnap.belt.has(ent);
+        }
+        if (!line || same) { lineArmed = null; return false; }
+        lineArmed = line;
         return true;
-      } catch (_) { wireArmed = -1; return false; }
+      } catch (_) { lineArmed = null; return false; }
     }
     // Duplicate mode, held on an item and dragged: pick it up (Q at the
     // spot it was held) and press from there, so the drag lays a run of it
@@ -866,6 +886,7 @@
           const im = IM(), r = cv.getBoundingClientRect();
           if (im && im.lastMouseSX != null) p = { x: im.lastMouseSX + r.left, y: im.lastMouseSY + r.top };
         }
+        snapLit();   // before the hover below relights a pipe/belt run
         const f0 = pt(ts[0]);
         one = { id: ts[0].identifier, sx: p.x, sy: p.y, x: p.x, y: p.y, fx: f0.x, fy: f0.y, t: performance.now(), et: e.timeStamp, down: false, moved: false, button: 0, locked };
         if (!locked) mouse(cv, 'mousemove', p.x, p.y, 0);   // hover → ghost/tooltips

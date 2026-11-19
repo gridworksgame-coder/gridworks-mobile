@@ -23,7 +23,9 @@
    ═══════════════════════════════════════════════════════════════════ */
 const DepositGround = (() => {
   const NV = 18;                 // outline vertices — enough to read ragged
-  const MIN_R = 6, SPAN_R = 6;   // radius in tiles: 6–12, plus a little for a big deposit
+  // Radius in tiles: 2.5–10.5 plus a little for a big deposit, skewed small
+  // (SIZE_SKEW), so most patches are modest and a few spread wide.
+  const MIN_R = 2.5, SPAN_R = 8, SIZE_SKEW = 1.8;
   const MAX_R = MIN_R + SPAN_R + 4;
 
   const _hash = (c, r, n) => {
@@ -40,7 +42,7 @@ const DepositGround = (() => {
     if (!f) {
       const w = e.width || 2, h = e.height || 2;
       const cx = (e.col + w / 2) * TILE, cy = (e.row + h / 2) * TILE;
-      const R = (MIN_R + _hash(e.col, e.row, 1) * SPAN_R + 0.6 * Math.max(w, h)) * TILE;
+      const R = (MIN_R + Math.pow(_hash(e.col, e.row, 1), SIZE_SKEW) * SPAN_R + 0.6 * Math.max(w, h)) * TILE;
       const jit = [];
       for (let i = 0; i < NV; i++) jit.push(0.74 + _hash(e.col, e.row, 10 + i) * 0.42);
       f = { cx, cy, R, jit };
@@ -220,8 +222,12 @@ const DepositGround = (() => {
     k.tc.restore();
   }
   // Rock — irregular, lit from the upper left, with a contact shadow.
+  // The styles' rock counts were set for patches of ~9-10 tiles' radius;
+  // a smaller patch gets fewer, by area, so it isn't crammed with them.
+  const _rockN = (n, Rt) => Math.max(3, Math.round(n * Math.min(1, (Rt / 9.5) ** 2)));
   function _rocks(k, n, tones, bigChance = 0.1, sizeMul = 1, spread = 0.45) {
     const { tc, f, H } = k;
+    n = _rockN(n, k.Rt);
     for (let i = 0; i < n; i++) {
       const { x: sx, y: sy, sz } = _rockGeom(f, H, i, bigChance, sizeMul, spread);
       if (sz >= SPRITE_SZ) {
@@ -603,7 +609,8 @@ const DepositGround = (() => {
     if (list) return list;
     list = [];
     const s = STYLES[e.type], f = fieldFor(e), H = n => _hash(e.col, e.row, n);
-    const [n, , bigChance = 0.1, sizeMul = 1, spread = 0.45] = s.rocks(f.R / TILE);
+    const [n0, , bigChance = 0.1, sizeMul = 1, spread = 0.45] = s.rocks(f.R / TILE);
+    const n = _rockN(n0, f.R / TILE);   // as _rocks draws them
     for (let i = 0; i < n; i++) {
       const g = _rockGeom(f, H, i, bigChance, sizeMul, spread);
       if (g.sz >= SPRITE_SZ) list.push({ x: g.x, y: g.y, rad: g.sz * 0.85 });

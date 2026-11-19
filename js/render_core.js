@@ -109,7 +109,7 @@ const _groundCoverCache = new Map(); // tile key -> [clover, straw, flower] each
 const _geoBaked = new Map();
 
 const GeoField = (() => {
-  const MIN_R = 8, MAX_R = 20;
+  const MIN_R = 5, MAX_R = 17, SIZE_SKEW = 1.8;   // skewed small: most fields modest, a few wide
   const NV    = 18;               // outline vertices — enough to read ragged
 
   const _hash = (c, r, n) => {
@@ -127,7 +127,7 @@ const GeoField = (() => {
     if (!f) {
       const cx = (e.col + (e.width  || 2) / 2) * TILE;
       const cy = (e.row + (e.height || 2) / 2) * TILE;
-      const R  = (MIN_R + _hash(e.col, e.row, 1) * (MAX_R - MIN_R)) * TILE;
+      const R  = (MIN_R + Math.pow(_hash(e.col, e.row, 1), SIZE_SKEW) * (MAX_R - MIN_R)) * TILE;
       // Ragged outline: per-vertex radius noise, same trick the deposit
       // sprite's crater rim uses, so patch and crater look related.
       const jit = [];
@@ -4370,7 +4370,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     for (const _ge of _geoFields) {
       const f = GeoField.fieldFor(_ge);
       const H = n => GeoField.hash(_ge.col, _ge.row, n);
-      const Rt = f.R / TILE;                       // radius in tiles (8–20)
+      const Rt = f.R / TILE;                       // radius in tiles (5–17)
       // Over the photo ground the whole field is baked once into a picture
       // of its own (per image-load state, at full detail so zooming never
       // re-bakes it), so a ground-cache
