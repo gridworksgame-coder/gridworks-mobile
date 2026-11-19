@@ -4,6 +4,10 @@
    palette so the chain reads as one system from across the map.
    ═══════════════════════════════════════════════════════════════════ */
 
+// The spring's apron (radius 1) spans 1/GEO_FRAME of its geo_spring sprite
+// (scripts/render_hot_spring.py FRAME).
+const GEO_FRAME = 1.25;
+
 function renderGeoDeposit(e, px, py, t) {
     // Geothermal Deposit — a hot spring. Terraced silica sinter apron,
     // bands of heat-loving microbial mat (rust → amber → olive) stepping in
@@ -51,6 +55,16 @@ function renderGeoDeposit(e, px, py, t) {
       ctx.closePath();
     };
 
+    // The spring rendered in Blender (img/geo_spring_*, drained:
+    // geo_spring_dry_*; scripts/render_hot_spring.py): sinter apron, mat
+    // bands, real water. It replaces the painted apron, mats, pool, basin
+    // and loose rock; the moving parts (ripples, boiling, mist, steam,
+    // fumaroles) stay drawn over it. The painted spring while it loads.
+    const PG = typeof PhotoGround !== 'undefined' ? PhotoGround : null;
+    const spr = PG && PG.sprite(capped ? 'geo_spring_dry' : 'geo_spring', S(77));
+    const UX = w * 0.5, UY = h * 0.5;            // the render's apron radius (1 unit)
+    const PR = 0.62 * 0.92;                      // its pool, in units (LIP), clear of the rim
+
     // ── Warm damp ground halo ──
     if (Camera.zoom > 0.35) {
       const sg = ctx.createRadialGradient(cx, cy, Math.max(RX, RY) * 0.6, cx, cy, Math.max(w, h) * 0.7);
@@ -62,7 +76,7 @@ function renderGeoDeposit(e, px, py, t) {
     }
 
     // ── Runoff channels spilling off the apron ──
-    if (lod) {
+    if (lod && !spr) {
       const nRun = 3;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       for (let i = 0; i < nRun; i++) {
@@ -81,176 +95,306 @@ function renderGeoDeposit(e, px, py, t) {
       }
     }
 
-    // ── Sinter apron: stepped terraces of pale silica ──
-    ring(1.18, 0.3, 1.5 * Z, 2 * Z); ctx.fillStyle = 'rgba(40,30,22,0.35)'; ctx.fill();    // drop shadow
-    ring(1.18, 0.3);
-    let g = ctx.createRadialGradient(cx - RX * 0.3, cy - RY * 0.3, 0, cx, cy, RX * 1.25);
-    g.addColorStop(0, '#d8d0bc'); g.addColorStop(0.7, '#bfb49a'); g.addColorStop(1, '#a39880');
-    ctx.fillStyle = g; ctx.fill();
-    for (const [sc, mx] of [[1.08, 0.6], [0.98, 0.1]]) {
-      ring(sc, mx);
-      ctx.strokeStyle = 'rgba(120,108,88,0.55)'; ctx.lineWidth = 1.4 * Z; ctx.stroke();
-      ring(sc, mx, -0.8 * Z, -0.8 * Z);
-      ctx.strokeStyle = 'rgba(246,240,226,0.5)'; ctx.lineWidth = 0.8 * Z; ctx.stroke();
-    }
-    // Sinter texture — scalloped rimstone flecks
-    if (lod) {
-      for (let i = 0; i < 26; i++) {
-        const a = S(i * 7.1 + 300) * Math.PI * 2;
-        const rr = 0.86 + S(i * 7.1 + 301) * 0.28;
-        const x = cx + Math.cos(a) * RX * rr, y = cy + Math.sin(a) * RY * rr;
-        ctx.strokeStyle = S(i * 7.1 + 302) > 0.5 ? 'rgba(250,246,234,0.5)' : 'rgba(110,98,80,0.4)';
-        ctx.lineWidth = 0.8 * Z;
-        ctx.beginPath(); ctx.arc(x, y, (1.5 + S(i * 7.1 + 303) * 2) * Z, a - 1, a + 1); ctx.stroke();
-      }
-    }
-
-    // ── Microbial mat bands stepping in to the pool ──
-    const BANDS = capped
-      ? [[0.86, 0.5, '#9a8a70'], [0.70, 0.2, '#86765e'], [0.54, 0.7, '#6e604e'], [0.38, 0.4, '#564a3c']]
-      : [[0.88, 0.5, '#a8582a'], [0.78, 0.2, '#c98a36'], [0.68, 0.7, '#cdb048'], [0.60, 0.4, '#8fa35a']];
-    for (const [sc, mx, col] of BANDS) {
-      ring(sc, mx); ctx.fillStyle = col; ctx.fill();
-    }
-    // Streaks of mat radiating out through the bands
-    if (lod && !capped) {
-      ctx.save();
-      ring(0.9, 0.5); ctx.clip();
-      for (let i = 0; i < 16; i++) {
-        const a = (i / 16) * Math.PI * 2 + S(i + 500) * 0.3;
-        ctx.strokeStyle = S(i + 520) > 0.5 ? 'rgba(120,50,20,0.35)' : 'rgba(240,200,90,0.25)';
-        ctx.lineWidth = (1 + S(i + 540) * 2) * Z;
-        ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a) * RX * 0.5, cy + Math.sin(a) * RY * 0.5);
-        ctx.lineTo(cx + Math.cos(a + 0.08) * RX * 0.95, cy + Math.sin(a + 0.08) * RY * 0.95);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
-
-    if (!capped) {
-      // ── Pool: turquoise shallows to a deep blue throat ──
-      ring(0.52, 0.3);
-      g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(RX, RY) * 0.52);
-      g.addColorStop(0,    '#0a3e72');
-      g.addColorStop(0.35, '#1666a8');
-      g.addColorStop(0.7,  '#2aa6c6');
-      g.addColorStop(1,    '#5cc8c0');
-      ctx.fillStyle = g; ctx.fill();
-      // Pale shallow lip
-      ring(0.52, 0.3);
-      ctx.strokeStyle = 'rgba(200,240,230,0.55)'; ctx.lineWidth = 1.3 * Z; ctx.stroke();
-
-      if (lod) {
+    let g;
+    if (spr) {
+      const dw = UX * 2 * GEO_FRAME, dh = UY * 2 * GEO_FRAME;
+      ctx.drawImage(spr, cx - dw / 2, cy - dh / 2, dw, dh);
+      if (!capped && lod) {
         ctx.save();
-        ring(0.5, 0.3); ctx.clip();
-        // Slow expanding ripples from the throat
+        ctx.beginPath(); ctx.ellipse(cx, cy, UX * PR, UY * PR, 0, 0, Math.PI * 2); ctx.clip();
+        // Slow ripples spreading from the throat, faint on real water
         for (let k = 0; k < 3; k++) {
           const p = (t * 0.25 + k / 3 + phase * 0.1) % 1;
-          ctx.strokeStyle = `rgba(210,245,255,${0.28 * (1 - p)})`;
-          ctx.lineWidth = 1 * Z;
-          ctx.beginPath(); ctx.ellipse(cx, cy, RX * 0.5 * p, RY * 0.5 * p, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = `rgba(220,248,255,${(0.14 * (1 - p)).toFixed(3)})`;
+          ctx.lineWidth = 0.8 * Z;
+          ctx.beginPath(); ctx.ellipse(cx, cy, UX * PR * p, UY * PR * p, 0, 0, Math.PI * 2); ctx.stroke();
         }
-        // Sky glint drifting across the surface
-        const gx = cx - RX * 0.2 + Math.sin(t * 0.4 + phase) * RX * 0.06;
-        ctx.fillStyle = 'rgba(255,255,255,0.16)';
-        ctx.beginPath(); ctx.ellipse(gx, cy - RY * 0.22, RX * 0.2, RY * 0.06, -0.3, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         // Boiling at the throat
         for (let i = 0; i < 6; i++) {
           const bp = ((t * 1.1 + i / 6 + phase) % 1);
           const ba = S(i * 23) * Math.PI * 2;
-          const br = RX * 0.14 * S(i * 23 + 1);
-          ctx.strokeStyle = `rgba(230,250,255,${0.55 * (1 - bp)})`;
-          ctx.lineWidth = 0.8 * Z;
+          const br = UX * 0.12 * S(i * 23 + 1);
+          ctx.strokeStyle = `rgba(230,250,255,${(0.4 * (1 - bp)).toFixed(3)})`;
+          ctx.lineWidth = 0.7 * Z;
           ctx.beginPath();
           ctx.arc(cx + Math.cos(ba) * br, cy + Math.sin(ba) * br, (0.6 + bp * 2.4) * Z, 0, Math.PI * 2);
           ctx.stroke();
         }
       }
-      // Low mist hanging over the water
-      const mist = 0.5 + 0.5 * Math.sin(t * 0.6 + phase);
-      g = ctx.createRadialGradient(cx, cy, 0, cx, cy, RX * 0.8);
-      g.addColorStop(0, `rgba(240,246,248,${0.22 + mist * 0.1})`);
-      g.addColorStop(1, 'rgba(240,246,248,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.ellipse(cx, cy, RX * 0.8, RY * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      if (!capped) {
+        // Low mist hanging over the water
+        const mist = 0.5 + 0.5 * Math.sin(t * 0.6 + phase);
+        g = ctx.createRadialGradient(cx, cy, 0, cx, cy, UX * 0.7);
+        g.addColorStop(0, `rgba(240,246,248,${(0.16 + mist * 0.08).toFixed(3)})`);
+        g.addColorStop(1, 'rgba(240,246,248,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(cx, cy, UX * 0.7, UY * 0.7, 0, 0, Math.PI * 2); ctx.fill();
+      }
     } else {
-      // Drained basin — dry cracked mineral floor
-      ring(0.38, 0.4); ctx.fillStyle = '#4a4036'; ctx.fill();
-      ctx.strokeStyle = 'rgba(30,24,18,0.5)'; ctx.lineWidth = 0.8 * Z;
-      for (let i = 0; i < 6; i++) {
-        const a = S(i * 31) * Math.PI * 2;
-        ctx.beginPath(); ctx.moveTo(cx, cy);
-        ctx.lineTo(cx + Math.cos(a) * RX * 0.2, cy + Math.sin(a) * RY * 0.2);
-        ctx.lineTo(cx + Math.cos(a + 0.4) * RX * 0.34, cy + Math.sin(a + 0.4) * RY * 0.34);
-        ctx.stroke();
+      // ── Sinter apron: stepped terraces of pale silica ──
+      ring(1.18, 0.3, 1.5 * Z, 2 * Z); ctx.fillStyle = 'rgba(40,30,22,0.35)'; ctx.fill();    // drop shadow
+      ring(1.18, 0.3);
+      g = ctx.createRadialGradient(cx - RX * 0.3, cy - RY * 0.3, 0, cx, cy, RX * 1.25);
+      g.addColorStop(0, '#d8d0bc'); g.addColorStop(0.7, '#bfb49a'); g.addColorStop(1, '#a39880');
+      ctx.fillStyle = g; ctx.fill();
+      for (const [sc, mx] of [[1.08, 0.6], [0.98, 0.1]]) {
+        ring(sc, mx);
+        ctx.strokeStyle = 'rgba(120,108,88,0.55)'; ctx.lineWidth = 1.4 * Z; ctx.stroke();
+        ring(sc, mx, -0.8 * Z, -0.8 * Z);
+        ctx.strokeStyle = 'rgba(246,240,226,0.5)'; ctx.lineWidth = 0.8 * Z; ctx.stroke();
       }
-    }
+      // Sinter texture — scalloped rimstone flecks
+      if (lod) {
+        for (let i = 0; i < 26; i++) {
+          const a = S(i * 7.1 + 300) * Math.PI * 2;
+          const rr = 0.86 + S(i * 7.1 + 301) * 0.28;
+          const x = cx + Math.cos(a) * RX * rr, y = cy + Math.sin(a) * RY * rr;
+          ctx.strokeStyle = S(i * 7.1 + 302) > 0.5 ? 'rgba(250,246,234,0.5)' : 'rgba(110,98,80,0.4)';
+          ctx.lineWidth = 0.8 * Z;
+          ctx.beginPath(); ctx.arc(x, y, (1.5 + S(i * 7.1 + 303) * 2) * Z, a - 1, a + 1); ctx.stroke();
+        }
+      }
 
-    // ── Loose rock on the apron ──
-    if (lod) {
-      for (let i = 0; i < 7 + ew + eh; i++) {
-        const a  = S(i * 5.1) * Math.PI * 2;
-        const rr = 1.0 + S(i * 5.1 + 1) * 0.3;
-        const bx = cx + Math.cos(a) * RX * rr;
-        const by = cy + Math.sin(a) * RY * rr;
-        const sz = (1.4 + S(i * 5.1 + 2) * 2.4) * Z;
-        const shape = (dx, dy) => {
+      // ── Microbial mat bands stepping in to the pool ──
+      const BANDS = capped
+        ? [[0.86, 0.5, '#9a8a70'], [0.70, 0.2, '#86765e'], [0.54, 0.7, '#6e604e'], [0.38, 0.4, '#564a3c']]
+        : [[0.88, 0.5, '#a8582a'], [0.78, 0.2, '#c98a36'], [0.68, 0.7, '#cdb048'], [0.60, 0.4, '#8fa35a']];
+      for (const [sc, mx, col] of BANDS) {
+        ring(sc, mx); ctx.fillStyle = col; ctx.fill();
+      }
+      // Streaks of mat radiating out through the bands
+      if (lod && !capped) {
+        ctx.save();
+        ring(0.9, 0.5); ctx.clip();
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2 + S(i + 500) * 0.3;
+          ctx.strokeStyle = S(i + 520) > 0.5 ? 'rgba(120,50,20,0.35)' : 'rgba(240,200,90,0.25)';
+          ctx.lineWidth = (1 + S(i + 540) * 2) * Z;
           ctx.beginPath();
-          ctx.moveTo(bx - sz + dx, by + dy);
-          ctx.lineTo(bx - sz * 0.3 + dx, by - sz * 0.8 + dy);
-          ctx.lineTo(bx + sz * 0.9 + dx, by - sz * 0.2 + dy);
-          ctx.lineTo(bx + sz * 0.4 + dx, by + sz * 0.7 + dy);
-          ctx.closePath();
-        };
-        shape(sz * 0.3, sz * 0.35); ctx.fillStyle = 'rgba(20,14,10,0.35)'; ctx.fill();
-        shape(0, 0); ctx.fillStyle = S(i * 5.1 + 3) > 0.5 ? '#7a6e60' : '#564c42'; ctx.fill();
-        ctx.fillStyle = 'rgba(255,245,230,0.25)';
-        ctx.beginPath(); ctx.moveTo(bx - sz, by); ctx.lineTo(bx - sz * 0.3, by - sz * 0.8); ctx.lineTo(bx, by - sz * 0.1); ctx.closePath(); ctx.fill();
+          ctx.moveTo(cx + Math.cos(a) * RX * 0.5, cy + Math.sin(a) * RY * 0.5);
+          ctx.lineTo(cx + Math.cos(a + 0.08) * RX * 0.95, cy + Math.sin(a + 0.08) * RY * 0.95);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
+
+      if (!capped) {
+        // ── Pool: turquoise shallows to a deep blue throat ──
+        ring(0.52, 0.3);
+        g = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(RX, RY) * 0.52);
+        g.addColorStop(0,    '#0a3e72');
+        g.addColorStop(0.35, '#1666a8');
+        g.addColorStop(0.7,  '#2aa6c6');
+        g.addColorStop(1,    '#5cc8c0');
+        ctx.fillStyle = g; ctx.fill();
+        // Pale shallow lip
+        ring(0.52, 0.3);
+        ctx.strokeStyle = 'rgba(200,240,230,0.55)'; ctx.lineWidth = 1.3 * Z; ctx.stroke();
+
+        if (lod) {
+          ctx.save();
+          ring(0.5, 0.3); ctx.clip();
+          // Slow expanding ripples from the throat
+          for (let k = 0; k < 3; k++) {
+            const p = (t * 0.25 + k / 3 + phase * 0.1) % 1;
+            ctx.strokeStyle = `rgba(210,245,255,${0.28 * (1 - p)})`;
+            ctx.lineWidth = 1 * Z;
+            ctx.beginPath(); ctx.ellipse(cx, cy, RX * 0.5 * p, RY * 0.5 * p, 0, 0, Math.PI * 2); ctx.stroke();
+          }
+          // Sky glint drifting across the surface
+          const gx = cx - RX * 0.2 + Math.sin(t * 0.4 + phase) * RX * 0.06;
+          ctx.fillStyle = 'rgba(255,255,255,0.16)';
+          ctx.beginPath(); ctx.ellipse(gx, cy - RY * 0.22, RX * 0.2, RY * 0.06, -0.3, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+          // Boiling at the throat
+          for (let i = 0; i < 6; i++) {
+            const bp = ((t * 1.1 + i / 6 + phase) % 1);
+            const ba = S(i * 23) * Math.PI * 2;
+            const br = RX * 0.14 * S(i * 23 + 1);
+            ctx.strokeStyle = `rgba(230,250,255,${0.55 * (1 - bp)})`;
+            ctx.lineWidth = 0.8 * Z;
+            ctx.beginPath();
+            ctx.arc(cx + Math.cos(ba) * br, cy + Math.sin(ba) * br, (0.6 + bp * 2.4) * Z, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+        // Low mist hanging over the water
+        const mist = 0.5 + 0.5 * Math.sin(t * 0.6 + phase);
+        g = ctx.createRadialGradient(cx, cy, 0, cx, cy, RX * 0.8);
+        g.addColorStop(0, `rgba(240,246,248,${0.22 + mist * 0.1})`);
+        g.addColorStop(1, 'rgba(240,246,248,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.ellipse(cx, cy, RX * 0.8, RY * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // Drained basin — dry cracked mineral floor
+        ring(0.38, 0.4); ctx.fillStyle = '#4a4036'; ctx.fill();
+        ctx.strokeStyle = 'rgba(30,24,18,0.5)'; ctx.lineWidth = 0.8 * Z;
+        for (let i = 0; i < 6; i++) {
+          const a = S(i * 31) * Math.PI * 2;
+          ctx.beginPath(); ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(a) * RX * 0.2, cy + Math.sin(a) * RY * 0.2);
+          ctx.lineTo(cx + Math.cos(a + 0.4) * RX * 0.34, cy + Math.sin(a + 0.4) * RY * 0.34);
+          ctx.stroke();
+        }
+      }
+
+      // ── Loose rock on the apron ──
+      if (lod) {
+        for (let i = 0; i < 7 + ew + eh; i++) {
+          const a  = S(i * 5.1) * Math.PI * 2;
+          const rr = 1.0 + S(i * 5.1 + 1) * 0.3;
+          const bx = cx + Math.cos(a) * RX * rr;
+          const by = cy + Math.sin(a) * RY * rr;
+          const sz = (1.4 + S(i * 5.1 + 2) * 2.4) * Z;
+          const shape = (dx, dy) => {
+            ctx.beginPath();
+            ctx.moveTo(bx - sz + dx, by + dy);
+            ctx.lineTo(bx - sz * 0.3 + dx, by - sz * 0.8 + dy);
+            ctx.lineTo(bx + sz * 0.9 + dx, by - sz * 0.2 + dy);
+            ctx.lineTo(bx + sz * 0.4 + dx, by + sz * 0.7 + dy);
+            ctx.closePath();
+          };
+          shape(sz * 0.3, sz * 0.35); ctx.fillStyle = 'rgba(20,14,10,0.35)'; ctx.fill();
+          shape(0, 0); ctx.fillStyle = S(i * 5.1 + 3) > 0.5 ? '#7a6e60' : '#564c42'; ctx.fill();
+          ctx.fillStyle = 'rgba(255,245,230,0.25)';
+          ctx.beginPath(); ctx.moveTo(bx - sz, by); ctx.lineTo(bx - sz * 0.3, by - sz * 0.8); ctx.lineTo(bx, by - sz * 0.1); ctx.closePath(); ctx.fill();
+        }
+      }
+
     }
 
-    // ── Steam ─────────────────────────────────────────────────────
-    const drift = Math.sin(t * 0.35 + phase) * 0.6 + 0.35;
-    const puff = (bx, by, prog, scale, alpha) => {
-      const rise = prog * h * 0.62;
-      const sx = bx + drift * rise * 0.55 + Math.sin(prog * 3.2 + bx) * 2.4 * Z;
-      const sy = by - rise;
-      const rad = scale * (2.2 + prog * 9.5) * Z;
-      const a   = alpha * (1 - prog) * (prog < 0.12 ? prog / 0.12 : 1);   // fade in, then out
-      ctx.fillStyle = `rgba(232,236,238,${a * 0.55})`;
-      ctx.beginPath(); ctx.arc(sx, sy, rad, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = `rgba(255,255,255,${a * 0.35})`;
-      ctx.beginPath(); ctx.arc(sx - rad * 0.25, sy + rad * 0.15, rad * 0.55, 0, Math.PI * 2); ctx.fill();
-    };
-
-    // Fumaroles on the apron, ringed with sulphur crust
+    // ── Fumaroles on the apron, ringed with sulphur crust ──
+    // (Their steam, and the spring's, is GeoSteam's: drawn over the
+    // finished scene like the cooling towers' plumes.)
     const vents = Math.max(2, Math.floor((ew * eh) / 2));
     for (let i = 0; i < vents; i++) {
-      const a  = S(i * 19) * Math.PI * 2;
-      const rr = 0.95 + S(i * 19 + 1) * 0.12;
-      const vx = cx + Math.cos(a) * RX * rr;
-      const vy = cy + Math.sin(a) * RY * rr;
+      const [vx, vy] = _geoVent(e, cx, cy, RX, RY, i);
       g = ctx.createRadialGradient(vx, vy, 0, vx, vy, 5 * Z);
-      g.addColorStop(0, 'rgba(226,200,90,0.6)'); g.addColorStop(0.6, 'rgba(206,178,80,0.3)'); g.addColorStop(1, 'rgba(200,170,60,0)');
+      g.addColorStop(0, 'rgba(226,200,90,0.45)'); g.addColorStop(0.6, 'rgba(206,178,80,0.2)'); g.addColorStop(1, 'rgba(200,170,60,0)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.arc(vx, vy, 5 * Z, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = 'rgba(30,22,16,0.8)';
-      ctx.beginPath(); ctx.ellipse(vx, vy, 1.4 * Z, 1 * Z, a, 0, Math.PI * 2); ctx.fill();
-      const nP = lod ? 4 : 2;
-      for (let k = 0; k < nP; k++) puff(vx, vy, ((t * 0.26 + i * 0.31 + k / nP) % 1), 0.75, capped ? 0.3 : 0.55);
-    }
-
-    // Main column off the pool
-    if (!capped) {
-      const nMain = lod ? 9 : 4;
-      for (let k = 0; k < nMain; k++) {
-        puff(cx, cy, ((t * 0.20 + k / nMain + phase * 0.1) % 1), 1.45, 0.72);
-      }
+      ctx.beginPath(); ctx.ellipse(vx, vy, 1.4 * Z, 1 * Z, S(i * 19) * Math.PI * 2, 0, Math.PI * 2); ctx.fill();
     }
 
     ctx.restore();
   }
+
+// Where fumarole i of a geothermal deposit sits (shared by the deposit's
+// crust marks and GeoSteam).
+function _geoVent(e, cx, cy, RX, RY, i) {
+  const S = (n) => { const x = Math.sin(e.col * 127.1 + e.row * 311.7 + n * 74.3) * 43758.5453; return x - Math.floor(x); };
+  const a = S(i * 19) * Math.PI * 2, rr = 0.95 + S(i * 19 + 1) * 0.12;
+  return [cx + Math.cos(a) * RX * rr, cy + Math.sin(a) * RY * rr];
+}
+
+// ── Hot-spring steam ────────────────────────────────────────────────────
+// The spring's column and its fumaroles' wisps, in the cooling towers'
+// look (CoolingTowerPlume, render_oil_nuclear.js): the same pre-shaded
+// billow, lit on the sun side and grey underneath, stamped oldest-first so
+// the young billows boil up over the column they push, leaning with the
+// slowly eased wind and thinning toward the top. Lighter than a tower's
+// plume: open water gives a looser, more translucent cloud. Drawn once the
+// scene is down (render_main_loop.js, beside the towers' plumes), so the
+// buildings round a deposit never slice it off. A spring capped by a well
+// only breathes a little from its fumaroles.
+const GeoSteam = (() => {
+  const WIND_EASE = 4;
+  function wind(o, t) {
+    const ws = typeof WindState !== 'undefined' ? (WindState.trendSpeed ?? 0.3) : 0.3;
+    const d  = typeof WindState !== 'undefined' && WindState.dir !== undefined ? WindState.dir : 0;
+    const dt = Math.max(0, Math.min(0.5, t - (o._steamT ?? t)));
+    o._steamT = t;
+    if (o._steamWind === undefined) { o._steamWind = ws; o._steamWdx = Math.cos(d); o._steamWdy = Math.sin(d); }
+    const k = Math.min(1, dt / WIND_EASE);
+    o._steamWind += (ws - o._steamWind) * k;
+    o._steamWdx  += (Math.cos(d) - o._steamWdx) * k;
+    o._steamWdy  += (Math.sin(d) - o._steamWdy) * k;
+    const dl = Math.hypot(o._steamWdx, o._steamWdy) || 1;
+    return { ws: o._steamWind, dx: o._steamWdx / dl, dy: o._steamWdy / dl };
+  }
+
+  // One column of n billows rising from (x, y): r0 → r1 radius, `rise`
+  // world px high, `life` seconds a billow, peak alpha `amax`.
+  function column(ctx, sprite, x, y, t, seed, n, life, rise, r0, r1, amax, w, prevA) {
+    const lean = rise * (0.2 + 0.6 * w.ws);
+    const top = rise * (1 - 0.3 * w.ws);
+    const order = [];
+    for (let i = 0; i < n; i++) order.push([((t / life) + i / n + seed) % 1, i]);
+    order.sort((a, b) => b[0] - a[0]);
+    for (const [ph, i] of order) {
+      const k = Math.sin(i * 12.9898 + seed * 7.1) * 43758.5453, j = k - Math.floor(k);
+      const drift = Math.pow(ph, 1.6);
+      const wob = Math.sin(t * 0.35 + i * 2.1 + seed) * r0 * (0.2 + 1.2 * ph);
+      const bx = x + (j - 0.5) * r0 * (0.8 + ph) + wob + w.dx * lean * drift;
+      const by = y - Math.pow(ph, 0.8) * top + w.dy * lean * 0.5 * drift;
+      const r = (r0 + (r1 - r0) * Math.pow(ph, 0.7)) * (0.85 + 0.3 * j);
+      const fade = ph < 0.3 ? 1 : Math.pow(1 - (ph - 0.3) / 0.7, 1.6);
+      const a = amax * fade * Math.min(1, ph / 0.22);   // thin where it leaves the water
+      if (a <= 0.01) continue;
+      ctx.globalAlpha = prevA * a;
+      ctx.drawImage(sprite, bx - r, by - r, r * 2, r * 2);
+    }
+  }
+
+  function drawOne(ctx, o, t, detail, prevA) {
+    const { col, row, w: ew, h: eh, capped, src } = o;
+    const w = ew * TILE, h = eh * TILE;
+    const cx = col * TILE + w / 2, cy = row * TILE + h / 2;
+    const sprite = CoolingTowerPlume.puffSprite('warm');
+    const wd = wind(src, t);
+    const seed = col * 0.37 + row * 0.11;
+    if (!capped) {
+      // The spring's own column, off the pool
+      column(ctx, sprite, cx, cy, t, seed, Math.max(6, Math.round(16 * detail)), 9,
+             h * 1.7, w * 0.14, w * 0.6, 0.55, wd, prevA);
+    }
+    // Fumarole wisps round the apron
+    const vents = Math.max(2, Math.floor((ew * eh) / 2));
+    for (let i = 0; i < vents; i++) {
+      const [vx, vy] = _geoVent({ col, row }, cx, cy, w * 0.42, h * 0.42, i);
+      column(ctx, sprite, vx, vy, t, seed + i * 0.29, Math.max(3, Math.round(6 * detail)), 5,
+             h * 0.7, w * 0.05, w * 0.2, capped ? 0.28 : 0.5, wd, prevA);
+    }
+  }
+
+  function renderAll(ctx, t, cStart, cEnd, rStart, rEnd) {
+    if (typeof CoolingTowerPlume === 'undefined') return;
+    const list = [];
+    for (const e of EntityRegistry.getByType(T.GEODEPOSIT))
+      list.push({ col: e.col, row: e.row, w: e.width || 2, h: e.height || 2, capped: !!e._hasWell, src: e });
+    // A well stands on its deposit's tiles: its spring is capped.
+    for (const e of EntityRegistry.getByType(T.GEOWELL))
+      if (e._depositCol !== undefined)
+        list.push({ col: e._depositCol, row: e._depositRow, w: e._depositWidth || 2, h: e._depositHeight || 2, capped: true, src: e });
+    // The sulfur deposits' fumaroles steam the same way.
+    const sulf = typeof _sulfurField === 'function' && typeof PhotoGround !== 'undefined' ? EntityRegistry.getByType(T.SULFURDEPOSIT) : [];
+    if (!list.length && !sulf.size) return;
+    const zoom = typeof Camera !== 'undefined' ? Camera.zoom : 1;
+    const detail = zoom < 0.25 ? 0.35 : zoom < 0.5 ? 0.65 : 1;
+    const prevA = ctx.globalAlpha;
+    ctx.save();
+    for (const e of sulf) {
+      const w = e.width || 2, h = e.height || 2;
+      if (e.col + w + 2 < cStart || e.col - 2 > cEnd || e.row + h + 1 < rStart || e.row - h * 2 > rEnd) continue;
+      if (!PhotoGround.sprite('sulfur_field', _sulfurField(e).u)) continue;   // the painted field steams itself
+      const fld = _sulfurField(e), wd = wind(e, t), sprite = CoolingTowerPlume.puffSprite('warm');
+      const seed = e.col * 0.37 + e.row * 0.11;
+      fld.vents.forEach((v, i) => column(ctx, sprite, v.x, v.y, t, seed + i * 0.31, Math.max(3, Math.round(8 * detail)), 6,
+        h * TILE * 1.1, v.r * 0.8, v.r * 3.0, 0.6, wd, prevA));
+      column(ctx, sprite, fld.pool.x, fld.pool.y, t, seed + 0.9, Math.max(2, Math.round(4 * detail)), 8,
+        h * TILE * 0.5, fld.pool.r * 0.5, fld.pool.r * 1.4, 0.22, wd, prevA);
+    }
+    for (const o of list) {
+      if (o.col + o.w + 2 < cStart || o.col - 2 > cEnd || o.row + o.h + 1 < rStart || o.row - o.h * 2 > rEnd) continue;
+      drawOne(ctx, o, t, detail, prevA);
+    }
+    ctx.restore();
+    ctx.globalAlpha = prevA;
+  }
+
+  return { renderAll };
+})();
 
 function renderGeoWell(e, px, py, t) {
     // Geothermal Well (3×3): valve "christmas tree" wellhead with handwheels

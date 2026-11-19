@@ -65,6 +65,37 @@ const CloudState = (() => {
    worked out once, and again only when a zone has changed; as the cover
    moves a step, each chunk is repainted from its field, a cheap threshold,
    so the whole view moves with it. */
+// Seasonal ground washes, cut away from deposit ground (FrostSystem.render).
+let _seasonCv = null, _seasonCtx = null;
+function _seasonLayer(main) {
+  const w = main.canvas.width, h = main.canvas.height;
+  if (!_seasonCv) { _seasonCv = document.createElement('canvas'); _seasonCtx = _seasonCv.getContext('2d'); }
+  if (_seasonCv.width !== w || _seasonCv.height !== h) { _seasonCv.width = w; _seasonCv.height = h; }
+  const g = _seasonCtx;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, w, h);
+  g.setTransform(main.getTransform());
+  return g;
+}
+function _depositHoles(x, y, w, h) {
+  if (typeof PhotoGround === 'undefined') return null;
+  const pad = 1;   // visible() already allows for the widest patch
+  const c0 = Math.floor(x / TILE) - pad, c1 = Math.ceil((x + w) / TILE) + pad;
+  const r0 = Math.floor(y / TILE) - pad, r1 = Math.ceil((y + h) / TILE) + pad;
+  const masks = [];
+  if (typeof DepositGround !== 'undefined' && DepositGround.holeMask)
+    for (const e of DepositGround.visible(c0, c1, r0, r1)) masks.push(DepositGround.holeMask(e));
+  // The geothermal field's barren ground too (GeoField, render_core.js).
+  if (typeof GeoField !== 'undefined')
+    for (const e of GeoField.visible(c0, c1, r0, r1)) {
+      const f = GeoField.fieldFor(e);
+      masks.push(PhotoGround.hole('geo:' + e.col + ',' + e.row, f, sc => GeoField.pathFor(f, sc)));
+    }
+  const holes = masks.filter(m => m.x < x + w && m.x + m.size > x && m.y < y + h && m.y + m.size > y);
+  return holes.length ? holes : null;
+}
+
 const FrostSystem = (() => {
   let coverage = 0;   // 0 = bare ground, 1 = buried: what is drawn
   let target   = 0;   // rime a cold snap is asking for
@@ -208,12 +239,16 @@ const FrostSystem = (() => {
     const c0 = cx * FL_CHUNK, r0 = cy * FL_CHUNK;
     const zs = typeof ZoneSystem !== 'undefined' ? ZoneSystem : null;
     const water = typeof WaterSystem !== 'undefined' && WaterSystem.isWater;
+    const lc = typeof LandCover !== 'undefined' && LandCover.growth ? LandCover : null;
     const m = new Uint8Array(FL_CHUNK * FL_CHUNK);
     for (let j = 0; j < FL_CHUNK; j++) for (let i = 0; i < FL_CHUNK; i++) {
       const c = c0 + i, r = r0 + j;
       if (!GridManager.inBounds(c, r) || GridManager.getEntity(c, r)) continue;
       if (zs && ((zs.getZoneAt && zs.getZoneAt(c, r)) || (zs.isInGovZone && zs.isInGovZone(c, r)))) continue;
       if (water && WaterSystem.isWater(c, r)) continue;
+      // Thinning out as the uplands turn to stone, none on sand or a stony
+      // bank (LandCover.growth), the same as the meadow clutter.
+      if (lc && lc.growth(c, r) < (((c * 73856093) ^ (r * 19349663)) >>> 0) % 1000 / 1000) continue;
       m[j * FL_CHUNK + i] = 1;
     }
     return m;
@@ -223,7 +258,8 @@ const FrostSystem = (() => {
   // count moves, the chunks on screen re-check their mask (and rebake only
   // if it actually changed).
   const _flWorldVer = () => (typeof ZoneSystem !== 'undefined' && ZoneSystem.getVersion ? ZoneSystem.getVersion() : 0) + '|' +
-                            (typeof EntityRegistry !== 'undefined' && EntityRegistry.getTopologyVersion ? EntityRegistry.getTopologyVersion() : 0);
+                            (typeof EntityRegistry !== 'undefined' && EntityRegistry.getTopologyVersion ? EntityRegistry.getTopologyVersion() : 0) + '|' +
+                            (typeof LandCover !== 'undefined' ? LandCover.version() : 0);
   function _bakeFlowers(cx, cy, scale, mask) {
     const SZ = FL_CHUNK * TILE * scale, c = document.createElement('canvas');
     c.width = c.height = SZ;
@@ -661,6 +697,14 @@ const FrostSystem = (() => {
       const dorm = typeof Seasons !== 'undefined' && Seasons.dormancy ? Seasons.dormancy() : 0;
       const gold = typeof Seasons !== 'undefined' && Seasons.autumn ? Seasons.autumn() : 0;
       const grd  = typeof Seasons !== 'undefined' && Seasons.ground ? Seasons.ground() : null;
+      // With a deposit's bare ground on screen, the season's washes go into
+      // a bitmap of their own first, and the deposits are cut back out of
+      // it (DepositGround.holeMask): its rock and mud don't green up in
+      // spring or grow wildflowers.
+      const seasonal = (grd && (grd.fresh > 0.01 || grd.dry > 0.01 || grd.flowers > 0.01)) || gold > 0.01 || dorm > 0.01;
+      const holes = seasonal ? _depositHoles(worldLeft, worldTop, worldW, worldH) : null;
+      const out = ctx;
+      if (holes) ctx = _seasonLayer(out);
       if (grd && (grd.fresh > 0.01 || grd.dry > 0.01 || grd.flowers > 0.01)) {
         const gx = Math.max(0, worldLeft), gy = Math.max(0, worldTop);
         const gw = Math.min(COLS * TILE, worldLeft + worldW) - gx, gh = Math.min(ROWS * TILE, worldTop + worldH) - gy;
@@ -692,6 +736,17 @@ const FrostSystem = (() => {
       if (dorm > 0.01) {
         ctx.fillStyle = `rgba(134,122,94,${(0.5 * dorm).toFixed(3)})`;
         ctx.fillRect(Math.max(0, worldLeft), Math.max(0, worldTop), Math.min(COLS * TILE, worldLeft + worldW) - Math.max(0, worldLeft), Math.min(ROWS * TILE, worldTop + worldH) - Math.max(0, worldTop));
+      }
+      if (holes) {
+        ctx.globalCompositeOperation = 'destination-out';
+        for (const h of holes) ctx.drawImage(h.cv, h.x, h.y, h.size, h.size);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx = out;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = 1;
+        ctx.drawImage(_seasonCv, 0, 0);
+        ctx.restore();
       }
       if (coverage < 0.002) { if (_chunks.size) _chunks.clear(); return; }   // low, so the first patches fade in rather than pop
       const tier = _tier = _tierFor(zoom);
@@ -3051,6 +3106,53 @@ const Wildlife = (() => {
     }
     return false;
   }
+  // ── Rocks in the way ────────────────────────────────────────────────
+  // The stones on the uplands, shores and islands (LandCover.rocksNear,
+  // the same ones the ground draws). Land animals never stop or turn up
+  // inside one, and steer round any in their path rather than walking
+  // through it; pebbles are stepped over.
+  // ...and the bigger rocks on the deposits' ground (DepositGround.rocksNear).
+  function _rocks(x, y, reach) {
+    const a = typeof LandCover !== 'undefined' && LandCover.rocksNear ? LandCover.rocksNear(x, y, reach) : [];
+    if (typeof DepositGround === 'undefined' || !DepositGround.rocksNear) return a;
+    const b = DepositGround.rocksNear(x, y, reach);
+    return b.length ? a.concat(b) : a;
+  }
+  const _body = k => k.len * 0.3;                 // clearance a body needs from a rock's edge
+  function _inRock(k, x, y) {
+    if (!k.land) return false;
+    for (const q of _rocks(x, y, TILE)) if (Math.hypot(x - q.x, y - q.y) < q.rad + _body(k)) return true;
+    return false;
+  }
+  // The unit direction (ux, uy), bent sideways to pass any rock that sits
+  // on the line ahead within `look` px — harder the nearer and the more
+  // squarely it is in the way, always to the side it is already off.
+  function _steer(a, k, ux, uy, look) {
+    if (!k.land) return [ux, uy];
+    let sx = ux, sy = uy;
+    for (const q of _rocks(a.x, a.y, look + TILE * 0.6)) {
+      const rx = q.x - a.x, ry = q.y - a.y;
+      const along = rx * ux + ry * uy;                         // distance ahead
+      if (along <= 0 || along > look + q.rad) continue;
+      const side = ry * ux - rx * uy;                          // offset from the line, along (-uy, ux)
+      const clear = q.rad + _body(k);
+      if (Math.abs(side) >= clear) continue;
+      const away = side >= 0 ? -1 : 1;
+      const w = (1 - Math.abs(side) / clear) * (1 - along / (look + q.rad)) * 2.2;
+      sx += -uy * away * w; sy += ux * away * w;
+    }
+    const n = Math.hypot(sx, sy) || 1;
+    return [sx / n, sy / n];
+  }
+  // Slide back out of a rock it has ended up against.
+  function _unstick(a, k) {
+    if (!k.land) return;
+    for (const q of _rocks(a.x, a.y, TILE)) {
+      const dx = a.x - q.x, dy = a.y - q.y, d = Math.hypot(dx, dy), need = q.rad + _body(k);
+      if (d < need) { const n = d || 1; a.x = q.x + dx / n * need; a.y = q.y + dy / n * need; }
+    }
+  }
+
   // Every half tile along the way is open too.
   function _clearPath(land, x0, y0, x1, y1) {
     const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (TILE * 0.5)));
@@ -3143,7 +3245,7 @@ const Wildlife = (() => {
     const tries = land === 'shore' ? 90 : land ? 30 : 40;
     for (let n = 0; n < tries; n++) {
       const x = vx - vw * 0.15 + Math.random() * vw * 1.3, y = vy - vh * 0.15 + Math.random() * vh * 1.3;
-      if (!_open(land, x, y)) continue;
+      if (!_open(land, x, y) || _inRock(KIND[want], x, y)) continue;
       const h = Math.random() * Math.PI * 2, spring = _season() === 0;
       if (want === 'deer') {
         const lead = _make(Math.random() < 0.25 ? 'stag' : 'deer', x, y, h);
@@ -3178,6 +3280,7 @@ const Wildlife = (() => {
       const ang = flee ? Math.atan2(a.y - fy, a.x - fx) + _rand(-0.6, 0.6) : (Math.random() < 0.6 ? a.heading + _rand(-1, 1) : Math.random() * Math.PI * 2);
       const d = (flee ? _rand(5, 8) : _rand(k.hop[0], k.hop[1])) * TILE * (land === false ? 0.6 : 1);
       const tx = a.x + Math.cos(ang) * d, ty = a.y + Math.sin(ang) * d;
+      if (_inRock(k, tx, ty)) continue;                            // never make for a spot inside a rock
       if (_clearPath(land, a.x, a.y, tx, ty)) { a.tx = tx; a.ty = ty; a.state = flee ? 'flee' : 'move'; return true; }
     }
     return false;
@@ -3199,7 +3302,11 @@ const Wildlife = (() => {
       const tx = L.x - Math.cos(L.heading) * gap - Math.sin(L.heading) * side, ty = L.y - Math.sin(L.heading) * gap + Math.cos(L.heading) * side;
       const dx = tx - a.x, dy = ty - a.y, dist = Math.hypot(dx, dy);
       const sp = Math.min(dist * 2.2, (L.state === 'flee' ? k.run : k.walk) * 1.4);
-      if (dist > 0.5) { a.x += dx / dist * sp * dt; a.y += dy / dist * sp * dt; _turnTo(a, Math.atan2(dy, dx), dt, 6); }
+      if (dist > 0.5) {
+        const [ux, uy] = _steer(a, k, dx / dist, dy / dist, Math.min(dist, TILE));
+        a.x += ux * sp * dt; a.y += uy * sp * dt; _turnTo(a, Math.atan2(uy, ux), dt, 6);
+        _unstick(a, k);
+      }
       a.speed = sp; a.leaving = L.leaving;
       return;
     }
@@ -3231,7 +3338,9 @@ const Wildlife = (() => {
     const dx = a.tx - a.x, dy = a.ty - a.y, dist = Math.hypot(dx, dy);
     let sp = a.state === 'flee' ? k.run : k.walk;
     if ((a.kind === 'rabbit' || a.kind === 'hare' || a.kind === 'frog') && a.state !== 'flee') sp *= 0.4 + 1.2 * Math.abs(Math.sin(a.anim * Math.PI / 2));   // hop, hop
-    _turnTo(a, Math.atan2(dy, dx), dt, a.state === 'flee' ? 9 : 4);
+    // Round any rock in the way, rather than through it.
+    const [ux, uy] = dist > 0 ? _steer(a, k, dx / dist, dy / dist, Math.min(dist, TILE * 1.4)) : [0, 0];
+    _turnTo(a, Math.atan2(uy, ux), dt, a.state === 'flee' ? 9 : 4);
     const step = Math.min(dist, sp * dt);
     if (dist < 1.5) {
       a.state = 'pause'; a.timer = _rand(k.pause[0], k.pause[1]); a.speed = 0;
@@ -3239,9 +3348,10 @@ const Wildlife = (() => {
       if (a.kind === 'squirrel' && _season() === 2 && !a.leaving && Math.random() < 0.6) a.dig = _rand(1.6, 3);
       return;
     }
-    const nx = a.x + dx / dist * step, ny = a.y + dy / dist * step;
+    const nx = a.x + ux * step, ny = a.y + uy * step;
     if (!_open(k.hab, nx, ny)) { a.state = 'pause'; a.timer = _rand(0.5, 1.5); return; }   // something built in the way
     a.x = nx; a.y = ny; a.speed = sp;
+    _unstick(a, k);
   }
 
   return {
@@ -3291,6 +3401,7 @@ const Wildlife = (() => {
           const k = KIND[a.kind], px = a.x, py = a.y;
           a.life -= dt;
           _update(a, dt, view);
+          if (!a.flying) _unstick(a, k);   // whatever it is doing, never inside a rock (a follower spawned onto one, say)
           a.anim += dt * (a.speed > 0 ? Math.max(4, a.speed / 6) : 0);
           if (a.diving) { a.alpha -= dt / 1.6; if (a.alpha <= 0) { animals.splice(i, 1); continue; } }
           else a.alpha = Math.min(1, a.alpha + dt / 1.2);

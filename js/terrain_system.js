@@ -21,6 +21,7 @@ const TerrainSystem = (() => {
   const N = COLS * ROWS;
   let H  = null;        // Float32Array — elevation 0..1 per tile
   let HB = null;        // Float32Array — broad local mean, for prominence
+  let WD = null;        // Uint16Array — distance to the water the field was carved from (⅓ tiles, capped)
   let _seed = 0;
   // The map size the seed was rolled for. When a world is recentred onto a
   // bigger map the noise is still laid out for this size and sampled at the
@@ -187,6 +188,7 @@ const TerrainSystem = (() => {
     // faceted valley walls that hill shading turns into streaks.
     H = _boxBlur(_boxBlur(h, 2), 2);
     HB = _boxBlur(H, PROM_R);
+    WD = dist;
     _waterSig = WaterSystem.getWaterTiles().size;
     _ver++;
   }
@@ -235,6 +237,31 @@ const TerrainSystem = (() => {
   function elevAt(c, r) {
     if (!H || c < 0 || r < 0 || c >= COLS || r >= ROWS) return NEUTRAL;
     return H[r * COLS + c];
+  }
+  // Tiles to the nearest river or lake (as the land was carved; capped at
+  // ~26). Far from any water when there is no field.
+  function waterDist(c, r) {
+    if (!WD || c < 0 || r < 0 || c >= COLS || r >= ROWS) return 99;
+    return WD[r * COLS + c] / 3;
+  }
+  // What grows here, from height, slope and nearness to water — three
+  // weights, each 0..1, read by the ground colour, the forests and the
+  // land cover (land_cover.js):
+  //   lush  valley floors and the land along rivers and lakes
+  //   dry   open slopes and uplands, golden grass
+  //   rock  high and steep ground, bare stone and scree
+  // All zero away from home (contract sites) and on a world with no field.
+  const _BIOME0 = [0, 0, 0];
+  function biome(c, r) {
+    if (!active() || c < 1 || r < 1 || c >= COLS - 1 || r >= ROWS - 1) return _BIOME0;
+    const i = r * COLS + c, h = H[i];
+    const wet = 1 - _smooth(1, 12, WD[i] / 3);
+    const grad = Math.hypot(H[i + 1] - H[i - 1], H[i + COLS] - H[i - COLS]) / 2;
+    const steep = _smooth(0.008, 0.03, grad);
+    const lush = Math.max(wet * 0.9, _smooth(0.24, 0.07, h) * 0.75);
+    const dry = _smooth(0.4, 0.62, h) * (1 - wet);
+    const rock = _smooth(0.64, 0.84, h + steep * 0.18) * (1 - wet * 0.8);
+    return [lush, dry, rock];
   }
   // Exposure of a footprint: its height plus how far it stands above the
   // surrounding land, so a lone ridge beats a broad plateau of equal height.
@@ -519,7 +546,7 @@ const TerrainSystem = (() => {
   return {
     generate, save, load, syncToWater,
     active, version: () => _ver,
-    sample, elevAt, exposure, windMult, lightningMult, valleyDepth, damHead,
+    sample, elevAt, waterDist, biome, exposure, windMult, lightningMult, valleyDepth, damHead,
     steepness, buildCostMult, climbFactor, viewFor, viewLabel,
     metres, metresAt, describe, siteLabel,
     drawRelief, drawPlacementTag, drawTag,

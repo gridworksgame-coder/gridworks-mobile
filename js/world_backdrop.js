@@ -68,6 +68,19 @@ const WorldBackdrop = (() => {
   const WATER = [6, 28, 52], SAND = [70, 64, 44];
   const HAZE = [22, 28, 32];
   const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const ROCK_EDGE = [70, 67, 58];     // the map's bare-rock biome colour (render_core.js _GROUND_ROCK)
+
+  // Biome of the map tile nearest a point outside it, cached per tile.
+  const _edgeCache = new Map();
+  const _B0 = [0, 0, 0];
+  function _edgeBiome(u, v) {
+    if (typeof TerrainSystem === 'undefined' || !TerrainSystem.biome) return _B0;
+    const c = Math.max(1, Math.min(COLS - 2, Math.floor(u))), r = Math.max(1, Math.min(ROWS - 2, Math.floor(v)));
+    const key = c * 100000 + r;
+    let b = _edgeCache.get(key);
+    if (!b) { b = TerrainSystem.biome(c, r).slice(); _edgeCache.set(key, b); }
+    return b;
+  }
 
   // Terrain fields. Features ease in over the first few tiles past the
   // edge so the land meets the map as plain grass, not a cliff of rock.
@@ -207,7 +220,18 @@ const WorldBackdrop = (() => {
         let col = lerp3(GRASS_DARK, GRASS_LIGHT, n);
         col = lerp3(col, MEADOW, _smooth(0.55, 0.8, region) * 0.6);
         col = lerp3(col, LUSH, _smooth(0.45, 0.2, region) * 0.6);
-        const forest = _smooth(0.5, 0.6, f.forest);
+        // The map's own biomes carry on over the border and fade into the
+        // country: lush, dry or rocky as the nearest edge tile is
+        // (TerrainSystem.biome), so the land doesn't change at the line.
+        const carry = 1 - _smooth(0, 18, d);
+        let carriedRock = 0;
+        if (carry > 0) {
+          const [bl, bd, br] = _edgeBiome(u, v);
+          if (bl > 0) col = lerp3(col, LUSH, bl * 0.55 * carry);
+          if (bd > 0) col = lerp3(col, MEADOW, bd * 0.6 * carry);
+          if (br > 0) { carriedRock = br * carry; col = lerp3(col, ROCK_EDGE, br * 0.8 * carry); }
+        }
+        const forest = _smooth(0.5, 0.6, f.forest) * (1 - carriedRock);
         col = lerp3(col, FOREST_FLOOR, forest);
         // Highlands: bare rock with survey contour lines.
         const rockT = _smooth(0.5, 0.6, f.rock);
@@ -230,7 +254,7 @@ const WorldBackdrop = (() => {
         // One tree candidate per tile, placed from the tile's top-left
         // pixel. Hashed from the tile itself (not a running PRNG) so two
         // strips baking the same tile near a seam grow the same tree.
-        if ((x % PX) === 0 && (y % PX) === 0 && f.lake < 0.61 && rockT < 0.6) {
+        if ((x % PX) === 0 && (y % PX) === 0 && f.lake < 0.61 && rockT < 0.6 && carriedRock < 0.5) {
           const tc = Math.floor(u), tr = Math.floor(v);
           const p = forest > 0.05 ? 0.35 + forest * 0.6 : 0.025;
           if (_hash(tc * 13 + 7, tr * 17 + 3) < p) {
@@ -351,7 +375,12 @@ const WorldBackdrop = (() => {
   }
 
   // ── Per-frame drawing (world space, before the ground layer) ────────
+  let _terrainKey = null;
   function render(ctx, W, H) {
+    // The edge carries the map's biomes, so a new world, a load or the
+    // trip to and from a contract site bakes the country again.
+    const tk = typeof TerrainSystem !== 'undefined' ? TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') : '';
+    if (tk !== _terrainKey) { _terrainKey = tk; if (strips) reset(); _edgeCache.clear(); }
     if (!strips) _init();
     _queueIdle();
     const a = Camera.screenToWorld(0, 0), b = Camera.screenToWorld(W, H);

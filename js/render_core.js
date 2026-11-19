@@ -24,6 +24,7 @@ const SIMPLE_GROUND_MODE = false;
 // turns every redraw after a tile's first render into a plain lookup —
 // the actual noise math never re-runs for that tile again.
 const _grassBucketCache = new Map(); // tile key (c*10000+r) -> "qR,qG,qB"
+let _grassBiomeKey = null;           // terrain version the cached colours were worked out for
 // Same idea for the ground-cover patch masks (clover / straw / wildflower
 // meadow strengths) — pure functions of c,r, so sample the noise once.
 const _groundCoverCache = new Map(); // tile key -> [clover, straw, flower] each 0..1
@@ -3797,6 +3798,14 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     const _GRASS_DIRT  = [58, 44, 30];  // bare-earth/brown patches
     const _GRASS_MEADOW = [76, 70, 36]; // regional golden dry meadow
     const _GRASS_LUSH   = [24, 60, 22]; // regional deep, saturated green
+    const _GROUND_ROCK  = [70, 67, 58]; // bare stone on high ground (biomes)
+    // The grass colours now depend on the terrain (biomes), so a new or
+    // reloaded world — or the trip to and from a contract site — needs them
+    // worked out afresh rather than read from the cache.
+    {
+      const bk = TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x');
+      if (bk !== _grassBiomeKey) { _grassBucketCache.clear(); _grassBiomeKey = bk; }
+    }
     if (SIMPLE_GROUND_MODE) {
       const _grassT0 = performance.now();
       targetCtx.fillStyle = `rgba(40,64,26,${_alpha})`;
@@ -3892,6 +3901,17 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
               R += (_GRASS_DIRT[0] - R) * dirtAmt;
               G += (_GRASS_DIRT[1] - G) * dirtAmt;
               B += (_GRASS_DIRT[2] - B) * dirtAmt;
+            }
+
+            // Biomes — the land follows the terrain (TerrainSystem.biome):
+            // deep green along water and on valley floors, golden grass up
+            // the open slopes, grey-brown stone on the high, steep ground.
+            // Same quiet luminance band as the rest of the grass.
+            {
+              const [bLush, bDry, bRock] = TerrainSystem.biome(c, r);
+              if (bLush > 0) { const w = bLush * 0.55; R += (_GRASS_LUSH[0] - R) * w; G += (_GRASS_LUSH[1] - G) * w; B += (_GRASS_LUSH[2] - B) * w; }
+              if (bDry > 0)  { const w = bDry * 0.6;   R += (_GRASS_MEADOW[0] - R) * w; G += (_GRASS_MEADOW[1] - G) * w; B += (_GRASS_MEADOW[2] - B) * w; }
+              if (bRock > 0) { const w = bRock * 0.8;  R += (_GROUND_ROCK[0] - R) * w; G += (_GROUND_ROCK[1] - G) * w; B += (_GROUND_ROCK[2] - B) * w; }
             }
 
             const qR = Math.round(R / 4) * 4, qG = Math.round(G / 4) * 4, qB = Math.round(B / 4) * 4;
@@ -4009,6 +4029,23 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     // over the grass and under everything drawn on the ground.
     TerrainSystem.drawRelief(targetCtx, cStart, cEnd, rStart, rEnd, _dark, zoom);
 
+    // ── Rocky islands (island_ground.js) ──────────────────────────
+    // Small islands in lakes and rivers are bare stone, not meadow.
+    IslandGround.draw(targetCtx, cStart, cEnd, rStart, rEnd, _grassLOD);
+
+    // ── Shores and uplands (land_cover.js) ───────────────────────
+    // Beaches, reed beds and stony banks along the water; stones over
+    // the rocky high ground.
+    LandCover.draw(targetCtx, cStart, cEnd, rStart, rEnd, _grassLOD);
+
+    // ── Deposit ground ────────────────────────────────────────────
+    // Stone round coal, tar sand round oil, a salt flat round lithium and
+    // so on (deposit_ground.js). Same layer as the geothermal barren below,
+    // which is drawn after it and so sits on top where the two meet.
+    const _depGround = DepositGround.visible(cStart, cEnd, rStart, rEnd);
+    for (const _de of _depGround) DepositGround.draw(targetCtx, _de, _grassLOD);
+    const _depFields = _depGround.map(DepositGround.fieldFor);
+
     // ── Geothermal barren ground ──────────────────────────────────
     // Drawn after the grass texture (so it covers the blades) and before
     // the clutter pass (so clutter can be filtered out of it below).
@@ -4055,6 +4092,24 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       tc.fillStyle = g;
       tc.fill(GeoField.pathFor(f, 1.12));
 
+      // Photo-scanned ground (photo_ground.js): cooked, cracked crust at
+      // the rim (Poly Haven dry_mud_field_001), grey hydrothermally altered
+      // ground toward the spring (ground_grey), both baked lit from the
+      // upper left by scripts/bake_ground_tex.py. Replaces the painted soil,
+      // blotches, crusts, grain and cracks; the painted ground while it loads.
+      const ph = typeof PhotoGround !== 'undefined'
+        ? PhotoGround.patch({ key: 'geo:' + _ge.col + ',' + _ge.row, cx: f.cx, cy: f.cy, R: f.R,
+            outline: sc => GeoField.pathFor(f, sc), rim: 'ground_geo_rim', inner: 'ground_geo_altered',
+            span: TILE * 5, innerFrom: 0.12, innerTo: 0.62, shade: 0.12, edge: 0.12 })
+        : null;
+      if (ph) {
+        tc.save();
+        tc.imageSmoothingEnabled = true;
+        tc.drawImage(ph.cv, ph.x, ph.y, ph.size, ph.size);
+        tc.restore();
+      }
+
+      if (!ph) {
       // Base soil — dusty tan at the edge, darker and cooked toward the vent
       g = tc.createRadialGradient(f.cx, f.cy, 0, f.cx, f.cy, f.R);
       g.addColorStop(0,    'rgba(70,56,42,0.98)');
@@ -4065,9 +4120,12 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       tc.fillStyle = g;
       tc.fill(GeoField.pathFor(f, 1.0));
 
+      }
+
       tc.save();
       tc.clip(GeoField.pathFor(f, 0.97));
 
+      if (!ph) {
       // Broad tonal variation — ash grey, pale silica, ochre and iron stain
       const TONES = ['rgba(92,88,82,0.16)', 'rgba(196,186,160,0.13)', 'rgba(164,124,58,0.13)',
                      'rgba(132,70,38,0.12)', 'rgba(58,46,36,0.16)'];
@@ -4091,9 +4149,12 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
         tc.fillStyle = 'rgba(216,210,190,0.10)'; tc.fill();
       }
 
+      }
+
       // Runoff channels — meandering from the vent, rust halo, ochre bed,
       // a dark wet thread down the middle
       const nRun = 3 + Math.floor(H(2700) * 3);
+      tc.globalAlpha = ph ? 0.55 : 1;   // fainter over the photo
       for (let i = 0; i < nRun; i++) {
         let a = (i / nRun) * Math.PI * 2 + H(2710 + i) * 1.2;
         let rr = f.R * 0.05;
@@ -4121,7 +4182,9 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
         }
       }
 
+      tc.globalAlpha = 1;
       if (_grassLOD > 0) {
+        if (!ph) {
         // Grain — fine speckle so the soil has texture up close
         const nGrain = Math.min(2600, Math.round(Rt * Rt * 6));
         for (let i = 0; i < nGrain; i++) {
@@ -4152,20 +4215,29 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
           }
         }
 
-        // Fumarole scars — small sulphur-crusted holes, cold now in the bake
+        }
+
+        // Fumarole scars — small vents with a soft sulphur stain round them,
+        // cold now in the bake (fainter and smaller over the photo ground)
         const nFum = 3 + Math.floor(H(4900) * 4);
         for (let i = 0; i < nFum; i++) {
           const [vx, vy] = polar(H(4910 + i) * Math.PI * 2, f.R * (0.18 + H(4920 + i) * 0.4));
-          const vr = TILE * (0.14 + H(4930 + i) * 0.12);
-          g = tc.createRadialGradient(vx, vy, 0, vx, vy, vr * 3.2);
-          g.addColorStop(0, 'rgba(214,190,72,0.55)'); g.addColorStop(0.45, 'rgba(196,164,70,0.28)'); g.addColorStop(1, 'rgba(180,150,70,0)');
-          tc.fillStyle = g; tc.beginPath(); tc.arc(vx, vy, vr * 3.2, 0, Math.PI * 2); tc.fill();
+          const vr = TILE * (ph ? 0.06 + H(4930 + i) * 0.06 : 0.14 + H(4930 + i) * 0.12);
+          g = tc.createRadialGradient(vx, vy, 0, vx, vy, vr * 4);
+          g.addColorStop(0, `rgba(214,190,72,${ph ? 0.32 : 0.55})`); g.addColorStop(0.45, `rgba(196,164,70,${ph ? 0.14 : 0.28})`); g.addColorStop(1, 'rgba(180,150,70,0)');
+          tc.fillStyle = g; tc.beginPath(); tc.arc(vx, vy, vr * 4, 0, Math.PI * 2); tc.fill();
           for (let k = 0; k < 10; k++) {
             const aa = H(4940 + i * 12 + k) * Math.PI * 2, dd = vr * (1.1 + H(5100 + i * 12 + k) * 1.6);
-            tc.fillStyle = 'rgba(236,212,90,0.55)';
-            tc.fillRect(vx + Math.cos(aa) * dd, vy + Math.sin(aa) * dd, 1.6, 1.6);
+            tc.fillStyle = `rgba(236,212,90,${ph ? 0.3 : 0.55})`;
+            tc.fillRect(vx + Math.cos(aa) * dd, vy + Math.sin(aa) * dd, ph ? 1 : 1.6, ph ? 1 : 1.6);
           }
-          tc.fillStyle = '#1a1410'; tc.beginPath(); tc.ellipse(vx, vy, vr, vr * 0.7, H(4950 + i) * 3, 0, Math.PI * 2); tc.fill();
+          if (ph) {
+            g = tc.createRadialGradient(vx, vy, 0, vx, vy, vr * 1.3);
+            g.addColorStop(0, 'rgba(22,16,10,0.85)'); g.addColorStop(0.6, 'rgba(30,22,14,0.5)'); g.addColorStop(1, 'rgba(30,22,14,0)');
+            tc.fillStyle = g; tc.beginPath(); tc.arc(vx, vy, vr * 1.3, 0, Math.PI * 2); tc.fill();
+          } else {
+            tc.fillStyle = '#1a1410'; tc.beginPath(); tc.ellipse(vx, vy, vr, vr * 0.7, H(4950 + i) * 3, 0, Math.PI * 2); tc.fill();
+          }
         }
 
         // Rock — irregular, lit from the upper left, with contact shadows.
@@ -4177,6 +4249,16 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
           const [sx, sy] = polar(a, rr);
           const big = H(600 + i) > 0.9;
           const sz = TILE * (big ? 0.28 + H(500 + i) * 0.22 : 0.06 + H(500 + i) * 0.14);
+          // Rendered rocks over the photo ground (img/rock_geo_*, Poly Haven
+          // stone_01 through scripts/render_rocks.py); drawn ones otherwise.
+          const rsp = ph ? PhotoGround.sprite('rock_geo', H(650 + i)) : null;
+          if (rsp) {
+            const disp = sz * 2 * PhotoGround.SPRITE_FRAME;
+            tc.filter = 'saturate(0.45) brightness(0.92)';   // greyed to the cooked ground (bake-time only)
+            tc.drawImage(rsp, sx - disp / 2, sy - disp / 2, disp, disp);
+            tc.filter = 'none';
+            continue;
+          }
           const nv = 6;
           const pts = [];
           for (let k = 0; k < nv; k++) {
@@ -4256,9 +4338,12 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
           // even scatter, so some fields bloom and most don't. Pre-baked
           // flower sprites (see GroundTextures.flowerSprites), collected here
           // and blitted after the loop under a single globalAlpha.
-          const flowerAmt = _groundCover(c, r)[2];
+          // Thinning out over the rocky uplands (LandCover.growth).
+          const flowerAmt = _groundCover(c, r)[2] * LandCover.growth(c, r);
           if (flowerAmt > 0 && _tileHash2(c, r, 300) < flowerAmt * 0.28 &&
-              !(_geoFields.length && GeoField.covers(_geoFields.map(GeoField.fieldFor), c, r))) {
+              !(_geoFields.length && GeoField.covers(_geoFields.map(GeoField.fieldFor), c, r)) &&
+              !(_depFields.length && DepositGround.covers(_depFields, c, r)) &&
+              !IslandGround.isIsland(c, r) && !LandCover.bare(c, r)) {
             const GT = GroundTextures;
             const species = GT.flowerSprites;
             const dom = Math.floor(_tileHash2(c, r, 301) * species.length);
@@ -4299,6 +4384,11 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
           if (roll > 0.016) continue; // ~1.6% of tiles get a clutter doodad (halved twice from 6.3%)
           // Nothing green grows on a geothermal barren — rocks still do.
           if (roll >= 0.0055 && _geoFields.length && GeoField.covers(_geoFields.map(GeoField.fieldFor), c, r)) continue;
+          // ...nor on any other deposit's ground.
+          if (roll >= 0.0055 && _depFields.length && DepositGround.covers(_depFields, c, r)) continue;
+          if (roll >= 0.0055 && IslandGround.isIsland(c, r)) continue;   // islands have their own stones
+          if (roll >= 0.0055 && LandCover.bare(c, r)) continue;          // so do sand, stony banks and uplands
+          if (roll >= 0.0055 && _tileHash2(c, r, 109) > LandCover.growth(c, r)) continue;   // and less as the ground turns to stone
           const dx = c * TILE + _tileHash2(c, r, 101) * TILE * 0.6 + TILE * 0.2;
           const dy = r * TILE + _tileHash2(c, r, 102) * TILE * 0.6 + TILE * 0.2;
 
@@ -4307,7 +4397,17 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
             // render's camera was framed on the rock's own bbox centre).
             const rw = TILE * (0.07 + _tileHash2(c, r, 103) * 0.05);
             const rot = _tileHash2(c, r, 108) * Math.PI * 2;
-            if (_clutterRockSprite.loaded) {
+            // One of the mossy rocks the uplands and shores use, small and
+            // never rotated so its light still falls from the upper left
+            // (land_cover.js); the older rotated pebble only until they load.
+            const moss = LandCover.rockSprite(_tileHash2(c, r, 107));
+            if (moss) {
+              const disp = rw * 2 * LandCover.ROCK_FRAME;
+              targetCtx.save();
+              targetCtx.globalAlpha = clutterAlpha;
+              targetCtx.drawImage(moss, dx - disp / 2, dy - disp / 2, disp, disp);
+              targetCtx.restore();
+            } else if (_clutterRockSprite.loaded) {
               const disp = rw * 2 * _CLUTTER_IMG_MARGIN;
               targetCtx.save();
               targetCtx.globalAlpha = clutterAlpha;

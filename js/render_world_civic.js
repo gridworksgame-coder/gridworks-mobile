@@ -8042,6 +8042,40 @@ const _seasonImg = (src) => { const img = new Image(); img.loaded = false; img.o
 const _treeAutumnSprites = ['a', 'b', 'c', 'd'].map(k => ['gold', 'amber', 'crimson'].map(c => _seasonImg(`img/tree_var_${k}_autumn_${c}.png`)));
 const _treeWinterSprites = ['a', 'b', 'c', 'd'].map(k => _seasonImg(`img/tree_var_${k}_winter.png`));
 const _firWinterSprites  = ['a', 'b', 'c'].map(k => _seasonImg(`img/fir_var_${k}_winter.png`));
+// Weeping willows, built and rendered by scripts/render_willows.py to the
+// same spec as the trees above (900×1200, same tilt, foot at 1019 px down),
+// with gold autumn and bare winter looks from make_seasonal_trees.py.
+const _WILLOW_PHOTO_ANCHOR_X = 0.50;
+const _WILLOW_PHOTO_ANCHOR_Y = 1019 / 1200;
+const _WILLOW_PHOTO_ASPECT   = 900 / 1200;
+const _willowPhotoSprites  = ['a', 'b', 'c'].map(k => _seasonImg(`img/willow_var_${k}.png`));
+const _willowAutumnSprites = ['a', 'b', 'c'].map(k => _seasonImg(`img/willow_var_${k}_autumn.png`));
+const _willowWinterSprites = ['a', 'b', 'c'].map(k => _seasonImg(`img/willow_var_${k}_winter.png`));
+
+// Which tree grows on a tile, from the land (TerrainSystem): 2 a willow on
+// the banks of rivers and lakes, 1 a fir up on high, dry and rocky ground,
+// 0 a broadleaf tree in the valleys and lowlands. Per tree and stable for
+// a world; with no terrain (away at a contract site) the old even mix of
+// firs and broadleaf. Kept on the tree until the terrain changes.
+const _smoothTK = (a, b, v) => { const t = Math.max(0, Math.min(1, (v - a) / (b - a))); return t * t * (3 - 2 * t); };
+function _treeKind(e) {
+  const tv = typeof TerrainSystem !== 'undefined' && TerrainSystem.active() ? TerrainSystem.version() : -1;
+  if (e._treeKindVer === tv) return e._treeKind;
+  const col = e.col, row = e.row, h1 = _vegHash(col, row);
+  let kind;
+  if (tv < 0) kind = h1 < 0.32 ? 1 : 0;
+  else {
+    const h = TerrainSystem.elevAt(col, row);
+    if (TerrainSystem.waterDist(col, row) <= 2.5 && h < 0.42 && _vegHash(col + 13, row + 29) < 0.6) kind = 2;
+    else {
+      const [lush, , rock] = TerrainSystem.biome(col, row);
+      const pFir = Math.max(0.04, Math.min(0.92, 0.1 + 0.8 * _smoothTK(0.3, 0.58, h) + 0.4 * rock - 0.15 * lush));
+      kind = h1 < pFir ? 1 : 0;
+    }
+  }
+  e._treeKind = kind; e._treeKindVer = tv;
+  return kind;
+}
 const _bushAutumnSprites = ['a', 'b', 'c', 'd', 'e', 'f'].map(k => _seasonImg(`img/bush_var_${k}_autumn.png`));
 const _bushWinterSprites = ['a', 'b', 'c', 'd', 'e', 'f'].map(k => _seasonImg(`img/bush_var_${k}_winter.png`));
 // Flat colours for the zoomed-out silhouettes, to match.
@@ -8288,12 +8322,16 @@ function renderTree(e, px, py, t) {
     const h1 = _vegHash(e.col, e.row);
     const h2 = _vegHash(e.row, e.col + 91);
     const h3 = _vegHash(e.col + 41, e.row + 7);
-    const isConifer = h1 < 0.32;
+    // Species from the land it stands on (_treeKind): fir, broadleaf or willow.
+    const _kind = _treeKind(e);
+    const isConifer = _kind === 1, isWillow = _kind === 2;
     const scale = 0.88 + h2 * 0.28;
     const shapeSeed = Math.floor(h3 * 8) % 8;
 
     const baseAlpha = prog > 0 ? 0.65 : 1;
-    const _looks = _seasonLayers(e, _seasonState(e.col, e.row, isConifer));
+    let _st = _seasonState(e.col, e.row, isConifer);
+    if (isWillow && _st.state === 3) _st = { state: 0, tint: 0 };   // no spring blossom on a willow
+    const _looks = _seasonLayers(e, _st);
 
     // LOD: same reasoning as renderBush — the full tree (trunk + either
     // 3 layered conifer tiers with outline/highlight/rim passes each, or
@@ -8349,7 +8387,7 @@ function renderTree(e, px, py, t) {
         const a0 = ctx.globalAlpha;
         for (const [_season, w] of _looks) {
           ctx.globalAlpha = a0 * w * (_season.state === 2 ? 0.45 : 1);   // bare: a thin haze of twigs
-          ctx.fillStyle = _season.state === 2 ? _BARE_FLAT : _season.state === 1 ? _AUTUMN_FLAT[_season.tint]
+          ctx.fillStyle = _season.state === 2 ? _BARE_FLAT : _season.state === 1 ? _AUTUMN_FLAT[isWillow ? 0 : _season.tint]
                         : _season.state === 3 ? _BLOSSOM_FLAT[_season.tint] : '#255c12';
           ctx.fill();
         }
@@ -8385,10 +8423,10 @@ function renderTree(e, px, py, t) {
       // while a photo is still loading, trees fall back to the cached
       // procedural trunk+foliage bitmap, rotated around the trunk base for
       // sway instead of re-running the vector path every frame.
-      const _vi = Math.floor(h3 * 4113) % (isConifer ? 3 : 4);
-      const photoAnchorX = isConifer ? _FIR_PHOTO_ANCHOR_X : _TREE_PHOTO_ANCHOR_X;
-      const photoAnchorY = isConifer ? _FIR_PHOTO_ANCHOR_Y : _TREE_PHOTO_ANCHOR_Y;
-      const photoAspect  = isConifer ? _FIR_PHOTO_ASPECT   : _TREE_PHOTO_ASPECT;
+      const _vi = Math.floor(h3 * 4113) % (isConifer || isWillow ? 3 : 4);
+      const photoAnchorX = isConifer ? _FIR_PHOTO_ANCHOR_X : isWillow ? _WILLOW_PHOTO_ANCHOR_X : _TREE_PHOTO_ANCHOR_X;
+      const photoAnchorY = isConifer ? _FIR_PHOTO_ANCHOR_Y : isWillow ? _WILLOW_PHOTO_ANCHOR_Y : _TREE_PHOTO_ANCHOR_Y;
+      const photoAspect  = isConifer ? _FIR_PHOTO_ASPECT   : isWillow ? _WILLOW_PHOTO_ASPECT   : _TREE_PHOTO_ASPECT;
       ctx.save();
       ctx.translate(cx, py + TILE - 3);
       ctx.rotate(sway / 40);
@@ -8397,11 +8435,13 @@ function renderTree(e, px, py, t) {
         ctx.globalAlpha = a0 * w;
         const _seasonal = isConifer
           ? (_season.state === 2 ? _firWinterSprites[_vi] : null)
+          : isWillow
+          ? (_season.state === 2 ? _willowWinterSprites[_vi] : _season.state === 1 ? _willowAutumnSprites[_vi] : null)
           : (_season.state === 2 ? _treeWinterSprites[_vi] : _season.state === 1 ? _treeAutumnSprites[_vi][_season.tint]
             : _season.state === 3 ? _blossomSprite(_vi, _season.tint) : null);
         // A seasonal sprite still loading falls back to the summer one.
         const photo = _seasonal && _seasonal.loaded ? _seasonal
-          : isConifer ? _firPhotoSprites[_vi] : _treePhotoSprites[_vi];
+          : isConifer ? _firPhotoSprites[_vi] : isWillow ? _willowPhotoSprites[_vi] : _treePhotoSprites[_vi];
         if (photo && photo.loaded) {
           const dispH = 42 * scale;
           const dispW = dispH * photoAspect;

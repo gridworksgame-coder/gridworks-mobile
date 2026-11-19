@@ -6,74 +6,7 @@
    _portPipe) and render_hydro_coal.js (_wf* helpers).
    ═══════════════════════════════════════════════════════════════════ */
 
-function renderHeliumDeposit(e, px, py, t) {
-    // Helium Gas Field — a patch of sour, gas-bleached scrub over a leaky
-    // gas pocket. Bubbling seep pools, frost-rimmed where the expanding gas
-    // chills the mud, pale lilac haze curling up off the vents, and an old
-    // capped exploration wellhead with a survey flag.
-    const K = _depositKit(e, px, py);
-    const { k, X, Y, S, blob, poly, ell, line, rock } = K;
-    const detail = Camera.zoom > 0.5;
-    const phase = e._heliumPhase ?? S(97)*6.28;
-    const pulse = 0.5 + 0.5*Math.sin(t*1.1 + phase);
-    ctx.save();
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-
-    // ── Bleached ground ──
-    blob(50, 52, 47, 44, 0.12, 5, 18); ctx.fillStyle = '#5a5448'; ctx.fill();
-    blob(50, 52, 40, 37, 0.14, 36, 16); ctx.fillStyle = '#8c8676'; ctx.fill();
-    if (detail) K.tufts('#7a7456', 71, 14);
-
-    // ── Seep pools ──
-    const pools = [];
-    for (let i = 0; i < 1 + K.size; i++) {
-      const a = S(500 + i)*Math.PI*2, d = 8 + S(510 + i)*18;
-      pools.push({ x: 50 + Math.cos(a)*d, y: 54 + Math.sin(a)*d*0.8, rx: 7 + S(520 + i)*4 - K.size*0.6, ry: 4.5 + S(530 + i)*2, i });
-    }
-    for (const p of pools) {
-      blob(p.x, p.y, p.rx + 2.2, p.ry + 1.8, 0.18, 540 + p.i*7, 12); ctx.fillStyle = '#e8eef4'; ctx.fill();      // frost rim
-      blob(p.x, p.y, p.rx, p.ry, 0.18, 560 + p.i*7, 12); ctx.fillStyle = '#2e2a38'; ctx.fill();                   // dark mud water
-      ell(p.x - p.rx*0.2, p.y - p.ry*0.25, p.rx*0.55, p.ry*0.45); ctx.fillStyle = 'rgba(150,120,190,0.35)'; ctx.fill();
-      // bubbles breaking the surface
-      for (let b = 0; b < 3; b++) {
-        const ph = (t*0.7 + S(580 + p.i*5 + b)) % 1;
-        const bx = p.x + (S(590 + p.i*5 + b) - 0.5)*p.rx*1.1, by = p.y + (S(600 + p.i*5 + b) - 0.5)*p.ry*0.9;
-        ctx.strokeStyle = `rgba(235,220,255,${((1 - ph)*0.8).toFixed(3)})`; ctx.lineWidth = 0.5*k;
-        ctx.beginPath(); ctx.ellipse(X(bx), Y(by), (0.6 + ph*2.6)*k, (0.4 + ph*1.6)*k, 0, 0, Math.PI*2); ctx.stroke();
-      }
-    }
-
-    // ── A few pale rocks ──
-    for (let i = 0; i < 2 + K.size; i++) {
-      rock(18 + S(700 + i)*64, 22 + S(710 + i)*60, 3 + S(720 + i)*3, 730 + i*9, '#6c6862', '#a8a49c');
-    }
-
-    // ── Capped exploration wellhead ──
-    const wx = 62 + S(11)*8, wy = 34 + S(12)*8;
-    ell(wx, wy + 3, 7, 3); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill();
-    ell(wx, wy + 1, 6, 2.6); ctx.fillStyle = '#6e7278'; ctx.fill();
-    ctx.fillStyle = '#9aa2aa'; ctx.fillRect(X(wx - 1.6), Y(wy - 7), 3.2*k, 8*k);
-    ctx.fillStyle = '#c05040'; ctx.fillRect(X(wx - 3.4), Y(wy - 5), 6.8*k, 1.6*k);     // valve handwheel bar
-    ell(wx, wy - 7.5, 2.4, 1.2); ctx.fillStyle = '#c8d0d8'; ctx.fill();
-    if (detail) {
-      line(wx + 6, wy + 2, wx + 6, wy - 10, '#8a6a40', 0.9);
-      poly([[wx + 6, wy - 10], [wx + 10.5, wy - 8.8], [wx + 6, wy - 7.6]]); ctx.fillStyle = '#c090e0'; ctx.fill();
-    }
-
-    // ── Lilac haze wisps ──
-    if (detail) {
-      for (let i = 0; i < 4 + K.size; i++) {
-        const ph = (t*0.18 + S(800 + i)) % 1;
-        const sx = 20 + S(810 + i)*60, sy = 40 + S(820 + i)*40;
-        const g = ctx.createRadialGradient(X(sx + ph*6), Y(sy - ph*20), 0, X(sx + ph*6), Y(sy - ph*20), (4 + ph*9)*k);
-        g.addColorStop(0, `rgba(230,200,255,${(0.28*(1 - ph)).toFixed(3)})`); g.addColorStop(1, 'rgba(230,200,255,0)');
-        ctx.fillStyle = g; ell(sx + ph*6, sy - ph*20, 4 + ph*9, 3 + ph*7); ctx.fill();
-      }
-    }
-
-    K.elementTile('2', 'He', `rgba(245,215,255,${(0.8 + 0.2*pulse).toFixed(3)})`, 'rgba(20,10,28,0.85)', 'rgba(200,150,230,0.7)');
-    ctx.restore();
-}
+// renderHeliumDeposit — see render_deposits.js
 
 function renderHeliumWell(e, px, py, t) {
   // A 6×6 gas wellhead under its own derrick, laid out the way the gas moves:

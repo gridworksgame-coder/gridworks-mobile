@@ -608,7 +608,15 @@ function generateLandscape() {
   for (let r = M; r < ROWS - M; r++) {
     for (let c = M; c < COLS - M; c++) {
       if (GridManager.getEntity(c, r)) continue;                    // water, City Hall
-      const v = n1(c, r) * 0.6 + n2(c, r) * 0.3 + n3(c, r) * 0.1;
+      // Nothing takes root on a beach or in a reed bed (land_cover.js).
+      const shore = LandCover.shoreType(c, r);
+      if (shore === LandCover.BEACH || shore === LandCover.REEDS) continue;
+      // Forest follows the land (TerrainSystem.biome): it gathers in the
+      // sheltered valleys and up the middle slopes, thins on the dry open
+      // uplands and gives out on the bare rock of the high ground.
+      const [bLush, bDry, bRock] = TerrainSystem.biome(c, r);
+      const v = n1(c, r) * 0.6 + n2(c, r) * 0.3 + n3(c, r) * 0.1
+              + 0.035 * bLush - 0.03 * bDry - 0.16 * bRock;
       // Dense forest is kept sparing: only the highest noise peaks become
       // woodland, so it turns up as the occasional patch, not a carpet.
       const forest = Math.max(0, Math.min(1, (v - 0.735) / 0.1)); // 0 open ground … 1 deep forest

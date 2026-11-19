@@ -1733,7 +1733,7 @@ RenderSystem.render = function (t, inputState) {
         // ever compared with !==, so a composite key is fine.
         // ...and the season: the canopies painted into zone ground turn,
         // drop and regrow in a handful of steps (Seasons.foliageStep).
-        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
+        const _zoneVer = ZoneSystem.getVersion() + ':' + GeoField.version() + ':' + DepositGround.version() + ':' + IslandGround.version() + ':' + LandCover.version() + ':' + TerrainSystem.version() + (TerrainSystem.active() ? 'a' : 'x') + ':' + Seasons.foliageStep();
         const _zoom = Camera.zoom;
 
         const ZOOM_SETTLE_MS = 160;
@@ -2313,6 +2313,8 @@ RenderSystem.render = function (t, inputState) {
       LightningDamageSystem.renderAllFires(ctx, t, cStart, cEnd, rStart, rEnd);
       // Cooling tower steam, deferred for the same reason (render_oil_nuclear.js).
       CoolingTowerPlume.renderAll(ctx, t, cStart, cEnd, rStart, rEnd);
+      // Hot-spring steam, the same way (render_geothermal.js).
+      if (typeof GeoSteam !== 'undefined') GeoSteam.renderAll(ctx, t, cStart, cEnd, rStart, rEnd);
 
       // 5c2. Snow on roofs and lawns (weather_state.js): over the buildings,
       // under the smog, the weather and the night.
