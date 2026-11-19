@@ -110,17 +110,17 @@ const PhotoGround = (() => {
       g.fillStyle = sg; g.fillRect(x, y, size, size);
     }
 
-    // 4. Cut to the ragged outline, edge blurred soft.
-    // The softness comes from drawing the outline small and scaling it up,
-    // not from a blur filter: canvas filters cost seconds on some phones.
-    const mc = softMask(spec.outline(1), x, y, size, spec.R * spec.edge);
+    // 4. Cut to the ragged outline, faded out over a wide band
+    // (featherMask), so the ground thins into the grass rather than ending
+    // on a line. No blur filter: canvas filters cost seconds on some phones.
+    const mc = featherMask(spec.outline, x, y, size, spec.R, spec.R * Math.min(spec.edge, 0.06));
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalCompositeOperation = 'destination-in';
     g.imageSmoothingEnabled = true;
     blit(g, mc, 0, 0, px, px);
     g.globalCompositeOperation = 'source-over';
 
-    p = { cv, x, y, size };
+    p = { cv, x, y, size, mask: mc };   // mask: fades what a bake lays over the photo the same way
     _patches.set(spec.key, p);
     return p;
   }
@@ -133,9 +133,27 @@ const PhotoGround = (() => {
     let m = _holes.get(key);
     if (m) return m;
     const size = f.R * 2.6, x = f.cx - size / 2, y = f.cy - size / 2;
-    m = { cv: softMask(outline(0.97), x, y, size, f.R * 0.1), x, y, size };
+    m = { cv: featherMask(outline, x, y, size, f.R, f.R * 0.06), x, y, size };   // the patch's own fade
     _holes.set(key, m);
     return m;
+  }
+
+  // A patch outline as a mask that is opaque inside FEATHER_IN of the
+  // outline's size and fades to clear by FEATHER_OUT: the ragged shape
+  // filled at FEATHER_N steps between the two, each adding 1/N alpha
+  // ('lighter' sums them), then blurred a little more by drawing it at one
+  // pixel per `soft` world px (as softMask). Ragged outlines reach 1.18x,
+  // so FEATHER_OUT keeps inside a patch's 2.5R square.
+  const FEATHER_IN = 0.78, FEATHER_OUT = 1.04, FEATHER_N = 10;
+  function featherMask(outline, x, y, size, R, soft) {
+    const px = Math.max(8, Math.min(256, Math.ceil(size / Math.max(1, soft))));
+    const c = document.createElement('canvas'); c.width = c.height = px + 2;   // + the clear border, see blit
+    const g = c.getContext('2d');
+    g.translate(1, 1); g.scale(px / size, px / size); g.translate(-x, -y);
+    g.globalCompositeOperation = 'lighter';
+    g.fillStyle = `rgba(0,0,0,${1 / FEATHER_N})`;
+    for (let i = 0; i < FEATHER_N; i++) g.fill(outline(FEATHER_IN + (FEATHER_OUT - FEATHER_IN) * i / (FEATHER_N - 1)));
+    return c;
   }
 
   // A filled path as a soft-edged mask: drawn small (one pixel per `soft`

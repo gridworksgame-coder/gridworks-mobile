@@ -627,12 +627,15 @@ const DepositGround = (() => {
     const H = n => _hash(e.col, e.row, n);
     const k = { tc, f, H, Rt: f.R / TILE, polar: (a, rr) => [f.cx + Math.cos(a) * rr, f.cy + Math.sin(a) * rr], rockSprites: s.rockSprites, rockFilter: s.rockFilter, key: e.type + ':' + e.col + ',' + e.row };
 
-    // Fringe — the grass dying back into the new ground
-    let g = tc.createRadialGradient(f.cx, f.cy, f.R * 0.55, f.cx, f.cy, f.R * 1.12);
-    g.addColorStop(0, _rgba(s.fringe, 0)); g.addColorStop(0.55, _rgba(s.fringe, 0.28));
-    g.addColorStop(0.82, _rgba(s.fringe, 0.2)); g.addColorStop(1, _rgba(s.fringe, 0));
+    // Fringe — the grass dying back into the new ground. A plain round
+    // gradient that has died away before its circle's edge: filled inside
+    // the ragged outline it ended on a hard line wherever the outline came
+    // in closer than the gradient (most of the way round).
+    let g = tc.createRadialGradient(f.cx, f.cy, f.R * 0.6, f.cx, f.cy, f.R * 1.3);
+    g.addColorStop(0, _rgba(s.fringe, 0)); g.addColorStop(0.45, _rgba(s.fringe, 0.14));
+    g.addColorStop(0.75, _rgba(s.fringe, 0.07)); g.addColorStop(1, _rgba(s.fringe, 0));
     tc.fillStyle = g;
-    tc.fill(pathFor(f, 1.12));
+    tc.beginPath(); tc.arc(f.cx, f.cy, f.R * 1.3, 0, Math.PI * 2); tc.fill();
 
     // Photo-scanned ground (photo_ground.js) where the style has it, in place
     // of the painted base and blotches; the painted ground while it loads.
@@ -659,9 +662,16 @@ const DepositGround = (() => {
           bg.setTransform(sc, 0, 0, sc, 1 - ph.x * sc, 1 - ph.y * sc);
           const kb = Object.assign({}, k, { tc: bg, photo: true });
           bg.save();
-          bg.clip(pathFor(f, 0.97));
+          bg.clip(pathFor(f, 1.04));   // the photo's outer fade edge (PhotoGround.featherMask)
           s.features(kb);
           s.detail(kb);
+          bg.restore();
+          // Fade the stains and rocks out with the photo, so nothing on it
+          // ends on a hard line where the ground thins into the grass.
+          bg.save();
+          bg.setTransform(1, 0, 0, 1, 0, 0);
+          bg.globalCompositeOperation = 'destination-in';
+          PhotoGround.blit(bg, ph.mask, 1, 1, px, px);
           bg.restore();
           _tufts(kb, s, 1);
           PhotoGround.forget(k.key);                       // the bake holds it now

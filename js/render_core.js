@@ -4423,14 +4423,23 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       };
       const polar = (a, rr) => [f.cx + Math.cos(a) * rr, f.cy + Math.sin(a) * rr];
 
-      // Dying-grass fringe — a straw-yellow band bleeding out past the soil
-      let g = tc.createRadialGradient(f.cx, f.cy, f.R * 0.55, f.cx, f.cy, f.R * 1.12);
-      g.addColorStop(0,    'rgba(150,128,72,0)');
-      g.addColorStop(0.55, 'rgba(150,128,72,0.30)');
-      g.addColorStop(0.82, 'rgba(138,122,66,0.22)');
-      g.addColorStop(1,    'rgba(128,118,64,0)');
-      tc.fillStyle = g;
-      tc.fill(GeoField.pathFor(f, 1.12));
+      // Dying-grass fringe — a straw-yellow band bleeding out past the soil.
+      // Over the photo ground it goes in last, behind the faded ground
+      // (see the fade after the features), so the fade doesn't eat it.
+      const fringe = () => {
+        // A plain round gradient, faded out before its circle's edge (not
+        // filled inside the ragged outline, where it ended on a hard line).
+        // Kept within 1.25R: the field's bake is a 2.5R square.
+        const fg = tc.createRadialGradient(f.cx, f.cy, f.R * 0.55, f.cx, f.cy, f.R * 1.24);
+        fg.addColorStop(0,    'rgba(150,128,72,0)');
+        fg.addColorStop(0.5,  'rgba(150,128,72,0.20)');
+        fg.addColorStop(0.78, 'rgba(138,122,66,0.10)');
+        fg.addColorStop(1,    'rgba(128,118,64,0)');
+        tc.fillStyle = fg;
+        tc.beginPath(); tc.arc(f.cx, f.cy, f.R * 1.24, 0, Math.PI * 2); tc.fill();
+      };
+      if (!_gbake) fringe();
+      let g;
 
       // Photo-scanned ground (photo_ground.js): cooked, cracked crust at
       // the rim (Poly Haven dry_mud_field_001), grey hydrothermally altered
@@ -4459,7 +4468,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       }
 
       tc.save();
-      tc.clip(GeoField.pathFor(f, 0.97));
+      tc.clip(GeoField.pathFor(f, ph ? 1.04 : 0.97));   // 1.04: the photo's outer fade edge
 
       if (!ph) {
       // Broad tonal variation — ash grey, pale silica, ochre and iron stain
@@ -4616,6 +4625,20 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
         }
       }
       tc.restore();
+      if (_gbake && ph && ph.mask) {
+        // Fade the scars and rocks out with the photo (PhotoGround.featherMask),
+        // then lay the fringe in behind it all.
+        const n = _gbake.cv.width - 2;
+        tc.save();
+        tc.setTransform(1, 0, 0, 1, 0, 0);
+        tc.globalCompositeOperation = 'destination-in';
+        PhotoGround.blit(tc, ph.mask, 1, 1, n, n);
+        tc.restore();
+        tc.save();
+        tc.globalCompositeOperation = 'destination-over';
+        fringe();
+        tc.restore();
+      }
 
       // Dead grass tufts along the fringe (outside the soil clip)
       if (_grassLOD > 0 || _gbake) {   // a bake is always full detail
