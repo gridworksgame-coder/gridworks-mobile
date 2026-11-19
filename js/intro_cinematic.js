@@ -57,7 +57,8 @@ const IntroCinematic = (() => {
   const BOOM_AT    = WIDE_AT + 2.8;    // first reactor goes — a calm look at the whole city first
   const CUT_AT     = BOOM_AT + 16.5;   // signal lost → black
   const LATER_AT   = CUT_AT + 0.9;     // "20 YEARS LATER"
-  const PRESENT_AT = LATER_AT + 10.6;  // black lifts on today's map
+  const LATER_HOLD = 7.0;              // how long 20 YEARS LATER stays up
+  const PRESENT_AT = LATER_AT + LATER_HOLD + 6.6;  // black lifts on today's map
   const DRIFT_S    = 14;
   const LOCK_AT    = PRESENT_AT + DRIFT_S + 0.2;
   const LETTER_AT  = LOCK_AT + 1.2;
@@ -77,7 +78,7 @@ const IntroCinematic = (() => {
   // follows it (MusicSystem.play). Skipped before then, it starts as the
   // intro ends, so it is still the first song heard.
   const FIRST_SONG    = 'audio/music/Sleepless.mp3';
-  const FIRST_SONG_AT = LATER_AT + 0.5;   // after the card's thump
+  const FIRST_SONG_AT = LATER_AT + 3.0;   // three seconds into the card
   let songOn = false;
   function _firstSong() {
     if (songOn) return;
@@ -793,11 +794,11 @@ const IntroCinematic = (() => {
       sfx('thump');
     });
     schedule(FIRST_SONG_AT, _firstSong);
-    schedule(LATER_AT + 4.0, () => $('.gi-chapter').classList.add('out'));
+    schedule(LATER_AT + LATER_HOLD, () => $('.gi-chapter').classList.add('out'));
     _terminal([
       ['EXCLUSION ZONE .. ', 'LIFTED'],
       ['GRID STATUS ..... ', 'NOT FOUND', true],
-    ], LATER_AT + 4.7, PRESENT_AT - 0.3);
+    ], LATER_AT + LATER_HOLD + 0.7, PRESENT_AT - 0.3);
     schedule(PRESENT_AT, () => {
       phase = 'drift';
       _startDawn();
@@ -989,6 +990,9 @@ const IntroCinematic = (() => {
         }
         g.globalAlpha = 1;
         if (warn > 0) {
+          // Centred on the trefoil on the containment dome, which the
+          // reactor sprite draws at 45% / 42% of its 17-tile footprint.
+          const x = _sx((R.c + (0.45 - 0.5) * 17) * TILE), y = _sy((R.r + (0.42 - 0.5) * 17) * TILE);
           const blink = 0.5 + 0.5 * Math.sin(clock * 9 + R.r);
           g.save(); g.globalCompositeOperation = 'lighter';
           _glow(g, x, y, 12 * T, '255,36,22', 0.34 * warn * (0.35 + 0.65 * blink));
