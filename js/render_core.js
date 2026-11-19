@@ -4382,7 +4382,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       const _gb = _geoBaked.get(_gkey);
       if (_gb && _gb.ver === _gver) {
         targetCtx.save(); targetCtx.imageSmoothingEnabled = true;
-        targetCtx.drawImage(_gb.cv, _gb.x, _gb.y, _gb.size, _gb.size);
+        PhotoGround.blit(targetCtx, _gb.cv, _gb.x, _gb.y, _gb.size, _gb.size);
         targetCtx.restore();
         continue;
       }
@@ -4393,10 +4393,12 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       let tc = targetCtx, _gbake = null;
       if (_gph) {
         const px = _gph.cv.width, sc = px / _gph.size;
-        const cv = document.createElement('canvas'); cv.width = cv.height = px;
+        // + a 1 px clear border, so drawing it scaled never samples past
+        // its edge (PhotoGround.blit).
+        const cv = document.createElement('canvas'); cv.width = cv.height = px + 2;
         tc = cv.getContext('2d');
         tc.imageSmoothingEnabled = true;
-        tc.setTransform(sc, 0, 0, sc, -_gph.x * sc, -_gph.y * sc);
+        tc.setTransform(sc, 0, 0, sc, 1 - _gph.x * sc, 1 - _gph.y * sc);
         _gbake = { cv, ver: _gver, x: _gph.x, y: _gph.y, size: _gph.size };
       }
       // A smooth, lumpy closed blob around (x, y) — curves through the
@@ -4638,7 +4640,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
         _geoBaked.set(_gkey, _gbake);
         PhotoGround.forget(_gkey);                 // the bake holds it now
         targetCtx.save(); targetCtx.imageSmoothingEnabled = true;
-        targetCtx.drawImage(_gbake.cv, _gbake.x, _gbake.y, _gbake.size, _gbake.size);
+        PhotoGround.blit(targetCtx, _gbake.cv, _gbake.x, _gbake.y, _gbake.size, _gbake.size);
         targetCtx.restore();
       }
     }

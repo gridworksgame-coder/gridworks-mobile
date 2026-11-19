@@ -117,7 +117,7 @@ const PhotoGround = (() => {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalCompositeOperation = 'destination-in';
     g.imageSmoothingEnabled = true;
-    g.drawImage(mc, 0, 0, px, px);
+    blit(g, mc, 0, 0, px, px);
     g.globalCompositeOperation = 'source-over';
 
     p = { cv, x, y, size };
@@ -144,9 +144,9 @@ const PhotoGround = (() => {
   // a whole canvas-sized layer per draw: seconds, every ground re-bake.
   function softMask(path, x, y, size, soft) {
     const px = Math.max(8, Math.min(256, Math.ceil(size / Math.max(1, soft))));
-    const c = document.createElement('canvas'); c.width = c.height = px;
+    const c = document.createElement('canvas'); c.width = c.height = px + 2;   // + the clear border, see blit
     const g = c.getContext('2d');
-    g.scale(px / size, px / size); g.translate(-x, -y);
+    g.translate(1, 1); g.scale(px / size, px / size); g.translate(-x, -y);
     g.fillStyle = '#000';
     g.fill(path);
     return c;
@@ -158,13 +158,24 @@ const PhotoGround = (() => {
   // For the deposits' faint stains, baked once instead of blurred with a
   // canvas filter on every ground re-bake.
   const _soft = new Map();
+
+  // Draws a canvas made by softMask / soft (or any canvas with a 1 px clear
+  // border) without that border, scaled to (dx, dy, dw, dh). The border is
+  // what the scaling samples past the picture's edge: Chrome on Android
+  // keeps a small canvas in a bigger GPU texture and, upscaling it, read the
+  // texture's leftover padding along the right and bottom edges, so a
+  // deposit's photo ground showed a hard straight line along two sides of
+  // its square (and the seasons' washes a cut-out one round its hole).
+  function blit(g, c, dx, dy, dw, dh) {
+    g.drawImage(c, 1, 1, c.width - 2, c.height - 2, dx, dy, dw, dh);
+  }
   function soft(key, x, y, size, softPx, draw) {
     let c = _soft.get(key);
     if (!c) {
       const px = Math.max(8, Math.min(512, Math.ceil(size / Math.max(1, softPx))));
-      c = document.createElement('canvas'); c.width = c.height = px;
+      c = document.createElement('canvas'); c.width = c.height = px + 2;   // + the clear border, see blit
       const g = c.getContext('2d');
-      g.scale(px / size, px / size); g.translate(-x, -y);
+      g.translate(1, 1); g.scale(px / size, px / size); g.translate(-x, -y);
       draw(g);
       _soft.set(key, c);
     }
@@ -211,7 +222,7 @@ const PhotoGround = (() => {
   function forget(key) { _patches.delete(key); }
 
   return {
-    img, pattern, patch, sprite, hole, soft, filtered, forget,
+    img, pattern, patch, sprite, hole, soft, blit, filtered, forget,
     SPRITE_FRAME: 1.4,
     version: () => _loaded + ':' + _spritesLoaded,
   };

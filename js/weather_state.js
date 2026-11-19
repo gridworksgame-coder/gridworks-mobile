@@ -739,7 +739,7 @@ const FrostSystem = (() => {
       }
       if (holes) {
         ctx.globalCompositeOperation = 'destination-out';
-        for (const h of holes) ctx.drawImage(h.cv, h.x, h.y, h.size, h.size);
+        for (const h of holes) PhotoGround.blit(ctx, h.cv, h.x, h.y, h.size, h.size);
         ctx.globalCompositeOperation = 'source-over';
         ctx = out;
         ctx.save();

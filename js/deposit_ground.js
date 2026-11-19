@@ -216,7 +216,7 @@ const DepositGround = (() => {
       try { paint(k); } finally { k.tc = tc; }
     });
     k.tc.save(); k.tc.imageSmoothingEnabled = true;
-    k.tc.drawImage(c, x, y, size, size);
+    PhotoGround.blit(k.tc, c, x, y, size, size);
     k.tc.restore();
   }
   // Rock — irregular, lit from the upper left, with a contact shadow.
@@ -642,12 +642,14 @@ const DepositGround = (() => {
         const ph = PhotoGround.patch({ key: k.key, cx: f.cx, cy: f.cy, R: f.R, outline: sc => pathFor(f, sc), ...s.photo });
         if (ph) {
           const px = ph.cv.width, sc = px / ph.size;
-          const cv = b && b.cv.width === px ? b.cv : document.createElement('canvas');
-          cv.width = cv.height = px;                       // (also clears a reused one)
+          // A 1 px clear border round it, so drawing it scaled never samples
+          // past its edge (PhotoGround.blit).
+          const cv = b && b.cv.width === px + 2 ? b.cv : document.createElement('canvas');
+          cv.width = cv.height = px + 2;                   // (also clears a reused one)
           const bg = cv.getContext('2d');
           bg.imageSmoothingEnabled = true;
-          bg.drawImage(ph.cv, 0, 0);
-          bg.setTransform(sc, 0, 0, sc, -ph.x * sc, -ph.y * sc);
+          bg.drawImage(ph.cv, 1, 1);
+          bg.setTransform(sc, 0, 0, sc, 1 - ph.x * sc, 1 - ph.y * sc);
           const kb = Object.assign({}, k, { tc: bg, photo: true });
           bg.save();
           bg.clip(pathFor(f, 0.97));
@@ -663,7 +665,7 @@ const DepositGround = (() => {
       if (b && b.ver === ver) {
         tc.save();
         tc.imageSmoothingEnabled = true;
-        tc.drawImage(b.cv, b.x, b.y, b.size, b.size);
+        PhotoGround.blit(tc, b.cv, b.x, b.y, b.size, b.size);
         tc.restore();
         return;
       }
