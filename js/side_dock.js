@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════════
    SIDE DOCK
    The right-hand side buttons (research, compendium, achievements, message
-   log, contracts, audit, drones, blueprints, trucks, recenter, dev) used to
+   log, contracts, audit, drones, blueprints, trucks, dev) used to
    stand in one tall column that kept growing as things unlocked. They now
    fold away behind one PANELS tile in the corner, like the build bar's
    categories: tap it and they open on a tray as a grid, three across with a
@@ -31,11 +31,13 @@ const SideDock = (() => {
     ['btn-drones', 'Drones'],
     ['hotbar-blueprint-btn', 'Blueprints'],
     ['btn-trucks', 'Trucks'],
-    ['btn-recenter', 'Recenter'],
     ['btn-requests', 'Requests'],
     ['btn-dev', 'Dev'],
   ];
   const RIGHT = 18, BOTTOM = 26;       // the PANELS tile (its name sits in the 26px below it)
+  // Recenter stays out of the tray, on its own just above the PANELS tile,
+  // centred on it, so it is always one click away.
+  const RECENTER_GAP = 10;
 
   let open = false, toggle = null, tray = null;
   const $ = (id) => document.getElementById(id);
@@ -66,6 +68,11 @@ const SideDock = (() => {
         background: #f0c040; box-shadow: 0 0 6px rgba(240,192,64,0.8); display: none;
       }
       #btn-side-dock.has-new .sd-dot { display: block; }
+
+      /* ── Recenter: above the tile, not in the tray ── */
+      body > #btn-recenter {
+        bottom: ${BOTTOM + 46 + RECENTER_GAP}px; right: ${RIGHT + 6}px; top: auto; left: auto; z-index: 39;
+      }
 
       /* ── The tray: a grid of the side buttons ── */
       #side-dock-tray {
@@ -204,7 +211,10 @@ const SideDock = (() => {
     const tr = toggle.getBoundingClientRect();
     if (!tr.width) return;
     if ((parseFloat(tray.style.zoom) || 1) !== z) tray.style.zoom = z === 1 ? '' : String(z);
-    const right = innerWidth - tr.right, bottom = innerHeight - tr.top + 24 * z;   // clear of the tile's name
+    // Above the Recenter button when it is showing, else just above the tile.
+    const rc = $('btn-recenter'), rr = rc && rc.parentNode === document.body ? rc.getBoundingClientRect() : null;
+    const top = rr && rr.height ? rr.top - 8 * z : tr.top - 24 * z;   // clear of the tile's name
+    const right = innerWidth - tr.right, bottom = innerHeight - top;
     tray.style.right = (right / z).toFixed(1) + 'px';
     tray.style.bottom = (bottom / z).toFixed(1) + 'px';
     let i = 0;

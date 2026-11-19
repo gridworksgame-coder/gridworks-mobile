@@ -100,7 +100,7 @@ const TutorialSystem = (() => {
           highlightDom: ['income-balance-group', 'population-stat-btn', 'gov-stat-btn', 'score-stat-btn', 'grid-tab-btn', 'weather-tab-btn', 'btn-progress'],
         },
         {
-          text: "The clock shows the time. Pause with SPACE and change speed (up to 10x) with ALT.\n\nPANELS (bottom right) opens the side panels: the COMPENDIUM (every item and tutorial), RESEARCH, ACHIEVEMENTS, the MESSAGE LOG and RECENTER (back to City Hall). More appear as you unlock them.",
+          text: "The clock shows the time. Pause with SPACE and change speed (up to 10x) with ALT.\n\nPANELS (bottom right) opens the side panels: the COMPENDIUM (every item and tutorial), RESEARCH, ACHIEVEMENTS and the MESSAGE LOG. More appear as you unlock them. RECENTER, just above PANELS, takes you back to City Hall.",
           manual: true,
           highlightDom: ['clock', 'playback-controls', 'btn-side-dock', 'btn-compendium', 'btn-achievements', 'btn-recenter', 'btn-msglog'],
         },

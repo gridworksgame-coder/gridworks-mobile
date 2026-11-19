@@ -4544,7 +4544,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
     if (Camera.zoom >= 0.25) {
       const _gridT0 = performance.now();
       targetCtx.save();
-      targetCtx.globalAlpha *= 0.2; // dimmer grid lines
+      targetCtx.globalAlpha *= 0.1; // dimmer grid lines
       targetCtx.strokeStyle = DayNight.gridColor(_dark);   // the bitmap's own keyframe
       targetCtx.lineWidth   = 1.5 / Camera.zoom;
       // Batched into one path + one stroke() instead of one beginPath()+
