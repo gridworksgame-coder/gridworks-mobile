@@ -2150,7 +2150,7 @@ function renderLithiumProcessPlant(e, px, py, t) {
     if (detail) for (let x = PX0 + 5; x <= PX1 - 5; x += 30) { dot(x, PY0 + 5, 1.8, '#4a4e52'); dot(x, PY1 - 5, 1.8, '#4a4e52'); }
     // internal ring road
     const ROAD = on ? '#4a4c50' : '#2e3034';
-    R(40, 636, 746, 40, ROAD); R(750, 100, 36, 576, ROAD); R(40, 224, 36, 452, ROAD);
+    R(40, 636, 746, 40, ROAD); R(750, 100, 36, 576, ROAD); R(40, 224, 36, 452, ROAD);    _bldRoadTex(ctx, X(40), Y(636), 746 * s, 40 * s); _bldRoadTex(ctx, X(750), Y(100), 36 * s, 576 * s); _bldRoadTex(ctx, X(40), Y(224), 36 * s, 452 * s);
     if (detail) {
       for (let x = 50; x < 776; x += 28) R(x, 655, 14, 2, 'rgba(240,210,70,0.8)');
       for (let y = 110; y < 630; y += 28) R(767, y, 2, 14, 'rgba(240,210,70,0.8)');

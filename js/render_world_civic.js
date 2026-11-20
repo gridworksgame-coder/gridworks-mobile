@@ -4672,7 +4672,7 @@ function renderBridge(e, px, py, t, layer) {
     // bank it runs a short way past the abutment and blends into the grass,
     // so a bridge doesn't drag a long slab of tarmac behind it.
     const SHORT = 22, BLEND = 18;
-    const road = (p, q) => { R(52, p, 136, q - p, '#2a2a2a'); R(46, p, 6, q - p, '#66665e'); R(188, p, 6, q - p, '#66665e'); };
+    const road = (p, q) => { R(52, p, 136, q - p, '#2a2a2a'); _bldRoadTex(ctx, X(52), Y(p), 136 * u, (q - p) * u); R(46, p, 6, q - p, '#66665e'); R(188, p, 6, q - p, '#66665e'); };
     const reaches = y => (y === y0 && (startK === 'road' || startK === 'bridge' || cornerS))
                       || (y === y1 && (endK === 'road' || endK === 'bridge' || cornerE));
     for (const [a, b] of gaps) {
@@ -5602,6 +5602,18 @@ const HallTex = (() => {
       for (let x = 0; x < P; x += 1) d.line(x + 0.5, -1, x + 0.5, P + 1, x % 2 ? -0.05 : 0.04, 0.4);
       for (let y = 0; y < P; y += 1) d.line(-1, y + 0.5, P + 1, y + 0.5, y % 2 ? -0.04 : 0.03, 0.4);
     },
+    // tarmac: fine aggregate, sealed (tar-filled) cracks, patch repairs
+    tarmac: (d) => {
+      for (let k = 0; k < 9000; k++) d.box(r(0, P), r(0, P), r(0.4, 0.8), r(0.4, 0.8), rnd() < 0.5 ? r(0.08, 0.24) : r(-0.24, -0.08));
+      for (let k = 0; k < 7; k++) { const x = r(0, P), y = r(0, P), w = r(10, 26), h = r(6, 14); d.box(x, y, w, h, r(-0.12, 0.06)); d.line(x, y, x + w, y, -0.18, 0.45); d.line(x, y + h, x + w, y + h, 0.06, 0.4); }
+      for (let k = 0; k < 14; k++) {
+        let x = r(0, P), y = r(0, P), a = r(0, Math.PI*2);
+        for (let j = 0, n = 6 + Math.floor(r(0, 10)); j < n; j++) {
+          const x2 = x + Math.cos(a)*r(2, 5), y2 = y + Math.sin(a)*r(2, 5);
+          d.line(x, y, x2, y2, -0.42, 0.6); x = x2; y = y2; a += r(-0.8, 0.8);
+        }
+      }
+    },
     // Roman brick: long thin units, raked (shadowed) beds, flush heads
     roman: (d) => courses(d, { ch: 2.56, lmin: 10, lmax: 16, tv: 0.1, joint: -0.3, head: -0.1, jw: 0.45, speck: 1 }),
     // board-formed concrete: plank imprints, their grain, tie holes in a grid
@@ -5806,6 +5818,14 @@ function _glassReflect(g, x, y, w, h, a = 1) {
   if (typeof HallTex === 'undefined') return;
   const k = a * (1 - DayNight.darkness());
   if (k > 0.02) HallTex.lay(g, [['glass', k]], 0, 0, 1, x, y, w, h);
+}
+
+// Asphalt on the roads, drives and car parks that buildings draw for
+// themselves with a plain fill (kit-drawn ones already get the grit grain
+// through _fillRectG): the scanned grit plus drawn tarmac (aggregate,
+// sealed cracks, patch repairs), world-anchored so neighbours line up.
+function _bldRoadTex(g, x, y, w, h) {
+  if (typeof HallTex !== 'undefined') HallTex.lay(g, [['grit', 0.35], ['tarmac', 1]], 0, 0, 1, x, y, w, h);
 }
 
 // Per style: [pattern, alpha] layers for walls, roofs, dome and trim.

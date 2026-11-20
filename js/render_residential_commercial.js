@@ -2471,6 +2471,7 @@ function renderCompanyTown(e, px, py, t) {
     const ASPH = on ? '#3c3d40' : '#1e1f21', WALK = on ? '#a8a296' : '#4a4842';
     R(2, 90, 236, 22, WALK); R(112, 2, 20, 196, WALK);                       // sidewalks
     R(2, 94, 236, 14, ASPH); R(116, 2, 12, 196, ASPH);                       // roads
+    _bldRoadTex(ctx, X(2), Y(94), 236*sx, 14*sy); _bldRoadTex(ctx, X(116), Y(2), 12*sx, 196*sy);
     if (detail) {
       ctx.setLineDash([5*sx, 5*sx]);
       ln(4, 101, 114, 101, on ? 'rgba(230,200,110,0.6)' : 'rgba(80,70,40,0.5)', 0.8);
@@ -5211,7 +5212,7 @@ function renderSchool(e, px, py, t) {
     R(170, 158, 100, 44, '#9a9ca2');
     // Path from the doors to the gate, and the bus loop
     R(128, GND, 24, 60, '#d8d0c0');
-    R(4, 206, 272, 20, '#4a4c52');
+    R(4, 206, 272, 20, '#4a4c52');    _bldRoadTex(ctx, X(4), Y(206), 272*sx, 20*sy);
     dusk(10, 158, 260, 68);
     if (detail) {
       // court markings: basketball key + hopscotch + four-square
@@ -6846,6 +6847,7 @@ function renderSheriffOffice(e, px, py, t) {
     R(2, GND, 196, 50, '#6f9a52');
     R(104, GND + 4, 94, 28, '#55585e');                     // patrol lot
     R(2, 140, 196, 16, '#4a4c52');                          // road
+    _bldRoadTex(ctx, X(2), Y(140), 196*sx, 16*sy);
     R(56, GND, 16, 32, '#d8d0c0');                          // front walk
     R(150, GND, 30, 32, '#55585e');                         // garage apron
     dusk(2, GND, 196, 50);
@@ -7482,7 +7484,7 @@ function renderCommercial(e, px, py, t) {
       }
 
       // ── Car park ───────────────────────────────────────────────────
-      R(0.01, 0.82, 0.98, 0.17, S('#4a4a4e', '#2e3036', '#161618'));
+      R(0.01, 0.82, 0.98, 0.17, S('#4a4a4e', '#2e3036', '#161618'));      _bldRoadTex(ctx, px + W*0.01, py + H*0.82, W*0.98, H*0.17);
       if (fine) for (let k = 0; k <= 10; k++) R(0.03 + k*0.094, 0.84, 0.003, 0.12, S('rgba(240,240,230,0.55)', 'rgba(200,205,220,0.35)', 'rgba(60,60,60,0.3)'));
       const stalls = 10, cars = !on ? 1 : !open ? 1 : peak ? 8 : 4;
       const carC = ['#c04040', '#e8e8e4', '#3060a0', '#404448', '#e0b030', '#40806a', '#8a8e94', '#6a3a8a', '#d06030', '#2a3a5a'];
@@ -21436,6 +21438,7 @@ function _renderGoldRoom(e, px, py, W, H, t) {
   if (detail) for (let x = 0; x < 200; x += 10) R(x, 88, 0.5, 12, 'rgba(0,0,0,0.15)');
   R(0, 99, 200, 1.5, L('#b0b4b8', '#5a5e64', '#2a2c30'));                  // kerb
   R(0, 100.5, 200, 19.5, L('#46494e', '#24262a', '#141518'));               // street
+  _bldRoadTex(ctx, X(0), Y(100.5), 200 * S, 19.5 * S);
   for (let i = 0; i < 6; i++) R(8 + i * 34, 111, 14, 1.4, L('rgba(255,255,255,0.4)', 'rgba(220,220,200,0.18)', 'rgba(0,0,0,0.1)'));
   if (open) glow(100, 96, 70, '255,190,100', 0.22);                         // light spill on the pavement
 
@@ -22257,7 +22260,7 @@ function _renderNightclub(e, px, py, W, H, t) {
   R(0, 124, 200, 14, L('#8a8e94', '#3e4248', '#202226'));
   if (detail) for (let x = 0; x < 200; x += 10) R(x, 124, 0.5, 14, 'rgba(0,0,0,0.15)');
   R(0, 137, 200, 1.5, L('#b0b4b8', '#54585e', '#2a2c30'));
-  R(0, 138.5, 200, 21.5, L('#46494e', '#202226', '#141518'));
+  R(0, 138.5, 200, 21.5, L('#46494e', '#202226', '#141518'));  _bldRoadTex(ctx, X(0), Y(138.5), 200 * S, 21.5 * S);
   for (let i = 0; i < 6; i++) R(8 + i * 34, 150, 14, 1.4, L('rgba(255,255,255,0.4)', 'rgba(220,220,200,0.18)', 'rgba(0,0,0,0.1)'));
   if (detail) { ell(164, 147, 4, 1.8, L('#3a3c40', '#16171a', '#0e0f11')); ell(164, 147, 3, 1.2, L('#4a4c50', '#1e2024', '#121316')); }   // manhole
   if (open) glow(100, 128, 90, `${Math.round(180 + 60 * Math.sin(hue / 57))},80,255`, 0.18 + beat * 0.12);
@@ -27459,8 +27462,10 @@ function _renderWasteFacility(e, px, py, W, H, t) {
   R(0, 0, 240, 200, L('#6a7a4a', '#26301e', '#1a2014'));
   R(4, 4, 232, 176, L('#9a9282', '#3a3830', '#22211c'));                        // site hardstanding
   R(0, 182, 240, 18, L('#4a4c50', '#202226', '#141518'));                       // public road
+  _bldRoadTex(ctx, X(0), Y(182), 240 * S, 18 * S);
   for (let i = 0; i < 7; i++) R(6 + i * 36, 190, 16, 1.4, L('rgba(255,255,255,0.4)', 'rgba(220,220,200,0.18)', 'rgba(0,0,0,0.1)'));
   R(58, 96, 14, 86, L('#6a6a6e', '#2a2a2e', '#1a1a1c'));                        // site road up to the hall
+  _bldRoadTex(ctx, X(58), Y(96), 14 * S, 86 * S);
   R(14, 96, 104, 16, L('#6a6a6e', '#2a2a2e', '#1a1a1c'));                       // apron in front of the bays
   if (detail) {                                                                 // perimeter fence
     ctx.strokeStyle = L('rgba(60,64,70,0.9)', 'rgba(40,44,50,0.9)', 'rgba(20,20,24,0.9)'); ctx.lineWidth = 0.6 * S;
@@ -27759,7 +27764,7 @@ function _renderClothingStore(e, px, py, W, H, t) {
   R(0, 0, 160, 120, L('#4e7a3e', '#22382a', '#162018'));
   R(0, 92, 160, 12, L('#9a9ea4', '#44484e', '#222428')); tex([['grit', 0.3]], 0, 92, 160, 12);
   R(0, 103, 160, 1.5, L('#b8bcc0', '#5a5e64', '#2a2c30'));
-  R(0, 104.5, 160, 15.5, L('#46494e', '#202226', '#141518')); tex([['grit', 0.35]], 0, 104.5, 160, 15.5);
+  R(0, 104.5, 160, 15.5, L('#46494e', '#202226', '#141518')); _bldRoadTex(ctx, X(0), Y(104.5), 160 * S, 15.5 * S);
   for (let i = 0; i < 5; i++) R(6 + i * 34, 112, 14, 1.4, L('rgba(255,255,255,0.4)', 'rgba(220,220,200,0.18)', 'rgba(0,0,0,0.1)'));
   if (detail) for (let x = 4; x < 160; x += 12) R(x, 92, 0.5, 11, 'rgba(0,0,0,0.12)');   // paving joints
 
@@ -27947,7 +27952,7 @@ function _renderLibrary(e, px, py, W, H, t) {
   // (No lawn fill: the sprite sits on whatever ground it's placed on.)
   R(0, 132, 200, 10, L('#8a8e94', '#3e4248', '#202226'));
   R(0, 141, 200, 1.5, L('#b0b4b8', '#54585e', '#2a2c30'));
-  R(0, 142.5, 200, 17.5, L('#46494e', '#202226', '#141518'));
+  R(0, 142.5, 200, 17.5, L('#46494e', '#202226', '#141518'));  _bldRoadTex(ctx, X(0), Y(142.5), 200 * S, 17.5 * S);
   for (let i = 0; i < 6; i++) R(8 + i * 34, 152, 14, 1.4, L('rgba(255,255,255,0.4)', 'rgba(220,220,200,0.18)', 'rgba(0,0,0,0.1)'));
   // trees behind
   for (let i = 0; i < 12; i++) {
@@ -28174,7 +28179,9 @@ function _renderSpaceport(e, px, py, W, H, t) {
   // ── Ground, roads, fence ──
   // No sand backdrop: the complex stands straight on the map.
   R(0, 424, 640, 12, ROAD);                                                // perimeter road (south)
+  _bldRoadTex(ctx, X(0), Y(424), 640 * S, 12 * S);
   R(186, 20, 12, 404, ROAD);                                               // service road
+  _bldRoadTex(ctx, X(186), Y(20), 12 * S, 404 * S);
   if (detail) { for (let x = 6; x < 640; x += 22) R(x, 429.5, 11, 1.2, L('rgba(240,220,120,0.7)', 'rgba(200,180,90,0.3)', 'rgba(0,0,0,0.2)')); }
   ctx.strokeStyle = L('rgba(200,200,190,0.8)', 'rgba(120,120,110,0.5)', 'rgba(60,60,56,0.5)'); ctx.lineWidth = 1.2 * S;
   ctx.strokeRect(X(4), Y(4), 632 * S, 416 * S);
