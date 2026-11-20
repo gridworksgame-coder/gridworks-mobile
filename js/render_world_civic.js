@@ -5462,6 +5462,334 @@ function renderFiberHub(e, px, py, t) {
     ctx.restore();
   }
 
+// City Hall surface textures. Each hall style gets a material for its walls,
+// roofs, dome and trim (HALL_TEX_STYLE below): a drawn structure (ashlar
+// courses, brick bonds, slates, barrel tiles, planks, standing seams...) made
+// here once, plus a photo grain (img/hall_grain_*.png, Poly Haven scans,
+// CC0, from scripts/hall_grain_png.py; and the building grain mottle/grit).
+// All are light/shadow overlays (white/black with alpha), so each fill
+// keeps its palette colour; patina and sedum are the coloured exceptions.
+// renderGovBuilding lays them over its own fills of the palette colours.
+// The structure is baked at 2 canvas px per world px so joints stay crisp
+// at full zoom; one repeat is 256 world px (power of two), larger than the
+// 240 px hall, so a hall never shows a repeat. Patterns are anchored to the
+// hall's corner, so courses line up with its cornices and sills.
+const HallTex = (() => {
+  const P = 256, RES = 2;
+  const pats = {};
+  let seed = 1;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const r = (a, b) => a + rnd()*(b - a);
+  const tones = {};    // to 1/100: few distinct styles, so the bake can batch by colour
+  const tone = (v) => { const k = Math.round(v*100); return tones[k] || (tones[k] = k > 0 ? `rgba(255,255,255,${k/100})` : `rgba(0,0,0,${-k/100})`); };
+
+  // Everything a maker draws is repeated at the 8 neighbouring offsets, so
+  // shapes crossing an edge wrap and the pattern tiles seamlessly.
+  function bake(name, draw) {
+    const c = document.createElement('canvas'); c.width = c.height = P*RES;
+    const g = c.getContext('2d');
+    let s0 = 7; for (const ch of name) s0 = (s0*31 + ch.charCodeAt(0)) % 99991;
+    const ops = [];
+    const rec = {
+      box: (x, y, w, h, v) => { if (v) ops.push(['b', x, y, w, h, tone(v)]); },
+      line: (x1, y1, x2, y2, v, w) => { if (v) ops.push(['l', x1, y1, x2, y2, tone(v), w]); },
+      col: (x, y, w, h, c) => ops.push(['b', x, y, w, h, c]),
+      dot: (x, y, rx, ry, c) => ops.push(['e', x, y, rx, ry, c]),
+      arc: (x, y, rr, a0, a1, c, w) => ops.push(['a', x, y, rr, a0, a1, c, w]),
+      grad: (x, y, w, h, stops, dir) => ops.push(['g', x, y, w, h, stops, dir]),
+    };
+    seed = s0 + 1;
+    draw(rec);
+    // each op's rough bounds, so a copy is drawn only where it lands on the tile
+    const bb = ops.map(o => o[0] === 'l' ? [Math.min(o[1], o[3]) - 1, Math.min(o[2], o[4]) - 1, Math.max(o[1], o[3]) + 1, Math.max(o[2], o[4]) + 1]
+      : o[0] === 'e' ? [o[1] - o[3], o[2] - o[4], o[1] + o[3], o[2] + o[4]]
+      : o[0] === 'a' ? [o[1] - o[3] - 1, o[2] - o[3] - 1, o[1] + o[3] + 1, o[2] + o[3] + 1]
+      : [o[1], o[2], o[1] + o[3], o[2] + o[4]]);
+    // Replay, batched: rectangles first, one path per colour; then the rest
+    // in order, runs of the same kind and style sharing one path.
+    const boxes = new Map(), rest = [];
+    ops.forEach((o, i) => { if (o[0] === 'b') { let a = boxes.get(o[5]); if (!a) boxes.set(o[5], a = []); a.push(i); } else rest.push(i); });
+    for (const dx of [-P, 0, P]) for (const dy of [-P, 0, P]) {
+      g.setTransform(RES, 0, 0, RES, dx*RES, dy*RES);
+      const vis = (i) => { const q = bb[i]; return !(q[2] + dx < 0 || q[0] + dx > P || q[3] + dy < 0 || q[1] + dy > P); };
+      for (const [st, idx] of boxes) {
+        let any = false; g.beginPath();
+        for (const i of idx) if (vis(i)) { const o = ops[i]; g.rect(o[1], o[2], o[3], o[4]); any = true; }
+        if (any) { g.fillStyle = st; g.fill(); }
+      }
+      let cur = null;
+      const flush = () => {
+        if (!cur) return;
+        if (cur.fill) { g.fillStyle = cur.st; g.fill(); } else { g.strokeStyle = cur.st; g.lineWidth = cur.w; g.stroke(); }
+        cur = null;
+      };
+      for (const i of rest) {
+        if (!vis(i)) continue;
+        const o = ops[i];
+        if (o[0] === 'g') {
+          flush();
+          const gr = o[6] === 'y' ? g.createLinearGradient(0, o[2], 0, o[2] + o[4]) : g.createLinearGradient(o[1], 0, o[1] + o[3], 0);
+          for (const [k, v] of o[5]) gr.addColorStop(k, tone(v || 0.0001));
+          g.fillStyle = gr; g.fillRect(o[1], o[2], o[3], o[4]);
+          continue;
+        }
+        const fill = o[0] === 'e', st = o[0] === 'a' ? o[6] : o[5], w = (o[0] === 'l' ? o[6] : o[7]) || 0.5;
+        const key = (fill ? 'f' : 's' + w) + st;
+        if (!cur || cur.key !== key) { flush(); g.beginPath(); cur = { key, fill, st, w }; }
+        if (o[0] === 'l') { g.moveTo(o[1], o[2]); g.lineTo(o[3], o[4]); }
+        else if (fill) { g.moveTo(o[1] + o[3], o[2]); g.ellipse(o[1], o[2], o[3], o[4], 0, 0, Math.PI*2); }
+        else { g.moveTo(o[1] + o[3]*Math.cos(o[4]), o[2] + o[3]*Math.sin(o[4])); g.arc(o[1], o[2], o[3], o[4], o[5]); }
+      }
+      flush();
+    }
+    return c;
+  }
+
+  // Lengths that add up to exactly P (so a course wraps), each in [lo, hi].
+  function run(lo, hi, pick) {
+    const out = []; let s = 0;
+    while (P - s > hi) { const L = pick ? pick(out.length) : r(lo, hi); out.push(L); s += L; }
+    const rest = P - s;
+    if (rest < lo && out.length) out[out.length - 1] += rest; else out.push(rest);
+    return out;
+  }
+  // Coursed masonry / tiles: courses of height ch (or list), units of the
+  // lengths from run(); each unit gets a tone, a lit top edge, a shadowed
+  // bed joint and head joint; mortar light (brick) or dark (stone).
+  function courses(d, o) {
+    const hs = o.heights || run(o.ch, o.ch, () => o.ch);
+    let y = 0;
+    hs.forEach((ch, ci) => {
+      const units = run(o.lmin, o.lmax, o.pick ? (i) => o.pick(i, ci) : null);
+      let x = o.stagger ? (ci % 2 ? -o.stagger : 0) : -r(0, o.lmax);
+      units.forEach((L, i) => {
+        d.box(x, y, L, ch, (o.unitTone ? o.unitTone(i, ci) : 0) + r(-o.tv, o.tv));
+        if (o.hi) d.box(x, y, L, Math.min(0.6, ch*0.2), o.hi);
+        if (o.lo) d.box(x, y + ch - Math.min(0.8, ch*0.25), L, Math.min(0.8, ch*0.25), o.lo);
+        if (o.speck) for (let k = 0; k < o.speck; k++) d.box(x + r(0, L - 0.6), y + r(0, ch - 0.6), 0.6, 0.6, r(-0.12, 0.08));
+        if (o.unit) o.unit(d, x, y, L, ch, i, ci);
+        d.line(x, y, x, y + ch, o.head !== undefined ? o.head : o.joint, o.jw);
+        x += L;
+      });
+      d.line(-1, y + ch, P + 1, y + ch, o.joint, o.jw);
+      y += ch;
+    });
+  }
+
+  const MAKERS = {
+    // dressed limestone: long blocks, fine joints, sunlit arrises
+    ashlar: (d) => courses(d, { ch: 8, lmin: 14, lmax: 26, tv: 0.045, hi: 0.1, joint: -0.24, jw: 0.55, speck: 2 }),
+    ashlarFine: (d) => courses(d, { ch: 6.4, lmin: 10, lmax: 20, tv: 0.035, hi: 0.08, joint: -0.17, jw: 0.45, speck: 1 }),
+    // rough-coursed rubble: uneven courses and blocks, deep joints, soot
+    rubble: (d) => {
+      courses(d, { heights: run(4.5, 8.5), lmin: 5, lmax: 13, tv: 0.11, hi: 0.12, lo: -0.08, joint: -0.36, jw: 0.7, speck: 3 });
+      for (let k = 0; k < 26; k++) { const x = r(0, P), y = r(0, P); d.grad(x, y, r(1.5, 4), r(10, 30), [[0, -0.1], [1, 0]], 'y'); }
+    },
+    // stone courses with bands of thin brick (Byzantine banding)
+    ablaq: (d) => {
+      const hs = []; for (let i = 0; i < 16; i++) hs.push(6.4, 3.2, 3.2, 3.2);   // 16 x 16 = 256
+      courses(d, { heights: hs, lmin: 4, lmax: 18, tv: 0.06, hi: 0.08, joint: 0.22, jw: 0.5,
+        pick: (i, ci) => ci % 4 ? r(4, 6) : r(12, 18), unitTone: (i, ci) => ci % 4 ? -0.1 : 0.04 });
+    },
+    // Flemish bond: stretcher, header, stretcher...; dark burnt headers; lime mortar
+    brick: (d) => courses(d, { ch: 3.2, lmin: 2.6, lmax: 6, tv: 0.12, hi: 0.06, joint: 0.3, jw: 0.5, stagger: 4.2,
+      pick: (i) => i % 2 ? 2.8 : 5.6, unitTone: (i) => i % 2 ? -0.16 : 0 }),
+    // Roman brick: long thin units, raked (shadowed) beds, flush heads
+    roman: (d) => courses(d, { ch: 2.56, lmin: 10, lmax: 16, tv: 0.1, joint: -0.3, head: -0.1, jw: 0.45, speck: 1 }),
+    // board-formed concrete: plank imprints, their grain, tie holes in a grid
+    boardform: (d) => {
+      for (let y = 0; y < P; y += 4) {
+        d.box(0, y, P, 4, r(-0.05, 0.05));
+        d.line(-1, y, P + 1, y, -0.15, 0.4);
+        for (let k = 0; k < 6; k++) { const x = r(0, P), yy = y + r(0.6, 3.4); d.line(x, yy, x + r(8, 40), yy, r(-0.06, 0.05), 0.3); }
+      }
+      for (let x = 0; x < P; x += 64) d.line(x, -1, x, P + 1, -0.12, 0.5);
+      for (let y = 8; y < P; y += 16) for (let x = 8; x < P; x += 16) { d.dot(x, y + 0.3, 0.8, 0.8, tone(0.2)); d.dot(x, y, 0.75, 0.75, tone(-0.45)); }
+    },
+    // precast panels
+    panels: (d) => {
+      for (let y = 0; y < P; y += 16) for (let x = 0; x < P; x += 32) {
+        d.box(x, y, 32, 16, r(-0.035, 0.035));
+        d.box(x, y, 32, 0.5, 0.12); d.line(x, y, x, y + 16, -0.2, 0.5); d.line(x, y + 16, x + 32, y + 16, -0.2, 0.5);
+      }
+    },
+    // vertical planks: gaps, a lit edge, the odd knot
+    planksV: (d) => {
+      for (let x = 0; x < P; x += 4) {
+        d.box(x, 0, 4, P, r(-0.09, 0.07));
+        d.line(x + 0.3, -1, x + 0.3, P + 1, -0.45, 0.6);
+        d.line(x + 0.9, -1, x + 0.9, P + 1, 0.08, 0.4);
+        for (let k = 0; k < 3; k++) { const y = r(0, P); d.dot(x + r(1.5, 3), y, 0.6, 1.1, tone(-0.3)); }
+        for (let y = 0; y < P; y += 64) d.box(x, y + r(0, 60), 4, 0.4, -0.25);   // butt joints
+      }
+    },
+    // lapped weatherboard: each board in shadow under the one above
+    clapboard: (d) => {
+      for (let y = 0; y < P; y += 4) {
+        d.grad(0, y, P, 4, [[0, 0.06], [0.75, 0], [1, -0.22]], 'y');
+        d.line(-1, y + 3.9, P + 1, y + 3.9, -0.35, 0.5);
+      }
+    },
+    // rectangular slates, staggered half a slate
+    slate: (d) => courses(d, { ch: 4, lmin: 8, lmax: 8, stagger: 4, pick: () => 8, tv: 0.12, hi: 0.05, lo: -0.12, joint: -0.38, head: -0.22, jw: 0.5,
+      unitTone: () => rnd() < 0.06 ? 0.14 : 0 }),
+    // fish-scale slates
+    fishscale: (d) => {
+      for (let row = 0, y = 0; y < P; row++, y += 4) {
+        const off = row % 2 ? 3.2 : 0;
+        for (let x = -off; x < P; x += 6.4) {
+          d.dot(x + 3.2, y + 2.4, 3.2, 3, tone(r(-0.1, 0.1)));
+          d.arc(x + 3.2, y + 2.2, 3.2, 0.15, Math.PI - 0.15, tone(-0.38), 0.55);
+          d.arc(x + 3.2, y + 1.6, 2.2, Math.PI + 0.5, Math.PI*2 - 0.5, tone(0.1), 0.4);
+        }
+      }
+    },
+    // clay barrel (Spanish/Roman) tiles: rounded caps between hollow pans
+    barrel: (d) => {
+      for (let x = 0; x < P; x += 6.4) {
+        d.grad(x, 0, 3.2, P, [[0, -0.18], [0.5, -0.04], [1, -0.16]]);                 // pan
+        d.grad(x + 3.2, 0, 3.2, P, [[0, 0.04], [0.35, 0.2], [0.75, -0.05], [1, -0.32]]); // cap
+      }
+      for (let y = 0; y < P; y += 10.24) for (let x = 0; x < P; x += 6.4) {
+        const v = r(-0.08, 0.08), yy = y + r(-0.6, 0.6);
+        d.box(x, yy, 6.4, 10.24, v);
+        d.arc(x + 4.8, yy + 0.3, 1.7, 0, Math.PI, tone(-0.35), 0.6);
+      }
+    },
+    // glazed barrel tiles: the same with a hard glint down each cap
+    glazed: (d) => {
+      MAKERS.barrel(d);
+      for (let x = 0; x < P; x += 6.4) d.line(x + 4.3, -1, x + 4.3, P + 1, 0.22, 0.45);
+    },
+    // handmade plain tiles: small, uneven, strongly varied
+    plain: (d) => courses(d, { ch: 3.2, lmin: 4, lmax: 4, stagger: 2, pick: () => 4, tv: 0.17, lo: -0.15, joint: -0.32, head: -0.2, jw: 0.4,
+      unit: (dd, x, y, L, ch) => { if (rnd() < 0.05) dd.dot(x + L/2, y + ch/2, 1.2, 0.9, 'rgba(120,150,70,0.35)'); } }),
+    // split wood shingles with rounded butts (stave church)
+    shingle: (d) => {
+      for (let row = 0, y = 0; y < P; row++, y += 4) {
+        const ws = run(3.2, 5);
+        let x = row % 2 ? -2 : 0;
+        for (const w of ws) {
+          d.box(x, y, w, 4, r(-0.12, 0.08));
+          d.line(x, y, x, y + 4, -0.4, 0.45);
+          d.arc(x + w/2, y + 4 - w/2, w/2, 0.1, Math.PI - 0.1, tone(-0.4), 0.55);
+          x += w;
+        }
+      }
+    },
+    // three-tab asphalt shingles
+    tab3: (d) => {
+      for (let row = 0, y = 0; y < P; row++, y += 5.12) {
+        d.box(0, y, P, 5.12, r(-0.04, 0.04));
+        d.line(-1, y + 5.1, P + 1, y + 5.1, -0.3, 0.55);
+        for (let x = row % 2 ? 6.4 : 0; x < P; x += 12.8) { d.line(x, y + 1.4, x, y + 5.1, -0.3, 0.5); d.box(x, y, 12.8, 5.12, r(-0.05, 0.05)); }
+      }
+    },
+    // standing-seam metal: a lit and a shaded edge to each seam
+    seam: (d) => {
+      for (let x = 0; x < P; x += 8) {
+        d.box(x, 0, 8, P, r(-0.03, 0.03));
+        d.line(x, -1, x, P + 1, 0.24, 0.5);
+        d.line(x + 0.7, -1, x + 0.7, P + 1, -0.22, 0.5);
+      }
+    },
+    // lead rolls (spires, lead roofs) with white oxide bloom
+    lead: (d) => {
+      for (let x = 0; x < P; x += 6.4) { d.line(x, -1, x, P + 1, 0.18, 0.7); d.line(x + 0.8, -1, x + 0.8, P + 1, -0.25, 0.5); }
+      for (let k = 0; k < 40; k++) d.dot(r(0, P), r(0, P), r(2, 6), r(2, 6), tone(r(0.03, 0.08)));
+    },
+    // green roof: sedum in flower (coloured)
+    sedum: (d) => {
+      const C = ['rgba(150,200,90,0.45)', 'rgba(40,80,30,0.4)', 'rgba(230,220,110,0.5)', 'rgba(180,90,70,0.35)', 'rgba(200,235,150,0.4)'];
+      for (let k = 0; k < 3200; k++) { const c = rnd() < 0.82 ? C[rnd() < 0.5 ? 0 : 1] : C[2 + Math.floor(rnd()*3)]; d.dot(r(0, P), r(0, P), r(0.4, 1.1), r(0.4, 1.1), c); }
+    },
+    // photovoltaic modules: cell grid, bus bars, module frames
+    solar: (d) => {
+      for (let x = 0; x < P; x += 4) d.line(x, -1, x, P + 1, 0.12, 0.3);
+      for (let y = 0; y < P; y += 4) d.line(-1, y, P + 1, y, 0.12, 0.3);
+      for (let x = 1.33; x < P; x += 4) d.line(x, -1, x, P + 1, -0.12, 0.2);
+      for (let x = 0; x < P; x += 16) d.line(x, -1, x, P + 1, 0.4, 0.7);
+      for (let y = 0; y < P; y += 24 + 8) d.line(-1, y, P + 1, y, 0.4, 0.7);
+      for (let x = 0; x < P; x += 16) d.grad(x, 0, 16, P, [[0, 0.06], [0.4, 0], [1, -0.05]]);
+    },
+    // gold mosaic: tesserae catching the light unevenly
+    tesserae: (d) => {
+      for (let y = 0; y < P; y += 2) for (let x = (y/2) % 2 ? 1 : 0; x < P; x += 2) {
+        const v = rnd(); d.box(x, y, 1.75, 1.75, v < 0.12 ? 0.32 : v < 0.25 ? -0.2 : r(-0.08, 0.1));
+      }
+    },
+    // verdigris copper (coloured): ribs, pale bloom, dark run-off streaks
+    patina: (d) => {
+      for (let k = 0; k < 70; k++) d.dot(r(0, P), r(0, P), r(4, 12), r(3, 9), `rgba(205,242,222,${r(0.06, 0.16)})`);
+      for (let k = 0; k < 50; k++) { const x = r(0, P), y = r(0, P); d.grad(x, y, r(0.8, 2.2), r(12, 40), [[0, -0.18], [1, 0]], 'y'); }
+      for (let k = 0; k < 30; k++) d.dot(r(0, P), r(0, P), r(0.8, 2.2), r(0.8, 2.2), `rgba(130,80,46,${r(0.12, 0.25)})`);
+      for (let x = 0; x < P; x += 8) { d.line(x, -1, x, P + 1, 0.2, 0.5); d.line(x + 0.6, -1, x + 0.6, P + 1, -0.18, 0.45); }
+    },
+    // fine stucco: sand grains and trowel swirls
+    stucco: (d) => {
+      for (let k = 0; k < 2600; k++) d.box(r(0, P), r(0, P), 0.5, 0.5, r(-0.14, 0.12));
+      for (let k = 0; k < 160; k++) d.arc(r(0, P), r(0, P), r(1.5, 4), r(0, 6), r(0, 6) + r(1, 2.5), tone(r(-0.04, 0.04)), r(0.6, 1.4));
+    },
+  };
+
+  // Photo grains: the hall's own (loaded here) and the shared building grain.
+  const photo = {};
+  function photoPat(name) {
+    if (name === 'mottle' || name === 'grit' || name === 'brushed') {
+      return (typeof GroundTextures !== 'undefined' && GroundTextures.bldGrain) ? GroundTextures.bldGrain[name] : null;
+    }
+    if (!(name in photo)) {
+      photo[name] = null;
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = c.height = 256;
+        c.getContext('2d').drawImage(img, 0, 0, 256, 256);
+        photo[name] = c.getContext('2d').createPattern(c, 'repeat');
+      };
+      img.src = `img/hall_grain_${name}.png`;
+    }
+    return photo[name];
+  }
+  // Baked lazily, one pattern per idle slot, so the first frame a hall is
+  // drawn never stalls: until its pattern is ready the fill stays flat.
+  const queue = [];
+  let busy = false;
+  const later = (fn) => (typeof requestIdleCallback === 'function') ? requestIdleCallback(fn, { timeout: 200 }) : setTimeout(fn, 0);
+  function pump() {
+    busy = false;
+    const name = queue.shift(); if (!name) return;
+    const c = bake(name, MAKERS[name]);
+    pats[name] = c.getContext('2d').createPattern(c, 'repeat');
+    if (queue.length) { busy = true; later(pump); }
+  }
+  function structPattern(name) {
+    if (pats[name] === undefined) { pats[name] = null; queue.push(name); if (!busy) { busy = true; later(pump); } }
+    return pats[name];
+  }
+  const get = (name) => MAKERS[name] ? structPattern(name) : photoPat(name);
+
+  return { get, RES, isStruct: (n) => !!MAKERS[n] };
+})();
+
+// Per style: [pattern, alpha] layers for walls, roofs, dome and trim.
+const HALL_TEX_STYLE = {
+  beaux:     { wall: [['stone', 0.8], ['ashlar', 1]],      roof: [['slate', 0.9]],                    dome: [['patina', 1]],                   trim: [['stone', 0.5]] },
+  gothic:    { wall: [['stone', 1], ['rubble', 1]],        roof: [['slate', 1]],                      dome: [['slate', 1]],                    trim: [['stone', 0.7], ['ashlarFine', 0.6]] },
+  deco:      { wall: [['stone', 0.6], ['ashlarFine', 0.9]], roof: [['grit', 0.6]],                    dome: [['brushed', 1], ['seam', 0.6]], trim: [['stone', 0.4]] },
+  byzantine: { wall: [['stone', 0.7], ['ablaq', 1]],       roof: [['barrel', 0.9]],                   dome: [['tesserae', 1]],                 trim: [['stone', 0.5]] },
+  modern:    { wall: [['mottle', 0.6], ['panels', 1]],     roof: [['grit', 0.6]],                     dome: [['brushed', 1], ['seam', 0.5]], trim: [] },
+  colonial:  { wall: [['mottle', 0.6], ['brick', 1]],      roof: [['slate', 0.9]],                    dome: [['wood_h', 0.6], ['clapboard', 0.8]], trim: [['wood_h', 0.35]] },
+  chateau:   { wall: [['stone', 0.7], ['ashlarFine', 1]],  roof: [['fishscale', 1]],                  dome: [['fishscale', 1]],                trim: [['stone', 0.5]] },
+  pagoda:    { wall: [['plaster', 0.45], ['stucco', 0.5]],  roof: [['glazed', 1]],                     dome: [['glazed', 1]],                   trim: [['wood_v', 0.3]] },
+  mission:   { wall: [['plaster', 0.6], ['stucco', 0.7]],  roof: [['barrel', 1]],                     dome: [['barrel', 1]],                   trim: [['plaster', 0.4]] },
+  solarpunk: { wall: [['wood_v', 1], ['planksV', 0.8]],    roof: [['sedum', 1]],                      dome: [['solar', 1]],                    trim: [['mottle', 0.4]] },
+  tudor:     { wall: [['plaster', 0.5], ['stucco', 0.6]],  roof: [['plain', 1]],                      dome: [['lead', 1]],                     trim: [['wood_v', 0.9]] },
+  brutalist: { wall: [['mottle', 0.45], ['boardform', 1]], roof: [['mottle', 0.4], ['boardform', 0.5]], dome: [['mottle', 0.4], ['boardform', 0.6]], trim: [['mottle', 0.35]] },
+  stave:     { wall: [['wood_v', 1], ['planksV', 1]],    roof: [['wood_v', 0.8], ['shingle', 1]],   dome: [['wood_v', 0.8], ['shingle', 1]], trim: [['wood_v', 0.8]] },
+  prairie:   { wall: [['mottle', 0.5], ['roman', 1]],      roof: [['grit', 0.9], ['tab3', 0.8]],      dome: [['grit', 0.9], ['tab3', 0.8]],   trim: [['stone', 0.5]] },
+  atomic:    { wall: [['plaster', 0.35], ['stucco', 0.35]], roof: [['seam', 0.9]],                    dome: [['brushed', 0.8]],                trim: [] },
+};
+
 // City Hall material palettes, keyed by CityInfo hall style.
 const GOV_HALL_PALETTES = {
   beaux:     { stone: '#d8d0bc', stoneSh: '#b9af98', trim: '#f1ebdb', slate: '#3e4652', slateHi: '#4c5562', dome: '#5f9e8a', domeSh: '#3f7464', domeHi: '#8cc4b0', gold: '#d4af37', glass: '#6a88a4' },
@@ -5507,9 +5835,16 @@ function renderGovBuilding(e, px, py, t) {
     const evening = on && hr >= 17 && hr < 22;
     const nightLit = on && dark > 0.3;
     const X = (v) => px + v*u, Y = (v) => py + v*u;
-    const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), w*u, h*u); };
-    const poly = (pts, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(X(pts[0][0]), Y(pts[0][1])); for (let i = 1; i < pts.length; i++) ctx.lineTo(X(pts[i][0]), Y(pts[i][1])); ctx.closePath(); ctx.fill(); };
-    const dot = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(x), Y(y), r*u, 0, Math.PI*2); ctx.fill(); };
+    const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(X(x), Y(y), w*u, h*u); if (texOn && w >= 4 && h >= 3 && texBy[c]) texOver(c, X(x), Y(y), w*u, h*u); };
+    const poly = (pts, c) => {
+      ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(X(pts[0][0]), Y(pts[0][1])); for (let i = 1; i < pts.length; i++) ctx.lineTo(X(pts[i][0]), Y(pts[i][1])); ctx.closePath(); ctx.fill();
+      if (texOn && texBy[c]) {
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (const [x, y] of pts) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 - x0 >= 4 && y1 - y0 >= 3) texOver(c);
+      }
+    };
+    const dot = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(X(x), Y(y), r*u, 0, Math.PI*2); ctx.fill(); if (texOn && r >= 3 && texBy[c]) texOver(c); };
     const ln = (x1, y1, x2, y2, c, w) => { ctx.strokeStyle = c; ctx.lineWidth = (w || 1)*u; ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); };
     const hash = (k) => { const v = Math.sin((e.col||0)*12.9898 + (e.row||0)*78.233 + k*37.719)*43758.5453; return v - Math.floor(v); };
 
@@ -5521,6 +5856,33 @@ function renderGovBuilding(e, px, py, t) {
     const STONE = HP.stone, STONE_SH = HP.stoneSh, TRIM = HP.trim, SLATE = HP.slate, SLATE_HI = HP.slateHi;
     const COPPER = HP.dome, COPPER_SH = HP.domeSh, GOLD = HP.gold;
     const glassDay = HP.glass, glassDark = '#161c24';
+    // Surface textures (HallTex): R / poly / dot fills in this palette's
+    // wall, roof, trim and dome colours get the style's materials laid over
+    // them (big enough fills only), the drawn ones anchored to the hall's
+    // corner. Faded at night like the building grain; off when zoomed out
+    // past where they show, with image fills off, and for ghosted drawing.
+    const TEX = HALL_TEX_STYLE[hallStyle];
+    const texOn = !!TEX && (typeof _imageFillsOff === 'undefined' || !_imageFillsOff)
+      && Camera.zoom >= 0.45 && ctx.globalAlpha >= 0.9 && ctx.globalCompositeOperation === 'source-over';
+    const texBy = {};
+    if (texOn) {
+      const fade = 1 - dark*0.6;
+      const m = new DOMMatrix([u/HallTex.RES, 0, 0, u/HallTex.RES, px, py]);
+      const add = (cols, layers) => { for (const c of cols) if (!texBy[c] && layers.length) texBy[c] = layers.map(([n, a]) => [n, a*fade]); };
+      add([STONE, STONE_SH], TEX.wall); add([SLATE, SLATE_HI], TEX.roof); add([TRIM], TEX.trim); add([COPPER, COPPER_SH], TEX.dome);
+      for (const L of [TEX.wall, TEX.roof, TEX.trim, TEX.dome]) for (const [n] of L) { const p = HallTex.isStruct(n) && HallTex.get(n); if (p) p.setTransform(m); }
+    }
+    // Lay colour c's texture layers over the fill just made: the given
+    // rect, or else the current path.
+    function texOver(c, rx, ry, rw, rh) {
+      const fs = ctx.fillStyle, ga = ctx.globalAlpha;
+      for (const [n, a] of texBy[c]) {
+        const p = HallTex.get(n); if (!p) continue;
+        ctx.globalAlpha = ga*a; ctx.fillStyle = p;
+        if (rw !== undefined) ctx.fillRect(rx, ry, rw, rh); else ctx.fill();
+      }
+      ctx.globalAlpha = ga; ctx.fillStyle = fs;
+    }
     // Waving flag: outline from (x0,y0) out `fw` units, `fh` tall, filled
     // with the city's flag design. The top and bottom edges are the same
     // curve `fh` apart, so the cloth is the flat flag sheared vertically:
@@ -5928,9 +6290,11 @@ function renderGovBuilding(e, px, py, t) {
           R(wx0 + 12 + k*18, 172, 12, 34, (office && hv > 0.2) || (evening && hv > 0.7) ? 'rgba(255,220,160,0.8)' : (dark > 0.4 ? glassDark : '#3a3e44'));
         }
         R(wx0 - 4, 98, ww + 8, 62, STONE);
-        ctx.strokeStyle = 'rgba(70,66,60,0.3)'; ctx.lineWidth = 0.5*u; ctx.beginPath();
-        for (let y = 101; y < 160; y += 4) { ctx.moveTo(X(wx0 - 4), Y(y)); ctx.lineTo(X(wx0 + ww + 4), Y(y)); }
-        ctx.stroke();
+        if (!texOn) {      // board marks (the texture draws its own)
+          ctx.strokeStyle = 'rgba(70,66,60,0.3)'; ctx.lineWidth = 0.5*u; ctx.beginPath();
+          for (let y = 101; y < 160; y += 4) { ctx.moveTo(X(wx0 - 4), Y(y)); ctx.lineTo(X(wx0 + ww + 4), Y(y)); }
+          ctx.stroke();
+        }
         for (const [ry, rh] of [[104, 22], [132, 22]]) {
           for (let k = 0; k < 9; k++) {
             const fx = wx0 - 2 + k*8.4, hv = hash(sideKey*40 + ry + k);
@@ -5947,15 +6311,19 @@ function renderGovBuilding(e, px, py, t) {
         || hallStyle === 'tudor' || hallStyle === 'stave' || hallStyle === 'prairie' || hallStyle === 'atomic';
       if (hallStyle === 'colonial') {
         // brick coursing and white quoins
-        ctx.strokeStyle = 'rgba(60,20,10,0.28)'; ctx.lineWidth = 0.5*u; ctx.beginPath();
-        for (let y = 101; y < 206; y += 3) { ctx.moveTo(X(wx0), Y(y)); ctx.lineTo(X(wx0 + ww), Y(y)); }
-        ctx.stroke();
+        if (!texOn) {
+          ctx.strokeStyle = 'rgba(60,20,10,0.28)'; ctx.lineWidth = 0.5*u; ctx.beginPath();
+          for (let y = 101; y < 206; y += 3) { ctx.moveTo(X(wx0), Y(y)); ctx.lineTo(X(wx0 + ww), Y(y)); }
+          ctx.stroke();
+        }
         for (let y = 100; y < 204; y += 8) for (const qx of [wx0, wx0 + ww - (y % 16 ? 5 : 7)]) R(qx, y, y % 16 ? 5 : 7, 4, TRIM);
       } else if (hallStyle === 'solarpunk') {
         // vertical timber cladding, vines trailing from the green roof
-        ctx.strokeStyle = 'rgba(90,60,30,0.3)'; ctx.lineWidth = 0.6*u; ctx.beginPath();
-        for (let x = wx0 + 3; x < wx0 + ww; x += 4) { ctx.moveTo(X(x), Y(98)); ctx.lineTo(X(x), Y(206)); }
-        ctx.stroke();
+        if (!texOn) {
+          ctx.strokeStyle = 'rgba(90,60,30,0.3)'; ctx.lineWidth = 0.6*u; ctx.beginPath();
+          for (let x = wx0 + 3; x < wx0 + ww; x += 4) { ctx.moveTo(X(x), Y(98)); ctx.lineTo(X(x), Y(206)); }
+          ctx.stroke();
+        }
         for (let k = 0; k < 5; k++) {
           const vx = wx0 + 5 + hash(70 + sideKey*7 + k)*(ww - 10), vl = 12 + hash(80 + sideKey*7 + k)*26;
           for (let y = 99; y < 99 + vl; y += 3) dot(vx + Math.sin(y*0.4 + k)*1.4, y, 1.3, y % 6 ? '#4a8a3a' : '#3a6e2e');
@@ -5970,15 +6338,19 @@ function renderGovBuilding(e, px, py, t) {
         }
       } else if (hallStyle === 'stave') {
         // vertical tarred planks
-        ctx.strokeStyle = 'rgba(20,10,4,0.45)'; ctx.lineWidth = 0.6*u; ctx.beginPath();
-        for (let x = wx0 + 3; x < wx0 + ww; x += 3.5) { ctx.moveTo(X(x), Y(98)); ctx.lineTo(X(x), Y(206)); }
-        ctx.stroke();
+        if (!texOn) {
+          ctx.strokeStyle = 'rgba(20,10,4,0.45)'; ctx.lineWidth = 0.6*u; ctx.beginPath();
+          for (let x = wx0 + 3; x < wx0 + ww; x += 3.5) { ctx.moveTo(X(x), Y(98)); ctx.lineTo(X(x), Y(206)); }
+          ctx.stroke();
+        }
         R(wx0, 202, ww, 4, STONE_SH);                                            // sill beam
       } else if (hallStyle === 'prairie') {
         // raked horizontal brick joints and a continuous limestone sill band
-        ctx.strokeStyle = 'rgba(70,30,16,0.3)'; ctx.lineWidth = 0.5*u; ctx.beginPath();
-        for (let y = 100; y < 206; y += 2.6) { ctx.moveTo(X(wx0), Y(y)); ctx.lineTo(X(wx0 + ww), Y(y)); }
-        ctx.stroke();
+        if (!texOn) {
+          ctx.strokeStyle = 'rgba(70,30,16,0.3)'; ctx.lineWidth = 0.5*u; ctx.beginPath();
+          for (let y = 100; y < 206; y += 2.6) { ctx.moveTo(X(wx0), Y(y)); ctx.lineTo(X(wx0 + ww), Y(y)); }
+          ctx.stroke();
+        }
         R(wx0 - 2, 143, ww + 4, 2.5, TRIM);
         R(wx0 - 2, 197, ww + 4, 2.5, TRIM);
         for (const ux of [wx0 + 2, wx0 + ww - 10]) { R(ux, 210, 8, 4, TRIM); dot(ux + 4, 208, 3.5, '#4a7a3a'); }   // planter urns
