@@ -1692,7 +1692,7 @@ const TutorialSystem = (() => {
 
   function _findEligible() {
     for (const seq of SEQUENCES) {
-      if (_isSeqDone(seq) || seq === activeSeq || parked.some(p => p.seq === seq)) continue;
+      if (_isSeqDone(seq) || seq === activeSeq || _quiet.has(seq.id) || parked.some(p => p.seq === seq)) continue;
       if (seq.trigger()) return seq;
     }
     return null;
@@ -2161,7 +2161,32 @@ const TutorialSystem = (() => {
     const _scn = typeof ScenarioSystem !== 'undefined' && ScenarioSystem.active();
 
     if (forcedView) return; // reviewing a past note — don't advance the real flow underneath it
-    if (skipped) return;
+    // Cards off: follow along without showing anything, so the notes fill in.
+    if (skipped) { if (!_scn) _trackSilently(); return; }
+    // Cards just turned back on: catch up first, so what the player went
+    // through with cards off doesn't all pop up now, one after another.
+    if (_catchUp) {
+      _catchUp = false;
+      if (!_scn) {
+        _trackSilently();
+        // The card each unfinished sequence is waiting on was reached with
+        // cards off and is already in the notes: keep it quiet, and pop up
+        // from the next card on.
+        for (const seq of SEQUENCES) {
+          const i = furthestStep.get(seq.id) ?? -1;
+          if (i >= 0 && !_isSeqDone(seq)) _quiet.add(seq.id);
+        }
+      }
+    }
+    // A quiet sequence rejoins once the card it was held on is done; _begin
+    // then starts it at the card after.
+    for (const id of _quiet) {
+      const seq = SEQUENCES.find(q => q.id === id);
+      const st = seq && seq.steps[furthestStep.get(id) ?? -1];
+      let done = !st;
+      if (!done) { try { done = !!st.check && !!st.check(); } catch (_e) {} }
+      if (done) _quiet.delete(id);
+    }
 
     if (!activeSeq) {
       const next = _scn ? null : _findEligible();
@@ -2206,6 +2231,37 @@ const TutorialSystem = (() => {
     if (step && step.check && step.check()) { try { SFX.step?.(); } catch (_e) {} _advance(); }
   }
 
+  // ── Cards off ─────────────────────────────────────────────────────────
+  // Walks every sequence the way the player would with cards on, minus the
+  // cards: a sequence starts when its trigger fires, a card that waits on
+  // something (check) is passed once that is done, and a card that only has
+  // to be read (Continue, Yes / No) is passed straight away. Each card
+  // reached goes into furthestStep, which is what the Compendium's Tutorial
+  // Notes list. No onEnter, camera jumps or sounds.
+  let _catchUp = false;
+  const _quiet = new Set();   // sequences held silent on a card reached with cards off
+  function _trackSilently() {
+    for (const seq of SEQUENCES) {
+      let i = furthestStep.get(seq.id) ?? -1;
+      if (i < 0) {
+        let on = false;
+        try { on = !!seq.trigger(); } catch (_e) {}
+        if (!on) continue;
+        i = 0;
+        furthestStep.set(seq.id, 0);
+      }
+      for (;;) {
+        const st = seq.steps[i];
+        let passed = !!(st.manual || st.choice || !st.check);
+        if (!passed) { try { passed = !!st.check(); } catch (_e) {} }
+        if (!passed) break;
+        if (i >= seq.steps.length - 1) { completed.add(seq.id); break; }
+        i++;
+        furthestStep.set(seq.id, i);
+      }
+    }
+  }
+
   function skip() {
     skipped = true;
     activeSeq = null;
@@ -2231,12 +2287,13 @@ const TutorialSystem = (() => {
   }
   function sequenceStep(seq) { return (!skipped && activeSeq === seq) ? stepIdx : -1; }
 
-  // Options-menu toggle. Turning tutorials back on re-triggers eligibility
-  // checks from scratch next tick — any not-yet-finished sequence (including
-  // a partially-seen 'intro') resumes right after its furthest-shown step.
+  // Options-menu toggle. Turning tutorials back on catches up silently on
+  // the next tick (see _trackSilently), then any not-yet-finished sequence
+  // resumes from where the player actually is.
   function setEnabled(v) {
+    const wasOff = skipped;
     skipped = !v;
-    if (!skipped) { activeSeq = null; stepIdx = 0; parked = []; }
+    if (!skipped) { activeSeq = null; stepIdx = 0; parked = []; _catchUp = wasOff; }
     _render();
   }
 
@@ -2389,6 +2446,7 @@ const TutorialSystem = (() => {
       // a scan that takes 8+ in-game hours finished).
       dismissed: !!(activeSeq && _dismissedStep && _dismissedStep === activeSeq.steps[stepIdx]),
       parked: parked.map(p => [p.seq.id, p.stepIdx]),
+      quiet: [..._quiet],
     };
   }
 
@@ -2411,12 +2469,15 @@ const TutorialSystem = (() => {
       _dismissedStep = null;
     }
     parked = (d.parked || []).map(([id, i]) => ({ seq: SEQUENCES.find(s => s.id === id), stepIdx: fix(id, i | 0) })).filter(p => p.seq);
+    _quiet.clear(); (d.quiet || []).forEach(id => _quiet.add(id));
     _render(); // reflect the resumed step immediately rather than waiting on the next check-passing tick
   }
 
   function reset() {
     completed = new Set();
     skipped   = false;
+    _catchUp  = false;
+    _quiet.clear();
     furthestStep.clear();
     activeSeq = null;
     stepIdx   = 0;

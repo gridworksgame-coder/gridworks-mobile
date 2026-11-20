@@ -1676,11 +1676,14 @@ RenderSystem.renderIcon = function (iconCanvas, type) {
       ctx = savedCtx;
       DayNight.hour = savedHour; DayNight.darkness = savedDark; Camera.zoom = savedZoom;
     }
-    // Blank or near-blank result → fall back to the hand-drawn icon. So does
-    // a canvas that can't be read back (the game opened from its folder,
-    // file://, taints any canvas a sprite image is drawn on).
+    // Blank or near-blank result → fall back to the hand-drawn icon.
+    // A canvas that can't be read back (the game opened from its folder,
+    // file://, taints any canvas a sprite image is drawn on) is used as it
+    // is, uncropped: falling back left every building without hand-drawn
+    // art (the helium plants, the whole rare earth chain) with a blank icon.
+    // It can't be encoded either, so it isn't carried over the reload.
     let d;
-    try { d = off.getContext('2d').getImageData(0, 0, SIZE, SIZE).data; } catch (_e) { return null; }
+    try { d = off.getContext('2d').getImageData(0, 0, SIZE, SIZE).data; } catch (_e) { off._noStore = true; return off; }
     let alpha = 0, x0 = SIZE, y0 = SIZE, x1 = -1, y1 = -1;
     for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
       const a = d[(y * SIZE + x) * 4 + 3];
@@ -1777,7 +1780,7 @@ RenderSystem.renderIcon = function (iconCanvas, type) {
     storing = true;
     try {
       const n = built;
-      await Promise.all([...cache].filter(([type]) => !blobs.has(type)).map(([type, th]) => !th ? blobs.set(type, null)
+      await Promise.all([...cache].filter(([type, th]) => !blobs.has(type) && !(th && th._noStore)).map(([type, th]) => !th ? blobs.set(type, null)
         : th instanceof HTMLCanvasElement ? new Promise(res => th.toBlob(b => { blobs.set(type, b); res(); }, 'image/png')) : null));
       const items = {};
       for (const [type, b] of blobs) items[type] = b;
