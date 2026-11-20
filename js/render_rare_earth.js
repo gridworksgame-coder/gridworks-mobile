@@ -170,6 +170,7 @@ function renderRareEarthMine(e, px, py, t) {
   const wg = ctx.createRadialGradient(pX + pW*0.5, pY + pH*0.55, 2, pX + pW*0.5, pY + pH*0.5, pW*0.55);
   wg.addColorStop(0, '#2c4a54'); wg.addColorStop(0.7, '#3e6670'); wg.addColorStop(1, '#6a8a84');
   ctx.fillStyle = wg; ctx.fill();
+  BldWater.draw(ctx, 'path', pX, pY, pW, pH, t, { murky: true, still: !on });
   ctx.strokeStyle = 'rgba(230,210,170,0.55)'; ctx.lineWidth = 1.2*S; ctx.stroke();       // wet margin
   // turbid plume where the cutter works
   const dx = pX + pW*0.46, dy = pY + pH*0.55;
@@ -424,6 +425,7 @@ function renderLeachPlant(e, px, py, t) {
       const wg = ctx.createRadialGradient(cx, cy, 1, cx, cy, wr);
       wg.addColorStop(0, active ? '#8a6040' : '#5a4a3a'); wg.addColorStop(0.55, active ? '#a89070' : '#6a6050'); wg.addColorStop(1, active ? '#a8c0c8' : '#5a666a');
       ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(cx, cy, wr, 0, Math.PI*2); _fillMetalG(ctx);
+      BldWater.draw(ctx, 'ell', cx - wr, cy - wr, wr*2, wr*2, t, { murky: true, still: !active, depth: 0.4 });
       ctx.save(); ctx.translate(cx, cy); ctx.rotate(active ? t*0.35 : 0.8);
       ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(2*S, -2*S + 3*S, wr, 4*S);
       ctx.fillStyle = '#d8b030'; ctx.fillRect(0, -2*S, wr, 4*S);                    // bridge

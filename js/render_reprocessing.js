@@ -167,15 +167,7 @@ function renderReprocessingPlant(e, px, py, t) {
         ctx.fillRect(pxA - 0.7 * S, cy - ah * 0.28, 1.4 * S, ah * 0.56);
       }
     }
-    if (on) {
-      ctx.strokeStyle = 'rgba(190,235,255,0.16)'; ctx.lineWidth = S;
-      for (let q = 0; q < 3; q++) {
-        const ry = pool.y + pool.h * (0.18 + q * 0.32);
-        ctx.beginPath(); ctx.moveTo(pool.x, ry);
-        for (let xq = 0; xq <= 12; xq++) ctx.lineTo(pool.x + pool.w * xq / 12, ry + Math.sin(t * 1.7 + xq * 0.7 + q) * 1.3 * S);
-        ctx.stroke();
-      }
-    }
+    BldWater.draw(ctx, 'rect', pool.x, pool.y, pool.w, pool.h, t, { depth: 0.35, a: 0.65, still: !on, glow: on ? '90,190,255' : null });
     // Bridge crane: end trucks, a beam across the pool, and a hoist.
     const cxr = pool.x + pool.w * (active ? 0.5 + 0.35 * Math.sin(t * 0.5) : 0.72);
     ctx.fillStyle = '#8e969c';

@@ -328,18 +328,11 @@ function renderSpentFuelPool(e, px, py, t) {
   }
 
   // ── Surface ──
-  // Circulation ripples only while powered — a pool with the power cut goes
-  // visibly still, which is the tell that its cooling clock has stopped.
-  ctx.strokeStyle = on ? 'rgba(180,230,255,0.13)' : 'rgba(150,190,210,0.07)';
-  ctx.lineWidth = 1.1 * S;
-  for (let q = 0; q < 5; q++) {
-    const ry = iy + ih * (0.1 + q * 0.2);
-    ctx.beginPath(); ctx.moveTo(ix, ry);
-    for (let xq = 0; xq <= 20; xq++) {
-      ctx.lineTo(ix + iw * xq / 20, ry + Math.sin((on ? t * 1.6 : 0) + xq * 0.55 + q * 1.3) * 1.7 * S);
-    }
-    ctx.stroke();
-  }
+  // The shared building-water look (building_water.js), kept light so the
+  // racks read through it. Still while unpowered — a pool with the power
+  // cut goes visibly still, which is the tell that its cooling clock has
+  // stopped.
+  BldWater.draw(ctx, 'rr', ix, iy, iw, ih, t, { r: 2.5 * S, depth: 0.35, a: 0.65, still: !on, glow: on ? '90,190,255' : null });
   // Return-water inlets along the cooling wall: a faint boil where the
   // cooled water comes back in, only while it is circulating.
   if (on) {
@@ -348,22 +341,6 @@ function renderSpentFuelPool(e, px, py, t) {
       ctx.strokeStyle = `rgba(200,240,255,${(0.35 * (1 - ph)).toFixed(3)})`; ctx.lineWidth = 1 * S;
       ctx.beginPath(); ctx.arc(ix + 3 * S, yy * v, (2 + 7 * ph) * S, -Math.PI / 2, Math.PI / 2); ctx.stroke();
     });
-  }
-  // Caustic sheen drifting across the surface — the one thing that sells
-  // this as water seen from above rather than a blue floor.
-  // Kept faint and broad: any crisper and they read as scratches on the
-  // racks rather than light moving on a surface above them.
-  if (on) {
-    ctx.globalAlpha = 0.055;
-    ctx.strokeStyle = '#cfefff'; ctx.lineWidth = 5 * S;
-    for (let q = 0; q < 3; q++) {
-      const off = ((t * 9 + q * iw / 3) % (iw + 40 * S)) - 20 * S;
-      ctx.beginPath();
-      ctx.moveTo(ix + off, iy);
-      ctx.lineTo(ix + off + 9 * S, iy + ih);
-      ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
   }
 
   // ── Refuelling bridge ──

@@ -392,7 +392,7 @@ function renderTownHall(e, px, py, t) {
     }
 
     // ── Slate roof with dormers ──
-    R(14 + 4, 34 + 4, 132, 76, 'rgba(0,0,0,0.25)');
+    // (No hand-drawn drop shadow: ContactShadow grounds it, and a square one read as a dark slab beside the building.)
     poly([[12, 46], [28, 30], [132, 30], [148, 46]], SLATE);
     poly([[28, 30], [132, 30], [140, 38], [20, 38]], SLATE_L);
     if (detail) { ctx.fillStyle = 'rgba(0,0,0,0.15)'; for (let r = 0; r < 3; r++) ctx.fillRect(X(20 - r*3), Y(34 + r*4), (120 + r*6)*S, 0.4*S); }
@@ -430,7 +430,7 @@ function renderTownHall(e, px, py, t) {
     if (meeting && detail) for (let p = 0; p < 6; p++) dot([28, 42, 56, 104, 118, 132][p], 63 + Math.sin(t + p)*0.3, 1.4, 'rgba(60,40,30,0.55)');
 
     // ── Portico ──
-    R(58 + 3, 40 + 3, 44, 70, 'rgba(0,0,0,0.2)');
+    R(58 + 3, 40 + 3, 44, 57, 'rgba(0,0,0,0.2)');   // stops at the steps
     poly([[54, 50], [80, 36], [106, 50]], TRIM);
     poly([[60, 49], [80, 40], [100, 49]], TRIM_D);
     R(54, 50, 52, 6, TRIM);
@@ -620,6 +620,7 @@ function renderCivicCenter(e, px, py, t) {
     wg.addColorStop(0, night ? '#1e3a5a' : '#3a86b8'); wg.addColorStop(0.5, night ? (on ? '#5a8ab8' : '#2a4a68') : '#8ccbee'); wg.addColorStop(1, night ? '#1e3a5a' : '#3a86b8');
     ctx.fillStyle = wg;
     ctx.beginPath(); ctx.ellipse(X(fX), Y(fY), 21*sx, 5*sy, 0, 0, Math.PI*2); ctx.fill();
+    BldWater.draw(ctx, 'ell', X(fX - 21), Y(fY - 5), 42*sx, 10*sy, t, { still: !on, glow: on ? '200,170,255' : null });
     if (on && detail) {
       for (let j = 0; j < 3; j++) {
         const jx = fX + (j - 1)*9;
@@ -1440,15 +1441,8 @@ function renderFountainPlaza(e, px, py, w, h, t) {
       ctx.strokeStyle = `rgba(200,240,255,${0.4 * (1 - p)})`;
       ctx.beginPath(); ctx.arc(cx, cy, rr, 0, TAU); ctx.stroke();
     }
-    // Surface glints drifting around the basin
-    ctx.lineWidth = 1;
-    for (let k = 0; k < 7; k++) {
-      const a = k * 0.9 + t * 0.25 + seed;
-      const gr = Rw * (0.72 + 0.18 * Math.sin(k*2.1));
-      const al = 0.25 + 0.35 * Math.max(0, Math.sin(t*3 + k*1.3));
-      ctx.strokeStyle = `rgba(235,250,255,${al})`;
-      ctx.beginPath(); ctx.arc(cx, cy, gr, a, a + 0.22); ctx.stroke();
-    }
+    // Caustics, ripples, glints and night sparkle: the shared building-water look
+    BldWater.draw(ctx, 'ell', cx - Rw, cy - Rw, Rw * 2, Rw * 2, t, { depth: 0.4 });
 
     // Lower tier — column shadow + bowl
     const lY = cy - 2, lR = 10;
@@ -2904,7 +2898,7 @@ function renderDogPark(e, px, py, w, h, t) {
   if (detail) for (let k = 0; k < 40; k++) dot(152 + ((k * 37) % 40), 12 + ((k * 53) % 66), 0.6, 'rgba(60,40,20,0.4)');
   // its paddling pool, a low ramp and a bench
   ell(182, 64, 8, 6, '#e0e4ea'); ell(182, 64, 6.6, 4.8, '#58b0e0');
-  if (detail) ell(180 + Math.sin(t * 1.5), 63, 2.4, 0.8, 'rgba(255,255,255,0.45)');
+  BldWater.draw(ctx, 'ell', K.X(175.4), K.Y(59.2), 13.2 * K.s, 9.6 * K.s, t, { depth: 0.3 });
   poly([[156, 50], [166, 47], [166, 53], [156, 56]], '#c08a40'); R(166, 47, 6, 6, '#c08a40');
   if (detail) for (let k = 0; k < 4; k++) ln(158 + k * 2.4, 49.5 - k * 0.7, 158 + k * 2.4, 55.5 - k * 0.7, 'rgba(0,0,0,0.2)', 0.4);
   R(156, 72, 16, 3, '#8a6a44');
@@ -3238,6 +3232,7 @@ function renderGreenhouse(e, px, py, w, h, t) {
   // ── Gardens (south) ──
   // lily pond with a footbridge (west)
   ell(62, 142, 38, 22, '#3a6a8a'); ell(62, 142, 34, 18, '#4a86a8');
+  BldWater.draw(ctx, 'ell', K.X(28), K.Y(124), 68 * K.s, 36 * K.s, t, { depth: 0.6 });
   for (let k = 0; k < 7; k++) { const lx = 40 + hash(k + 20) * 44, ly = 132 + hash(k + 30) * 20; ell(lx, ly, 3.4, 2.6, '#4a9a48'); if (k % 3 === 0 && !night) dot(lx, ly, 1.2, '#f8c0d8'); }
   R(56, 120, 12, 44, '#a07a4a'); if (detail) for (let y = 122; y < 164; y += 3) ln(56, y, 68, y, 'rgba(0,0,0,0.18)', 0.4);
   // herb garden + rose beds (east)
@@ -3659,7 +3654,7 @@ function renderFarm(e, px, py, w, h, t) {
   // ── Duck pond ──
   ell(172, 196, 16, 34, '#3a6a3a');
   ell(172, 196, 14, 32, night ? '#1a3040' : '#4a8ab0');
-  if (!night) ell(168, 186, 5, 12, 'rgba(255,255,255,0.12)');
+  BldWater.draw(ctx, 'ell', K.X(158), K.Y(164), 28 * K.s, 64 * K.s, t, { murky: true });
   for (let k = 0; k < 7; k++) { const a = k * 0.9 + 0.4; ln(172 + Math.cos(a) * 14, 196 + Math.sin(a) * 32, 172 + Math.cos(a) * 17, 196 + Math.sin(a) * 34 - 3, '#5a8a3a', 0.8); }   // reeds
   for (let k = 0; k < 4; k++) {
     const a = t * 0.12 + k * 1.6;
@@ -4429,8 +4424,7 @@ function renderPark(e, px, py, t) {
       ctx.beginPath(); ctx.ellipse(pdX, pdY, pdRX + 2*s, pdRY + 2*s, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = day ? '#2f6a88' : '#183848';
       ctx.beginPath(); ctx.ellipse(pdX, pdY, pdRX, pdRY, 0, 0, TAU); ctx.fill();
-      ctx.fillStyle = day ? 'rgba(150,210,235,0.35)' : 'rgba(120,160,200,0.18)';
-      ctx.beginPath(); ctx.ellipse(pdX - pdRX*0.3, pdY - pdRY*0.35, pdRX*0.45, pdRY*0.22, -0.2, 0, TAU); ctx.fill();
+      BldWater.draw(ctx, 'ell', pdX - pdRX, pdY - pdRY, pdRX*2, pdRY*2, t, { murky: true });
       ctx.fillStyle = '#8a8474';
       for (let i=0;i<14;i++) { const a = i/14*TAU; dot(pdX + Math.cos(a)*(pdRX + 1.5*s), pdY + Math.sin(a)*(pdRY + 1.5*s), 1.2*s); }
       for (let i=0;i<3;i++) {
@@ -7190,6 +7184,7 @@ function renderGovBuilding(e, px, py, t) {
         if (nightLit) { wg.addColorStop(0, '#1d6a86'); wg.addColorStop(1, '#2fa6c8'); }
         else { wg.addColorStop(0, '#3e7fa6'); wg.addColorStop(1, '#7cc0dc'); }
         ctx.fillStyle = wg; ctx.fillRect(X(x0), Y(214), 44*u, 8*u);
+        BldWater.draw(ctx, 'rect', X(x0), Y(214), 44*u, 8*u, t, { depth: 0.4, glow: nightLit ? '120,210,240' : null });
         ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.4*u;
         for (let k = 0; k < 3; k++) {
           const ph = ((t*0.5 + k/3) % 1);
@@ -9646,7 +9641,7 @@ function renderUniversity(e, px, py, t) {
     const cx = 62, cy = 270, rx = 48, ry = 30;
     ell(cx, cy, rx + 3, ry + 3, L('#8a8a6a', '#4a4a4a', '#222'));
     ell(cx, cy, rx, ry, L('#3a8ab0', '#1a4460', '#12222c'));
-    ell(cx - 12, cy - 8, 20, 8, L('rgba(200,235,250,0.3)', 'rgba(120,170,210,0.2)', 'rgba(60,80,90,0.2)'));
+    BldWater.draw(ctx, 'ell', X(cx - rx), Y(cy - ry), rx*2*S, ry*2*S, t, {});
     if (detail) { ctx.strokeStyle = L('rgba(220,245,255,0.35)', 'rgba(150,190,220,0.25)', 'rgba(80,100,110,0.2)'); ctx.lineWidth = 0.5*S; for (let r = 0; r < 3; r++) { const ph = (t*0.3 + r/3) % 1; ctx.beginPath(); ctx.ellipse(X(cx + 10), Y(cy + 6), (4 + ph*16)*S, (2 + ph*8)*S, 0, 0, Math.PI*2); ctx.stroke(); } }
     for (const [lx, ly] of [[cx - 30, cy + 8], [cx + 24, cy - 14]]) { ell(lx, ly, 5, 3, L('#40a060', '#2a5a3a', '#1a2a1a')); dot(lx + 1, ly - 1, 1, L('#f0f0f0', '#9aa0aa', '#333')); }   // lily pads
     if (detail) for (const a0 of [2.5, 0.35]) for (let k = 0; k < 6; k++) {                                       // reed clumps at the margins
@@ -9961,6 +9956,7 @@ function renderTransportHub(e, px, py, t) {
   {
     const fx = 130, fy = 236;
     ell(fx, fy, 22, 12, STONE_D); ell(fx, fy, 19, 10, L('#3a8ab0', '#1a4460', '#12222c'));
+    BldWater.draw(ctx, 'ell', X(fx - 19), Y(fy - 10), 38*S, 20*S, t, { still: !on, glow: on ? '120,200,255' : null });
     R(fx - 2, fy - 12, 4, 12, STONE_L);
     if (on) for (let d = 0; d < 12; d++) {
       const ph = (t*0.9 + d/12) % 1, a = d/12*Math.PI*2;
@@ -11197,6 +11193,7 @@ function renderNationalGov(e, px, py, t) {
     ctx.beginPath(); ctx.moveTo(X(gx + 12), Y(312)); ctx.lineTo(X(gx + 148), Y(468)); ctx.moveTo(X(gx + 148), Y(312)); ctx.lineTo(X(gx + 12), Y(468)); ctx.stroke();
     const fx = gx + 80, fy = 390;
     dot(fx, fy, 22, STONE_D); dot(fx, fy, 18, L('#5ab0d8', '#1a3a50', '#1a2228'));
+    BldWater.draw(ctx, 'ell', X(fx - 18), Y(fy - 18), 36 * S, 36 * S, t, { still: !on });
     if (on) for (let d = 0; d < 8; d++) {
       const u = (t * 0.8 + d / 8) % 1, a = d / 8 * Math.PI * 2;
       dot(fx + Math.cos(a) * u * 14, fy + Math.sin(a) * u * 14 - Math.sin(u * Math.PI) * 6, 1.4, `rgba(220,245,255,${(0.8 * (1 - u)).toFixed(3)})`);
@@ -11208,6 +11205,7 @@ function renderNationalGov(e, px, py, t) {
   // ── Reflecting pool between tree-lined walks ──
   R(236, 348, 248, 132, PAVE);
   R(250, 360, 220, 108, L('#4a90b8', '#0e2034', '#141c22'));
+  BldWater.draw(ctx, 'rect', X(250), Y(360), 220 * S, 108 * S, t, { still: !on, lights: on && night ? [[X(340), Y(360), '255,220,140'], [X(380), Y(360), '255,220,140']] : null });
   ell(360, 420, 40, 26, on ? (night ? 'rgba(255,220,140,0.3)' : 'rgba(255,255,255,0.35)') : 'rgba(0,0,0,0)');   // dome reflection
   if (detail) for (let k = 0; k < 6; k++) {
     const y = 372 + k * 16 + Math.sin(t * 0.8 + k) * 2;
@@ -12315,12 +12313,8 @@ function renderMeridianStation(e, px, py, t) {
         arc(SX, SY, 449, `rgba(${ACC},${((night ? 0.3 : 0.14) + 0.3 * live).toFixed(3)})`, 8);
         ctx.restore();
       }
-      if (detail) {                                                                         // ripples drifting round the pool
-        for (let k = 0; k < 10; k++) {
-          const dir = k % 2 ? 1 : -1, a0 = now * 0.05 * dir * (1 + k * 0.13) + k * 1.9, r = 452 + (k * 17) % 40;
-          arc(SX, SY, r, L(`rgba(255,255,255,${(0.12 + 0.1 * Math.sin(now * 0.7 + k)).toFixed(3)})`, `rgba(${ACC},${(0.14 + 0.1 * Math.sin(now * 0.7 + k)).toFixed(3)})`, 'rgba(255,255,255,0.03)'), 2, a0, a0 + 0.35 + (k % 3) * 0.2);
-        }
-      }
+      { const ring = new Path2D(); ring.arc(X(SX), Y(SY), 496 * S, 0, TAU); ring.arc(X(SX), Y(SY), 430 * S, 0, TAU);
+        BldWater.draw(ctx, ring, X(SX - 496), Y(SY - 496), 992 * S, 992 * S, now, { evenodd: true, depth: 0.25 }); }
       for (let k = 0; k < 4; k++) {                                                         // causeways
         ctx.save(); ctx.translate(X(SX), Y(SY)); ctx.rotate(k * Math.PI / 2);
         ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(428 * S, -30 * S, 74 * S, 72 * S);

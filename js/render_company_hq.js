@@ -256,11 +256,8 @@ function renderCompanyHQ(e, px, py, t) {
   for (const [x0, cx] of [[262, 440], [1018, 1160]]) {
     R(x0 - 8, 1012, 336, 126, PAVE_D);
     R(x0, 1020, 320, 110, WATER);
+    BldWater.draw(ctx, 'rect', X(x0), Y(1020), 320 * S, 110 * S, tt, { still: !on, lights: night && on ? [[X(cx - 34), Y(1020), GOLD], [X(cx + 34), Y(1020), GOLD]] : null });
     if (on) for (let k = 0; k < 3; k++) R(cx - 46 + k * 34, 1024, 24, 102, night ? `rgba(${GOLD},${0.16 - k * 0.03})` : `rgba(255,255,255,${0.16 - k * 0.03})`);   // the tower above, standing in it
-    if (detail) for (let k = 0; k < 6; k++) {
-      const y = 1030 + k * 17 + Math.sin(tt * 0.8 + k) * 2;
-      ln(x0 + 12 + (k % 2) * 24, y, x0 + 300 - (k % 3) * 22, y, L('rgba(255,255,255,0.3)', 'rgba(255,225,170,0.14)', 'rgba(0,0,0,0)'), 0.9);
-    }
     // a row of jets down the middle, dancing in a wave, lit from below at night
     if (on) for (let j = 0; j < 9; j++) {
       const jx = x0 + 32 + j * 32, hgt = 10 + 9 * Math.sin(tt * 1.6 + j * 0.7);
@@ -289,7 +286,9 @@ function renderCompanyHQ(e, px, py, t) {
   // the ring fountain and the emblem inlaid in it
   {
     const fx = 800, fy = 1078;
-    dot(fx, fy, 96, PAVE_D); dot(fx, fy, 90, WATER); dot(fx, fy, 66, GRAN);
+    dot(fx, fy, 96, PAVE_D); dot(fx, fy, 90, WATER);
+    BldWater.draw(ctx, 'ell', X(fx - 90), Y(fy - 90), 180 * S, 180 * S, tt, { still: !on, glow: on ? GOLD : null });
+    dot(fx, fy, 66, GRAN);
     dot(fx, fy, 58, L('#2a2e36', '#14161c', '#18191c'));
     ctx.strokeStyle = `rgba(${GOLD},${on ? (night ? 1 : 0.85) : 0.25})`; ctx.lineWidth = 5 * S;
     ctx.beginPath(); ctx.arc(X(fx), Y(fy), 48 * S, 0, 6.283); ctx.stroke();

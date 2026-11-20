@@ -80,10 +80,10 @@ function _renderGalleria(e, px, py, W, H, t) {
   R(4, 162.5, 272, 1.5, L('#c4beb2', '#44464e', '#202124'));
   RR(36, 146, 208, 8, 1.5, L('#9ab6c4', '#0e1a2a', '#14181e'));
   RR(37, 147, 206, 6, 1.2, L('#5a9cc0', '#0a1626', '#101418'));
+  BldWater.draw(ctx, 'rr', X(37), Y(147), 206 * S, 6 * S, t, { r: 1.2 * S, depth: 0.4 });
   if (lit) {                                        // the ribbons doubled in the water
     for (let x = 38; x < 242; x += 3) R(x, 148 + Math.sin(x * 0.3 + t * 2) * 0.4, 2.4, 0.8, aurora(x, night ? 0.75 : 0.25));
   }
-  if (!night) { const gx = 38 + ((t * 9) % 220); if (gx < 236) R(gx, 147.5, 6, 0.8, 'rgba(255,255,255,0.55)'); }
   for (const tx of [20, 260]) {                     // trees in planters
     RR(tx - 6, 148, 12, 6, 1, L('#8a8478', '#3a3a40', '#1e1e20'));
     dot(tx, 141, 7, L('#3e8a44', '#1e3a26', '#16201a'));

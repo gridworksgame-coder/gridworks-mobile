@@ -118,6 +118,7 @@ function renderCokeOven(e, px, py, t) {
     const wg = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
     wg.addColorStop(0, '#3a4a50'); wg.addColorStop(1, '#22282c');
     ctx.fillStyle = wg; _fillRectMetalG(ctx, bx + 3*S, by + 3*S, bw - 6*S, bh - 6*S);
+    BldWater.draw(ctx, 'rect', bx + 3*S, by + 3*S, bw - 6*S, bh - 6*S, t, { murky: true, still: !active });
     ctx.fillStyle = 'rgba(20,18,16,0.55)';                                      // settled coke breeze
     ctx.beginPath(); ctx.ellipse(bx + bw*0.3, by + bh*0.7, bw*0.22, bh*0.18, 0, 0, Math.PI*2); ctx.fill();
     if (active && detail) {

@@ -2096,15 +2096,10 @@ function renderCoalWasteFacility(e, px, py, t) {
     const wg = ctx.createLinearGradient(0, Y(y), 0, Y(y + h));
     wg.addColorStop(0, '#5a6a66'); wg.addColorStop(1, '#3c4a48');
     ctx.fillStyle = wg; ctx.beginPath(); ctx.roundRect(X(x + 8), Y(y + 8), (w - 16)*S, (h - 16)*S, 5*S); ctx.fill();
+    BldWater.draw(ctx, 'path', X(x + 8), Y(y + 8), (w - 16)*S, (h - 16)*S, t, { murky: true, still: !on });
     if (detail) {                                       // a pale scum line where the ash settles out
       ctx.strokeStyle = 'rgba(170,170,160,0.35)'; ctx.lineWidth = 1.2*S;
       ctx.beginPath(); ctx.roundRect(X(x + 10), Y(y + 10), (w - 20)*S, (h - 20)*S, 4*S); ctx.stroke();
-      ctx.strokeStyle = 'rgba(230,240,240,0.18)'; ctx.lineWidth = 0.8*S;
-      for (let k = 0; k < 4; k++) {
-        const ph = on ? (t*0.12 + k/4) % 1 : k/4;
-        const rx = x + 20 + ((k*37) % (w - 40)), ry = y + 16 + ph*(h - 32);
-        ctx.beginPath(); ctx.moveTo(X(rx), Y(ry)); ctx.lineTo(X(rx + 14), Y(ry)); ctx.stroke();
-      }
     }
     // floating aerator, turning while powered
     const ax = x + w*0.62, ay = y + h*0.5;
@@ -2383,6 +2378,7 @@ function renderOilWasteFacility(e, px, py, t) {
   wg.addColorStop(0, '#3a5a2a'); wg.addColorStop(0.6, '#1c3016'); wg.addColorStop(1, '#0c160a');
   ctx.fillStyle = wg;
   ctx.beginPath(); ctx.arc(ccx, ccy, cr - 6*S, 0, Math.PI*2); _fillMetalG(ctx);
+  BldWater.draw(ctx, 'ell', ccx - cr + 6*S, ccy - cr + 6*S, 2*(cr - 6*S), 2*(cr - 6*S), t, { murky: true, still: !on, depth: 0.4 });
   ctx.strokeStyle = '#6a6a5e'; ctx.lineWidth = 1.2*S;
   ctx.beginPath(); ctx.arc(ccx, ccy, cr - 10*S, 0, Math.PI*2); ctx.stroke();
   // oily sheen swirling

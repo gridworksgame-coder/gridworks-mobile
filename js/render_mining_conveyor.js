@@ -5153,6 +5153,7 @@ function renderLithiumMine(e, px, py, t) {
     const g = ctx.createLinearGradient(ix, iy, ix + iw, iy + ih);
     g.addColorStop(0, p.c1); g.addColorStop(1, p.c0);
     ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 3*S); _fillMetalG(ctx);
+    if (p.crust < 1) BldWater.draw(ctx, 'rr', ix, iy, iw, ih, t, { r: 3*S, depth: 0.35, still: !on, a: 1 - p.crust * 0.8 });
     ctx.save(); ctx.beginPath(); ctx.roundRect(ix, iy, iw, ih, 3*S); ctx.clip();
     // salt crust specks, denser in later stages
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
@@ -5160,13 +5161,6 @@ function renderLithiumMine(e, px, py, t) {
     for (let k = 0; k < specks; k++) {
       const sx = ix + iw*((k*0.618 + i*0.13) % 1), sy = iy + ih*((k*0.382 + i*0.29) % 1);
       ctx.fillRect(sx, sy, (1 + (k % 3)*0.6)*S, (1 + (k % 2)*0.6)*S);
-    }
-    if (on && p.crust < 1) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.8*S;
-      for (let k = 0; k < 3; k++) {
-        const off = ((t*6*S + k*14*S) % (iw + 20*S)) - 10*S;
-        ctx.beginPath(); ctx.moveTo(ix + off, iy + ih*(0.25 + k*0.25)); ctx.lineTo(ix + off + 10*S, iy + ih*(0.25 + k*0.25) - 2*S); ctx.stroke();
-      }
     }
     ctx.restore();
   });

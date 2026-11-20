@@ -91,13 +91,8 @@ function _renderMotel(e, px, py, W, H, t) {
   // ── Pool, fenced, with loungers ──
   R(120, 30, 38, 40, L('#d8d2c0', '#4e4a42', '#22201c'));
   RR(124, 36, 26, 22, 4, on ? (night ? '#1aa8c8' : '#3ac0e0') : '#14303a');
-  if (on) {
-    for (let r = 0; r < 4; r++) {                                            // ripples
-      const y = 39 + r * 5 + Math.sin(t * 1.4 + r) * 0.6;
-      ln(127, y, 147, y + Math.sin(t + r) * 0.5, 'rgba(255,255,255,0.35)', 0.4);
-    }
-    if (night) glow(137, 47, 20, '60,200,240', 0.4);
-  }
+  BldWater.draw(ctx, 'rr', k.X(124), k.Y(36), 26 * S, 22 * S, t, { r: 4 * S, still: !on, glow: on ? '60,200,240' : null });
+  if (on && night) glow(137, 47, 20, '60,200,240', 0.4);
   ln(128, 36, 128, 33, '#d8d8dc', 0.5); ln(130, 36, 130, 33, '#d8d8dc', 0.5);   // ladder
   for (let i = 0; i < 3; i++) RR(124 + i * 9, 61, 7, 3, 0.6, L('#f4f0e0', '#6a665c', '#2a2824'));   // loungers
   if (on && !night && hr > 10 && hr < 18) { k.person(127, 63, '#e84a6a', _BANK_SKINS[0], 0, 1); k.person(137, 48, '#2a7aa8', _BANK_SKINS[3], 0, 1); }
@@ -331,14 +326,9 @@ function _renderResortHotel(e, px, py, W, H, t) {
   ctx.bezierCurveTo(k.X(160), k.Y(172), k.X(120), k.Y(164), k.X(80), k.Y(170));
   ctx.bezierCurveTo(k.X(50), k.Y(174), k.X(18), k.Y(162), k.X(30), k.Y(150));
   ctx.closePath(); ctx.fill();
+  BldWater.draw(ctx, 'path', k.X(18), k.Y(140), 200 * S, 34 * S, t, { still: !on, glow: on ? '60,220,240' : null });
   ctx.strokeStyle = L('#f4f2ec', '#8a887e', '#3a3832'); ctx.lineWidth = 1.2 * S; ctx.stroke();
-  if (on) {
-    for (let i = 0; i < 8; i++) {                                            // caustic shimmer
-      const x = 40 + i * 21 + Math.sin(t * 0.8 + i) * 3, y = 156 + Math.sin(t * 1.1 + i * 2) * 4;
-      ell(x, y, 5, 1.2, 'rgba(255,255,255,0.25)');
-    }
-    if (night) { glow(70, 158, 34, '60,220,240', 0.42); glow(160, 158, 34, '60,220,240', 0.42); }
-  }
+  if (on && night) { glow(70, 158, 34, '60,220,240', 0.42); glow(160, 158, 34, '60,220,240', 0.42); }
   // swim-up bar island
   ell(120, 156, 12, 6, L('#c8a878', '#5a4a36', '#26201a'));
   ell(120, 154.5, 9, 3.6, L('#e8d8b0', '#6a604c', '#2a2620'));

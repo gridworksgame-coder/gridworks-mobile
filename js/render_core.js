@@ -3219,13 +3219,14 @@ function _drawGardenFeature(g, kind, x, y, hv, col, dark, lod) {
       shadow(() => circ(x + 20, y + 20, 10));
       g.fillStyle = col(ring[0], ring[1], ring[2]); circ(x + 20, y + 20, 10);
       g.fillStyle = col(84, 184, 222); circ(x + 20, y + 20, 7.5);
-      g.fillStyle = 'rgba(255,255,255,0.35)'; circ(x + 17.5, y + 17.5, 2.2);
+      BldWater.draw(g, 'ell', x + 12.5, y + 12.5, 15, 15, 0, { still: true, depth: 0.3 });
       break;
     }
     case 'hottub': {
       shadow(() => rr(x + 11, y + 11, 18, 18, 4));
       g.fillStyle = col(126, 86, 56); rr(x + 11, y + 11, 18, 18, 4);
       g.fillStyle = col(84, 186, 206); rr(x + 13.5, y + 13.5, 13, 13, 3);
+      BldWater.draw(g, 'rr', x + 13.5, y + 13.5, 13, 13, 0, { r: 3, still: true, depth: 0.4 });
       g.fillStyle = 'rgba(255,255,255,0.55)';
       for (let k = 0; k < 5; k++) circ(x + 15 + _nbHash(k, Math.round(hv*100), 432)*10, y + 15 + _nbHash(k, Math.round(hv*100), 433)*10, 0.8);
       break;
@@ -3758,6 +3759,7 @@ function drawCommercialGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.arc(x + 2, y + 2, 14, 0, Math.PI*2); g.fill();
       g.fillStyle = col(190, 186, 176); g.beginPath(); g.arc(x, y, 14, 0, Math.PI*2); g.fill();
       g.fillStyle = dark > 0.2 ? `rgba(90,190,240,${0.85})` : col(84, 156, 204); g.beginPath(); g.arc(x, y, 11, 0, Math.PI*2); g.fill();
+      BldWater.draw(g, 'ell', x - 11, y - 11, 22, 22, 0, { still: true, depth: 0.5 });   // baked: the building-water look at rest
       g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1; g.beginPath(); g.arc(x, y, 6.5, 0, Math.PI*2); g.stroke();
       g.fillStyle = col(200, 196, 186); g.beginPath(); g.arc(x, y, 3, 0, Math.PI*2); g.fill();
     }
@@ -4160,6 +4162,7 @@ function drawGovernmentGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) {
       g.fillStyle = 'rgba(0,0,0,0.25)'; g.beginPath(); g.arc(x + 2, y + 2, 15, 0, Math.PI*2); g.fill();
       g.fillStyle = col(200, 194, 180); g.beginPath(); g.arc(x, y, 15, 0, Math.PI*2); g.fill();
       g.fillStyle = dark > 0.2 ? 'rgba(90,190,240,0.85)' : col(84, 156, 204); g.beginPath(); g.arc(x, y, 12, 0, Math.PI*2); g.fill();
+      BldWater.draw(g, 'ell', x - 12, y - 12, 24, 24, 0, { still: true, depth: 0.5 });
       g.fillStyle = col(200, 194, 180); g.beginPath(); g.arc(x, y, 5, 0, Math.PI*2); g.fill();
       g.fillStyle = dark > 0.2 ? 'rgba(120,210,250,0.9)' : col(110, 180, 220); g.beginPath(); g.arc(x, y, 3, 0, Math.PI*2); g.fill();
       g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 1; g.beginPath(); g.arc(x, y, 8.5, 0, Math.PI*2); g.stroke();

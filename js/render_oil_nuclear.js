@@ -4808,6 +4808,7 @@ function renderNuclearReactor(e, px, py, t) {
     for (let r = 0; r < cellsY; r++) for (let c = 0; c < cellsX; c++) {
       ctx.strokeRect(px2 + 4*S + (pw2 - 8*S)*c/cellsX, py2 + 3*S + (ph2 - 6*S)*r/cellsY, (pw2 - 8*S)/cellsX - 1.5*S, (ph2 - 6*S)/cellsY - 1.5*S);
     }
+    BldWater.draw(ctx, 'rect', px2, py2, pw2, ph2, t, { depth: 0.3, a: 0.6, still: !gen, glow: '90,190,255' });
     }   // Sp: control building, waste bay, the pool and its fuel racks
     // Live: the light sweeping the pool, its rim, and the bridge crane
     // travelling over it. (The pool's slow glow breathing is baked.)
@@ -5500,6 +5501,7 @@ function renderCoolingTower(e, px, py, t) {
     const wg = ctx.createLinearGradient(cx - bRX, 0, cx + bRX, 0);
     wg.addColorStop(0, act ? '#1e6a90' : '#1a3a48'); wg.addColorStop(0.5, act ? '#3aa0c8' : '#24505e'); wg.addColorStop(1, act ? '#1e6a90' : '#1a3a48');
     ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(cx, bCY, bRX, bRY, 0, 0, Math.PI*2); _fillMetalG(ctx);
+    BldWater.draw(ctx, 'ell', cx - bRX, bCY - bRY, bRX*2, bRY*2, t, { depth: 0.5, still: !act });
     if (act) {
       for (let q = 0; q < 3; q++) {
         const p = (t*0.5 + q/3) % 1;
