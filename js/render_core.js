@@ -2444,6 +2444,168 @@ function _forRouteTiles(Z, fn) {
     fn(c, r, c*TILE, r*TILE, on(c, r - 1), on(c, r + 1), on(c - 1, r), on(c + 1, r));
   }
 }
+// ── Ground-layer plants ──────────────────────────────────────────────
+// The canopies and shrubs painted into the zone ground (verges, gardens,
+// lawns, plazas) use the same Blender bush renders as the bush entities
+// (img/bush_var_*, overhead shots of the canopy mass, with their autumn and
+// winter versions), instead of flat circles. Each look is shrunk once to a
+// small canvas, in halving steps so it stays sharp, with the ground's shade
+// and any tint baked in, and then blitted: one drawImage per plant when the
+// ground is repainted. Nothing is read back (file:// play). Until the
+// images arrive the plants are drawn the old way; ready() goes into the
+// ground cache key so the ground repaints when they do.
+const GroundPlants = (() => {
+  const KEYS = ['a', 'b', 'c', 'd', 'e', 'f'];   // a-c carry berries, d-f plain
+  let nLoaded = 0;
+  const load = (src) => { const img = new Image(); img.loaded = false; img.onload = () => { img.loaded = true; nLoaded++; }; img.src = src; return img; };
+  const summer = KEYS.map(k => load(`img/bush_var_${k}.png`));
+  const autumn = KEYS.map(k => load(`img/bush_var_${k}_autumn.png`));
+  const winter = KEYS.map(k => load(`img/bush_var_${k}_winter.png`));
+  // The canopy fills ~0.69 of each image's width, centred a little low.
+  const FILL = 0.69, CX = 0.493, CY = 0.53;
+  const PX = 128;
+  const cache = new Map();
+  const shrink = (img) => {
+    let src = img, w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    while (w > PX * 2) {
+      const c = document.createElement('canvas'); c.width = Math.round(w / 2); c.height = Math.round(h / 2);
+      const cg = c.getContext('2d'); cg.imageSmoothingQuality = 'high';
+      cg.drawImage(src, 0, 0, c.width, c.height);
+      src = c; w = c.width; h = c.height;
+    }
+    const c = document.createElement('canvas'); c.width = c.height = PX;
+    const cg = c.getContext('2d'); cg.imageSmoothingQuality = 'high';
+    cg.drawImage(src, 0, 0, PX, PX);
+    return c;
+  };
+  const TINTS = {
+    gold: 'rgba(214,160,40,0.32)', amber: 'rgba(206,104,30,0.32)', crimson: 'rgba(170,40,28,0.36)',
+    early: 'rgba(176,110,48,0.45)', deep: 'rgba(10,40,20,0.22)', yellow: 'rgba(160,170,40,0.16)',
+  };
+  // the crown's shaded inside, by tint (green looks) or autumn colourway
+  const CORE = { 0: '#3a6e28', deep: '#2e602a', yellow: '#4e6e24', gold: '#8a6a20', amber: '#8a4a1a', crimson: '#72241a', early: '#7a5226' };
+  // multiplied over the whole plant: deepens the pale twigs into the leaves
+  const MUL = { green: '#c2e09c', blossom: '#c2e09c', autumn: '#f0e2d0', bare: '#e0d8d0' };
+  const PETALS = [['#ec6fa4', '#f390ba', '#f8b4d0', '#e05a94'], ['#ffffff', '#f6eef2', '#fbe6ee', '#e8dce4']];
+  // look: 'green' | 'autumn' | 'bare' | 'blossom'; tint: a TINTS key, or 0/1
+  // (pink/white) for blossom. shade: the ground's brightness, 0-1.
+  function sprite(vi, look, tint, shade) {
+    const sh = Math.round(shade * 50) / 50;
+    const key = vi + look + tint + ':' + sh;
+    let c = cache.get(key);
+    if (c) return c;
+    let img = look === 'autumn' ? autumn[vi] : look === 'bare' ? winter[vi] : summer[vi];
+    const stand = !img.loaded;            // its own look not in yet: summer for now, not cached
+    if (stand) img = summer[vi];
+    if (!img.loaded) return null;
+    if (cache.size > 400) cache.clear();
+    const one = shrink(img);
+    // The renders are airy (sky between the twigs, pale branches), which
+    // shrunk this far reads as a see-through haze. So: a second copy turned
+    // a quarter and a little smaller underneath fills the gaps, a shaded
+    // core under both gives the crown its mass, and a multiply deepens the
+    // pale branches into the leaf colour (then cut back to the plant's own
+    // outline, since multiply paints the empty corners too).
+    c = document.createElement('canvas'); c.width = c.height = PX;
+    const cg = c.getContext('2d');
+    const ox = PX * CX, oy = PX * CY;
+    if (look !== 'bare') {
+      cg.save(); cg.translate(ox, oy); cg.rotate(Math.PI / 2 + vi); cg.scale(0.86, 0.86); cg.drawImage(one, -ox, -oy); cg.restore();
+    }
+    cg.drawImage(one, 0, 0);
+    if (look !== 'bare') {
+      cg.globalCompositeOperation = 'destination-over';
+      cg.fillStyle = CORE[look === 'blossom' ? 0 : tint] || CORE[0];
+      cg.beginPath(); cg.ellipse(ox, oy, PX * FILL * 0.4, PX * FILL * 0.37, 0, 0, Math.PI * 2); cg.fill();
+    }
+    const mask = document.createElement('canvas'); mask.width = mask.height = PX;
+    mask.getContext('2d').drawImage(c, 0, 0);
+    cg.globalCompositeOperation = 'multiply';
+    cg.fillStyle = MUL[look] || MUL.green; cg.fillRect(0, 0, PX, PX);
+    cg.globalCompositeOperation = 'destination-in';
+    cg.drawImage(mask, 0, 0);
+    cg.globalCompositeOperation = 'source-atop';
+    // Volume: sun on the upper-left of the crown, shade on the lower right
+    // (the sun the buildings' shadows assume), so it stands off the lawn.
+    if (look !== 'bare') {
+      const r = PX * FILL * 0.5;
+      const hl = cg.createRadialGradient(ox - r*0.38, oy - r*0.42, 0, ox - r*0.38, oy - r*0.42, r*1.05);
+      hl.addColorStop(0, 'rgba(255,250,214,0.34)'); hl.addColorStop(1, 'rgba(255,250,214,0)');
+      cg.fillStyle = hl; cg.fillRect(0, 0, PX, PX);
+      const sd = cg.createLinearGradient(ox - r*0.3, oy - r*0.3, ox + r, oy + r);
+      sd.addColorStop(0, 'rgba(8,24,6,0)'); sd.addColorStop(1, 'rgba(8,24,6,0.42)');
+      cg.fillStyle = sd; cg.fillRect(0, 0, PX, PX);
+    }
+    if (look === 'blossom') {
+      let seed = 7919 + vi * 131 + tint * 17;
+      const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+      const cols = PETALS[tint ? 1 : 0];
+      for (let i = 0; i < 420; i++) {
+        cg.globalAlpha = 0.65 + rnd() * 0.35;
+        cg.fillStyle = cols[Math.floor(rnd() * cols.length)];
+        cg.beginPath(); cg.arc(rnd() * PX, rnd() * PX, PX * 0.015 * (0.7 + rnd() * 0.9), 0, Math.PI * 2); cg.fill();
+      }
+      cg.globalAlpha = 1;
+    } else if (TINTS[tint]) {
+      cg.fillStyle = TINTS[tint]; cg.fillRect(0, 0, PX, PX);
+    }
+    if (sh < 1) { cg.fillStyle = `rgba(0,0,0,${(1 - sh).toFixed(2)})`; cg.fillRect(0, 0, PX, PX); }
+    if (!stand) cache.set(key, c);
+    return c;
+  }
+  // Draw a canopy of radius rad centred on (x, y). False if not ready.
+  function draw(g, x, y, rad, vi, look, tint, shade) {
+    const c = sprite(vi, look, tint, shade);
+    if (!c) return false;
+    const s = rad * 2 / FILL;
+    g.drawImage(c, x - s * CX, y - s * CY, s, s);
+    return true;
+  }
+  return {
+    draw,
+    // 0 none, 1 summer set in, 2 every look in (ground cache key)
+    ready() { return nLoaded >= 18 ? 2 : summer.every(i => i.loaded) ? 1 : 0; },
+    summerReady() { return summer.every(i => i.loaded); },
+  };
+})();
+// The ground's shade (the 0-1 factor its col() multiplies by).
+function _colShade(col) { const s = col(200, 0, 0); return parseInt(s.slice(5), 10) / 200; }
+// What a ground plant with hash hv looks like now, as [look, tint] for
+// GroundPlants. Same rules (and the same per-plant cues) as the canopies'
+// flat colours below; shrubs never blossom.
+function _groundPlantLook(hv, fol, shrub) {
+  const cue = (hv * 37.71) % 1, t3 = Math.floor(((hv * 91.37) % 1) * 3) % 3;
+  if (fol && fol.bare > cue) return ['bare', 0];
+  if (fol && fol.turned > cue) return ['autumn', ['gold', 'amber', 'crimson'][t3]];
+  if (!shrub) {
+    const bloom = fol ? 0.08 + 0.32 * (fol.blossom || 0) : 0.08;
+    if (hv < 0.08) return ['blossom', 0];
+    if (hv < bloom) return ['blossom', t3 ? 0 : 1];
+    if (hv < 0.14) return ['autumn', 'early'];
+  }
+  return ['green', hv < 0.5 ? 'deep' : hv < 0.8 ? 0 : 'yellow'];
+}
+// Shrubs (verges, garden clumps): shadow, then a bush sprite each, or the
+// old flat clumps until the sprites are in. list: [x, y, rad, hv].
+function _drawGroundShrubs(g, list, col, darkFill, liteFill) {
+  if (!list.length) return;
+  const sp = new Path2D();
+  for (const [x, y, rad] of list) _circlePath(sp, x + 1.5, y + 2, rad);
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.fill(sp);
+  if (GroundPlants.summerReady()) {
+    const fol = typeof Seasons !== 'undefined' ? Seasons.foliage() : null, sh = _colShade(col);
+    for (const [x, y, rad, hv] of list) {
+      const [look, tint] = _groundPlantLook(hv, fol, true);
+      // mostly plain (d-f); one in five a berry bush (a-c)
+      GroundPlants.draw(g, x, y, rad * 1.15, hv < 0.2 ? Math.floor(hv * 15) : 3 + Math.floor(((hv * 71.9) % 1) * 3), look, tint, sh);
+    }
+    return;
+  }
+  const body = new Path2D(), hi = new Path2D();
+  for (const [x, y, rad] of list) { _circlePath(body, x, y, rad); _circlePath(hi, x - rad*0.3, y - rad*0.3, rad*0.45); }
+  g.fillStyle = darkFill; g.fill(body);
+  if (liteFill) { g.fillStyle = liteFill; g.fill(hi); }
+}
 // Round deciduous canopies: shadow, darker rim, lobes, highlight.
 function _drawCanopies(g, trees, col, dark) {
   if (!trees.length) return;
@@ -2462,7 +2624,13 @@ function _drawCanopies(g, trees, col, dark) {
   // step with the tree sprites (render_world_civic.js _seasonState).
   const fol = typeof Seasons !== 'undefined' ? Seasons.foliage() : null;
   const AUTUMN = [[204, 156, 44], [204, 104, 32], [172, 44, 30]];
+  const sprites = GroundPlants.summerReady(), sh = sprites ? _colShade(col) : 1;
   for (const [x, y, rad, hv] of trees) {
+    if (sprites) {
+      // Blender canopy: d-f (no berries), picked and sized by the plant's hash
+      const [look, tint] = _groundPlantLook(hv, fol, false);
+      if (GroundPlants.draw(g, x, y, rad * 1.08, 3 + Math.floor(((hv * 53.3) % 1) * 3), look, tint, sh)) continue;
+    }
     const cue = (hv * 37.71) % 1, tint = Math.floor(((hv * 91.37) % 1) * 3) % 3;
     if (fol && fol.bare > cue) {
       // bare: a faint haze of twigs round the trunk
@@ -2645,8 +2813,8 @@ const _VERGE_THROUGH = new Set([T.WIRE, T.POLE, T.LAMP, T.CAMERA, T.UNDERGNDPIPE
 function _drawZoneVerges(g, cStart, cEnd, rStart, rEnd, shade, dark, lod) {
   const T = TILE;
   const col = (R, G, B, a) => `rgba(${Math.round(Math.min(255, R*shade))},${Math.round(Math.min(255, G*shade))},${Math.round(Math.min(255, B*shade))},${a === undefined ? 1 : a})`;
-  const mown = new Path2D(), fade = new Path2D(), shrubs = new Path2D(), shrubHi = new Path2D(), hedge = new Path2D();
-  const trees = [];
+  const mown = new Path2D(), fade = new Path2D(), hedge = new Path2D();
+  const trees = [], shrubs = [];
   let any = false;
   for (const key of ['residential', 'commercial', 'industrial', 'government']) {
     const S = _VERGE_STYLE[key];
@@ -2692,8 +2860,7 @@ function _drawZoneVerges(g, cStart, cEnd, rStart, rEnd, shade, dark, lod) {
           for (let k = 0; k < n; k++) {
             const [sx, sy] = along(0.12 + (k + _nbHash(c, r, 522 + k)*0.6) / n * 0.8);
             const rad = (S.dense ? 4.5 : 3.4) + _nbHash(c, r, 530 + k)*2;
-            _circlePath(shrubs, sx, sy, rad);
-            _circlePath(shrubHi, sx - rad*0.3, sy - rad*0.3, rad*0.45);
+            shrubs.push([sx, sy, rad, _nbHash(c, r, 540 + k)]);
           }
         }
         const spaced = S.treeEvery && ((S2 || N) ? c : r) % S.treeEvery === 0;
@@ -2710,11 +2877,10 @@ function _drawZoneVerges(g, cStart, cEnd, rStart, rEnd, shade, dark, lod) {
   g.beginPath(); g.rect(cStart*T, rStart*T, (cEnd - cStart)*T, (rEnd - rStart)*T); g.clip();
   g.fillStyle = col(78, 108, 54, 0.3); g.fill(fade);
   g.fillStyle = col(80, 112, 56, 0.8); g.fill(mown);
-  g.fillStyle = 'rgba(0,0,0,0.22)'; g.save(); g.translate(1.5, 2); g.fill(hedge); g.fill(shrubs); g.restore();
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.save(); g.translate(1.5, 2); g.fill(hedge); g.restore();
   g.fillStyle = col(46, 86, 40); g.fill(hedge);
   g.save(); g.translate(-0.8, -1); g.fillStyle = col(70, 116, 54, 0.7); g.fill(hedge); g.restore();
-  g.fillStyle = col(44, 82, 38); g.fill(shrubs);
-  g.fillStyle = col(74, 118, 56, 0.8); g.fill(shrubHi);
+  _drawGroundShrubs(g, shrubs, col, col(44, 82, 38), col(74, 118, 56, 0.8));
   _drawCanopies(g, trees, col, dark);
   g.restore();
 }
@@ -3248,7 +3414,7 @@ function drawNeighbourhoodGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) 
   }
 
   // Verge trees and garden details on the open lawn
-  const beds = [], baths = [], shrubs = new Path2D(), stones = new Path2D();
+  const beds = [], baths = [], shrubs = [], stones = new Path2D();
   const garden = [], border = new Path2D(), blooms = [];
   for (let r = Z.lr0; r <= Z.lr1; r++) for (let c = Z.lc0; c <= Z.lc1; c++) {
     if (!isOpen(c, r) || isDrive(c, r)) continue;
@@ -3280,7 +3446,7 @@ function drawNeighbourhoodGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) 
     if (hv < 0.06) {
       beds.push([x + 10 + jx*20, y + 12 + jy*16, _nbHash(c, r, 23)]);
     } else if (hv < 0.11) {
-      for (let k = 0; k < 3; k++) _circlePath(shrubs, x + 12 + jx*14 + k*5, y + 14 + jy*12 + (k % 2)*3, 4 + _nbHash(c, r, 24 + k)*2.5);
+      for (let k = 0; k < 3; k++) shrubs.push([x + 12 + jx*14 + k*5, y + 14 + jy*12 + (k % 2)*3, 4 + _nbHash(c, r, 24 + k)*2.5, _nbHash(c, r, 27 + k)]);
     } else if (hv < 0.15) {
       for (let k = 0; k < 4; k++) {
         const sx = x + 7 + k*8, sy = y + 8 + k*8 + (jx - 0.5)*4;
@@ -3310,7 +3476,7 @@ function drawNeighbourhoodGround(g, rect, cc0, cc1, rr0, rr1, shade, dark, lod) 
       g.fillStyle = col(176, 172, 162); g.beginPath(); g.arc(x, y, 4.5, 0, Math.PI*2); g.fill();
       g.fillStyle = col(96, 160, 200);  g.beginPath(); g.arc(x, y, 3, 0, Math.PI*2); g.fill();
     }
-    g.fillStyle = col(36, 72, 32); g.fill(shrubs);
+    _drawGroundShrubs(g, shrubs, col, col(36, 72, 32), null);
   }
   // Back gardens
   g.fillStyle = col(86, 60, 40); g.fill(border);
