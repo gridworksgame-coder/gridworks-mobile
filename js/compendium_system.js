@@ -952,7 +952,6 @@ const CompendiumSystem = (() => {
     card.tabIndex = 0;
     card.setAttribute('role', 'button');
     card.setAttribute('aria-expanded', open ? 'true' : 'false');
-    card.title = open ? 'Click to collapse' : 'Click for details';
 
     card.appendChild(_iconEl(it));
 
