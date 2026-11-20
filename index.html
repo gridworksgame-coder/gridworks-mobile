@@ -1784,6 +1784,24 @@
     word-break: break-word;
     white-space: pre-line;
   }
+  /* Object picture(s) beside the text; click one to open its Compendium entry. */
+  .tut-body { display: flex; gap: 16px; align-items: flex-start; }
+  .tut-body .tut-text { flex: 1; min-width: 0; }
+  .tut-pics { display: flex; flex-direction: column; gap: 8px; flex: none; }
+  .tut-pic {
+    display: block; padding: 4px; margin: 0; cursor: pointer;
+    background: rgba(255,255,255,0.05); border: 1px solid var(--ui-border-b); border-radius: 8px;
+    transition: border-color 0.15s, background 0.15s, transform 0.15s;
+  }
+  .tut-pic .cmp-card-icon { width: 56px; height: 56px; background: none; }
+  .tut-pic:hover, .tut-pic:focus-visible { border-color: #60d0e0; background: rgba(96,208,224,0.12); transform: translateY(-1px); outline: none; }
+  .tut-cmp-link {
+    display: block; margin: 12px 0 4px; padding: 0; border: none; background: none; cursor: pointer;
+    font: italic 500 15px 'Inter', sans-serif; color: #60d0e0; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .tut-cmp-link::before { content: '['; text-decoration: none; display: inline-block; margin-right: 1px; }
+  .tut-cmp-link::after  { content: ']'; text-decoration: none; display: inline-block; margin-left: 1px; }
+  .tut-cmp-link:hover, .tut-cmp-link:focus-visible { color: #b8f0ff; outline: none; }
   .tut-ctrl-list { display: flex; flex-direction: column; gap: 2px; }
   .tut-ctrl-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -3383,6 +3401,38 @@
     margin-top: 8px; font-size: 14px; color: var(--text-dim);
   }
   .cmp-card-stats b { color: var(--text); font-weight: 600; }
+  /* Collapsible entries: picture + name until clicked, then sections. */
+  .cmp-item { cursor: pointer; border-radius: 6px; transition: background 0.15s; align-items: center; }
+  .cmp-item.open { align-items: flex-start; background: rgba(96,208,224,0.04); }
+  .cmp-item:hover { background: rgba(96,208,224,0.07); }
+  .cmp-item:focus-visible { outline: 1px solid #60d0e0; outline-offset: -1px; }
+  .cmp-card-head { display: flex; align-items: center; gap: 10px; }
+  .cmp-card-head .cmp-card-title { flex: 1; min-width: 0; }
+  .cmp-item-arrow { flex: none; font-size: 12px; color: #60d0e0; padding-right: 6px; }
+  .cmp-oneline { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cmp-item.open .cmp-card-desc { font-size: 15px; line-height: 1.5; margin-top: 6px; font-style: italic; }
+  .cmp-sec { margin-top: 12px; }
+  .cmp-sec-label {
+    font: 700 11.5px 'Inter', sans-serif; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #60d0e0; margin-bottom: 5px;
+  }
+  .cmp-para { font-size: 15px; line-height: 1.5; color: var(--text); }
+  .cmp-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+  .cmp-list li { font-size: 15px; line-height: 1.45; color: var(--text); }
+  .cmp-list li::marker { color: #60d0e0; }
+  .cmp-item.open .cmp-card-stats {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px;
+    margin-top: 14px;
+  }
+  .cmp-stat { display: flex; flex-direction: column; padding: 6px 9px; background: rgba(255,255,255,0.035); border-radius: 5px; }
+  .cmp-stat-k { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+  .cmp-stat-v { font-size: 14.5px; color: var(--text); font-weight: 600; margin-top: 1px; }
+  /* Entry opened from a tutorial card: a brief glow. */
+  .cmp-card.cmp-focus { animation: cmpFocus 2.2s ease-out; }
+  @keyframes cmpFocus {
+    0%, 35% { background: rgba(96,208,224,0.22); box-shadow: inset 3px 0 0 #60d0e0; }
+    100%    { background: rgba(96,208,224,0.04); box-shadow: inset 3px 0 0 transparent; }
+  }
 
   /* ── Clock ────────────────────────────────────────────────────── */
   #playback-controls {

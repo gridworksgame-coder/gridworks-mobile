@@ -171,6 +171,57 @@ const CompendiumSystem = (() => {
     [T.PLAYGROUND]:       { desc: 'A neighborhood playground with a slide, swings and a sandbox.', use: 'Pays a one-time completion bonus and generates ongoing income. Families stay put: each one slows how fast residents in its zone lose patience during blackouts, even past the usual two-park limit. Requested in neighborhoods of 8+ homes.', icon: '🛝' },
   };
 
+  // ── Detail cut from the tutorial cards ─────────────────────────────
+  // The cards keep to the essentials and link here; what they used to say
+  // beyond that is added to the entry's usage text.
+  const TUT_TIPS = {
+    [T.BIOFUELGEN]:   '3 kW, constant, day and night. Most buildings have an upkeep fee, so watch your income.',
+    [T.WIRE]:         'Wiring generators together stacks their power. At most 3 wires in a row without a building or pole between them. A network carries 85 kW to start: green is comfortable, yellow tight, red at the limit, and past 80% a wire can burn out, darkening everything past it. Click a faulted (red) wire and hit Repair Wire, or Repair All Faults; repairs cost 25% less with a Monitoring Station.',
+    [T.POLE]:         'You need one after every 3 wires. Drag while placing to lay poles at full spacing. Until your first house has power, wires are free and poles half price.',
+    [T.POWERTOWER]:   'Drag while placing to lay towers at full spacing. Unlocks when you place your first Coal Mine.',
+    [T.RESEARCH]:     'Click it to unlock items once you meet their requirements; PROGRESS shows what is coming. E opens your highest-tier Research Station from anywhere.',
+    [T.BEACON]:       'Run a sweep from its panel to find work: it draws 12 kW while searching (3 kW on standby) and finds one to five offers, usually two or three, in about a day. Offers expire after a few days; the board holds ten and you can run three contracts at once. Most clients fund the equipment up front: build under budget and keep the difference, plus your margin, paid on sign-off. FIXED BID jobs pay no advance: you buy the kit and are repaid with a bigger margin.',
+    [T.LIGHTNINGROD]: 'One rod cuts strikes in its radius by about 60%, two overlapping about 85%, three about 95%. Rods are never damaged, and an unwired rod still protects. A struck building draws, makes and pays nothing until repaired; the cost scales with its value (25% off with a Monitoring Station), from minutes for a pole to hours for a reactor. Strikes only come in rainstorms, and bigger grids and buildings are hit more often.',
+    [T.LAMP]:         'Properties request it: place it within 1 tile of the building that asked.',
+    [T.CAMERA]:       'Properties request it: place it within 1 tile of the building that asked.',
+    [T.SURVEY]:       'A scan takes 8 to 12 in-game hours (rarer resources take longer) and draws 40 kW (8 kW idle). Without power it pauses, keeping its progress. Each scan costs more and draws 5 kW more than the last.',
+    [T.GEOWELL]:      'Its pump needs power, so wire it in. The map shows the deposits.',
+    [T.GEOTURBINE]:   'Runs day and night, and deposits never run dry. Running three at once unlocks the Coal Scan.',
+    [T.PROTECTOR]:    'Needs no power, just $7/s upkeep. Past 80% load a wire can burn out, darkening everything past it until repaired.',
+    [T.MONITOR]:      'Also takes 25% off every repair.',
+    [T.COALGENERATOR]:'Fully supplied it makes 100 kW, and a Coal Mine MK1 can feed nearly three. At 100% Ash Waste it shuts down until a truck clears it. Its smog drifts downwind and clears slowly, capping satisfaction and dimming solar: more in Overdrive, less in Eco, up to double when its ash backs up, so build it downwind and away from housing. At 100% pressure a meltdown countdown starts; switch to Normal or Eco to drain it. Click it and choose FIT SCRUBBER to cut its emissions by 60% (one-off fee plus $4/s upkeep; removing the plant refunds two thirds of the fee).',
+    [T.FUELGEN]:      'Makes 165 kW. It needs outside power already on its network to start, and the fuel pipe carries no power, so it still needs a wire. At 100% heat a meltdown countdown starts; switch to Normal or Eco to drain it.',
+    [T.CARBONCAPTURE]:'The approval hit goes too once the city is under its 12-unit allowance. Pair it with scrubbers: they shrink each plant\'s output, and capture takes half the rest.',
+    [T.SOLAR]:        'Nothing at night, and some weather cuts it. Shadows reach farther early, late and in winter.',
+    [T.WIND]:         'Turbines placed touching share one grid; only one of them needs a wire.',
+    [T.BATTERY]:      'Each stores 50 kWh and releases up to 50 kW. Blocks on the same grid stack.',
+    [T.FISHINGPOLE]:  'Fish hold oil you extract as biofuel, far more than trees and bushes, and sell for cash. Rarer fish give more; junk gives no biofuel. Cast within 3 tiles of water; the map shows where it is.',
+    [T.CONVEYOR]:     'A belt into a Storage Container keeps a mine digging. Unlocks when your Coal Mine has dug 500t, with the Storage Container and Underground Belt.',
+    [T.WATEREXTRACTOR]:'Needs power. Place it on a lake or river and press R to turn its pipe output. Once it is pumping, Pipes and the Coal Power Generator unlock.',
+    [T.CELLTOWER]:    'Only in a zone big enough to need one. The later Fiber Hub is pure income.',
+    [T.PUMPJACK]:     'Pumps until its deposit runs dry. Pumping enough crude unlocks the Liquid Storage Tank, then the Oil Refinery.',
+    [T.REFINERY]:     'Pipe it from a Pump Jack directly, or through a Liquid Storage Tank to stockpile crude. When its waste buffer fills it stops, until a truck hauls the sludge to an Oil Waste Processing Facility.',
+    [T.TRUCK]:        'Assign it a Path Tool patrol route or queue destinations. A Waste Processing Facility appears near your generators once waste builds up. Trucks burn fuel and refill at a Gas Station; a parked truck burns nothing.',
+    [T.HAULER]:       'Carries 200 units a trip (750 of a process gas), one kind at a time, never waste. Slower and thirstier than Waste Trucks and needs roads at both ends, so a belt or pipe is cheaper where it reaches.',
+    [T.SMALLPARK]:    'Parks come as a reward when a residential zone grows big enough. They need no power and help nearby houses recover satisfaction faster.',
+    [T.BLUEPRINT]:    'Drag-select placed buildings to save one; press R to rotate a stamp. It also unlocks Copy (Ctrl+C, or the Copy tile in the Function tab): drag over what you built, then click to paste; Ctrl+V pastes again. Trees, water, deposits, customers, trucks and roads are not captured.',
+    [T.STEAMTURBINE]: '300 kW each; one Nuclear Reactor runs up to 3.',
+    [T.DAM]:          'Put a Hydro Turbine partly submerged in its reservoir: the turbine makes rotation, not electricity. Running it a while unlocks the Drive Shaft and Hydroelectric Generator.',
+    [T.HYDROGENERATOR]:'Drive Shafts carry the turbine\'s rotation to it in one unbroken line. Output follows turbine speed, up to 235 kW.',
+    [T.MK4RESEARCH]:  'It opens spent fuel reprocessing, plutonium and the Advanced Nuclear Reactor. Placing it brings the National Government, who set up a zone far out in the world.',
+    [T.REPROCESSOR]:  'Any full output stops the plant, so give the uranium somewhere to go even if you only want plutonium. Its high-level waste is trucked to the Nuclear Waste Processing Facility.',
+    [T.COOLINGTOWER2]:'Draws 110 kW. Once it runs, the Advanced Nuclear Reactor unlocks.',
+    [T.ADVREACTOR]:   'Lose cooling and a MOX core goes critical in seconds, not minutes. Its meltdown is worse than any standard reactor\'s, and there is no cleaning up after it. Keep lightning away from it and its tower.',
+    [T.DRONEPORT]:    'Drones work in this order: REPAIR damage (60% faster with a drone on it), SERVICE lines at 80-100% of their rating, SHAVE WASTE off a plant from 85% full until it is under 70%, and FLY CARGO (open a container, tank or gas holder and click REQUEST DRONE SUPPLY). A port idles at 40 kW plus up to 30 kW per drone recharging (340 kW for a full fleet); unpowered, it can\'t launch. A drone flies 66 seconds per charge. Storms halve their speed or worse; a cold snap cuts range by 30% and a heat wave halves recharging. Ports can be placed from the World Map.',
+    [T.MK5RESEARCH]:  'The fusion chain: Electrolyzer, Lithium Mine, Atmosphere Collector, Haber-Bosch Complex, Isotopic Wash Tower and Fusion Fuel Plant. It starts at the Fusion Research Facility: achieving fusion there unlocks the Electrolyzer.',
+    [T.FUSIONFUELPLANT]:'D-T pellets unlock the Helium Scan; bank them in Storage Containers.',
+    [T.HULKINGFUSIONREACTOR]:'Until it runs, a Tritium Breeding Facility piped to the Fuel Plant\'s TRITIUM IN starts the tritium loop. Twenty Steam Turbines give about 6 MW. Once helium-3 flows, the Fuel Plant also makes D-He3 pellets for the Advanced Fusion Reactor.',
+    [T.FUSIONLAB]:    '45 good shots achieve fusion: about two and a half days if your grid carries every spike; batteries and substations help. A couple of shots from ignition, losing power ruins the experiment and costs 2 good shots. After fusion every good shot cuts the remaining fusion-chain goals by 1%, up to 20%.',
+    [T.COREWORKS]:    'Cores never ride belts: Drones and Haulers carry them to reactors and bring spent ones back. Up to 3 per reactor add +50%, +30% and +20% output for 0.7x that boost in extra fuel; a starved reactor loses the boost first. A core lasts 24 in-game hours of running and boils off 1.5 liquid helium a second, and a quench takes every core in the reactor down. 3 Core Works keep 12 cores charged, enough for 4 reactors running 3 each. Click it for OFF-PEAK CHARGING (22:00 to 06:00) or to turn off WIND NEW CORES.',
+    [T.MHDRING]:      'The Advanced Fusion Reactor needs serious cooling: two or three Cryo Plants on its magnets and two Cryogenic Cooling Towers on CRYO IN.',
+    [T.NATIONALGRID]: 'The stages: I, burn 500 pellets in Fusion Reactors while the site has power. II, commit $2.5M and burn 1,000 D-He3 pellets. III, 24 fully powered 10 MW hourly surges. IV, hold 20 MW for two days; while the line is up it pays 5x your net income (7.5x on the final day), and every power loss costs an hour. V, 24 hours at 30 MW with no Coal or Fuel Generators, a City Score of 70+ and $5M of wind, solar and hydro standing.',
+  };
+
   // upfront/fee are the [min,max] observed across that tier's FAMILY_POOL entries;
   // demandMult scales the base House demand curve (2 kW day / 3 kW night / 6 kW evening peak).
   const TIER_DEFS = {
@@ -469,7 +520,7 @@ const CompendiumSystem = (() => {
         const d = DESCS[t] || {};
         return {
           key: 'tool:' + t, type: t, label: def.label,
-          desc: d.desc || '', use: d.use || '', stats: _statsFor(def, t),
+          desc: d.desc || '', use: d.use || '', tips: TUT_TIPS[t] || '', stats: _statsFor(def, t),
           iconKind: 'tool', unlocked: Progression.isUnlocked(t),
         };
       }),
@@ -484,7 +535,7 @@ const CompendiumSystem = (() => {
         const d = DESCS[t] || {};
         return {
           key: label + ':' + t, type: t, label: def.label,
-          desc: d.desc || '', use: d.use || '', stats: _statsFor(def, t),
+          desc: d.desc || '', use: d.use || '', tips: TUT_TIPS[t] || '', stats: _statsFor(def, t),
           iconKind: 'emoji', icon: d.icon || '❓', unlocked: discoveredSet.has(t),
         };
       }),
@@ -612,7 +663,8 @@ const CompendiumSystem = (() => {
   // only to keep arbitrary player input from being interpreted as markup.
   function _buildNoteCard(it) {
     const card = document.createElement('div');
-    card.className = 'cmp-card cmp-note-card';
+    card.className = 'cmp-card cmp-note-card' + (it.key === _focusKey ? ' cmp-focus' : '');
+    card.dataset.key = it.key;
     card.title = 'Click to pop this tutorial card back up';
     card.addEventListener('click', () => {
       if (typeof TutorialSystem !== 'undefined') TutorialSystem.forceShow(it.seqId, it.stepIndex);
@@ -638,22 +690,20 @@ const CompendiumSystem = (() => {
     return card;
   }
 
-  function _buildCard(it) {
-    if (it.iconKind === 'note') return _buildNoteCard(it);
-    const card = document.createElement('div');
-    card.className = 'cmp-card';
-
+  // The entry's picture: the hotbar icon for buildables, the catch art for
+  // fish, otherwise its emoji. Also drawn on tutorial cards (iconFor).
+  function _iconEl(it, size = 48) {
     const iconWrap = document.createElement('div');
     iconWrap.className = 'cmp-card-icon';
-    if (it.iconKind === 'tool') {
+    if (it.iconKind === 'tool' || (it.type && it.iconKind !== 'emoji' && it.iconKind !== 'fish')) {
       const c = document.createElement('canvas');
-      c.width = 48; c.height = 48;
+      c.width = size; c.height = size;
       try { RenderSystem.renderIcon(c, it.type); } catch (e) {}
       iconWrap.appendChild(c);
     } else if (it.iconKind === 'fish') {
       const c = document.createElement('canvas');
       c.width = 64; c.height = 64;
-      c.style.cssText = 'width:48px;height:48px;';
+      c.style.cssText = `width:${size}px;height:${size}px;`;
       try {
         const fctx = c.getContext('2d');
         if (it.silhouette) { fctx.filter = 'brightness(0)'; fctx.globalAlpha = 0.45; }
@@ -662,28 +712,79 @@ const CompendiumSystem = (() => {
       iconWrap.appendChild(c);
     } else {
       iconWrap.textContent = it.icon || '❓';
-      iconWrap.style.fontSize = '27px';
+      iconWrap.style.fontSize = Math.round(size * 0.56) + 'px';
     }
-    card.appendChild(iconWrap);
+    return iconWrap;
+  }
+
+  // Long usage text reads as a wall; split it into one bullet per sentence.
+  // Splits only where a sentence ends and a capital, digit or bracket starts
+  // the next, so "0.8 ore/s" and the like stay whole.
+  function _sentences(txt) {
+    return String(txt || '').split(/(?<=[.!?])\s+(?=[A-Z0-9(⚠☢])/).map(x => x.trim()).filter(Boolean);
+  }
+  function _section(label, txt) {
+    const parts = _sentences(txt);
+    if (!parts.length) return '';
+    const body = parts.length > 1
+      ? `<ul class="cmp-list">${parts.map(x => `<li>${x}</li>`).join('')}</ul>`
+      : `<div class="cmp-para">${parts[0]}</div>`;
+    return `<div class="cmp-sec"><div class="cmp-sec-label">${label}</div>${body}</div>`;
+  }
+
+  // Entries start collapsed to their picture and name (plus the first line
+  // of their description); a click anywhere on one opens or closes it.
+  function _buildCard(it) {
+    if (it.iconKind === 'note') return _buildNoteCard(it);
+    const open = _openItems.has(it.key);
+    const card = document.createElement('div');
+    card.className = 'cmp-card cmp-item' + (open ? ' open' : '') + (it.key === _focusKey ? ' cmp-focus' : '');
+    card.dataset.key = it.key;
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-expanded', open ? 'true' : 'false');
+    card.title = open ? 'Click to collapse' : 'Click for details';
+
+    card.appendChild(_iconEl(it));
 
     const info = document.createElement('div');
     info.className = 'cmp-card-info';
-    info.innerHTML = `
-      <div class="cmp-card-title">${it.label}</div>
-      ${it.desc ? `<div class="cmp-card-desc">${it.desc}</div>` : ''}
-      ${it.use  ? `<div class="cmp-card-use">${it.use}</div>` : ''}
-      ${it.stats.length ? `<div class="cmp-card-stats">${it.stats.map(([k, v]) => `<span><b>${k}:</b> ${v}</span>`).join('')}</div>` : ''}
-    `;
+    const head = `<div class="cmp-card-head"><div class="cmp-card-title">${it.label}</div><span class="cmp-item-arrow">${open ? '▾' : '▸'}</span></div>`;
+    if (!open) {
+      info.innerHTML = head + (it.desc ? `<div class="cmp-card-desc cmp-oneline">${it.desc}</div>` : '');
+    } else {
+      info.innerHTML = head
+        + (it.desc ? `<div class="cmp-card-desc">${it.desc}</div>` : '')
+        + _section('How to use', it.use)
+        + _section('Tips', it.tips)
+        + (it.stats.length ? `<div class="cmp-card-stats">${it.stats.map(([k, v]) => `<div class="cmp-stat"><span class="cmp-stat-k">${k}</span><span class="cmp-stat-v">${v}</span></div>`).join('')}</div>` : '');
+    }
     card.appendChild(info);
+
+    const toggle = (e) => {
+      e.stopPropagation();
+      if (_openItems.has(it.key)) _openItems.delete(it.key); else _openItems.add(it.key);
+      try { SFX.click?.(); } catch (_e) {}
+      const fresh = _buildCard(it);
+      card.replaceWith(fresh);
+      fresh.focus({ preventScroll: true });
+    };
+    card.addEventListener('click', toggle);
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); }
+    });
     return card;
   }
 
   let _lastQuery = '';
+  let _focusKey = null;          // entry opened from a tutorial card (highlighted, scrolled to)
+  const _openItems = new Set();  // entries the player has expanded — all collapsed by default
+  const _revealed  = new Set();  // locked entries a tutorial card has opened (listed anyway)
   const _expanded = new Set();   // section labels the player has opened — all closed by default
 
   function _matchesQuery(it, q) {
     if (!q) return true;
-    const hay = `${it.label} ${it.desc || ''} ${it.use || ''}`.toLowerCase();
+    const hay = `${it.label} ${it.desc || ''} ${it.use || ''} ${it.tips || ''}`.toLowerCase();
     return hay.includes(q);
   }
 
@@ -705,7 +806,10 @@ const CompendiumSystem = (() => {
     });
     sections.forEach(sec => {
       const unlocked = sec.items.filter(it => it.unlocked);
-      const visible  = (sec.showLocked ? sec.items : unlocked).filter(it => _matchesQuery(it, q));
+      // An entry opened from a tutorial card shows even before it is
+      // unlocked: the card has already named it.
+      const visible  = (sec.showLocked ? sec.items : sec.items.filter(it => it.unlocked || _revealed.has(it.key)))
+        .filter(it => _matchesQuery(it, q));
       totalUnlocked += unlocked.length;
       totalItems    += sec.items.length;
       if (!visible.length) return;
@@ -760,9 +864,54 @@ const CompendiumSystem = (() => {
     }
   }
 
+  // ── Tutorial card links ────────────────────────────────────────────
+  // A tutorial card names its subject as a T type ('coalgen') or a full
+  // compendium key ('veg:tree', 'tier:budget', 'tutnote:intro:4').
+  function _find(subject) {
+    if (subject == null) return null;
+    const s = String(subject);
+    const all = _buildSections().flatMap(sec => sec.items.map(it => ({ it, sec })));
+    return all.find(({ it }) => it.key === s)
+        || all.find(({ it }) => it.key === 'tool:' + s)
+        || all.find(({ it }) => it.type === s)
+        || null;
+  }
+  function findEntry(subject) { const f = _find(subject); return f ? f.it : null; }
+  function iconFor(subject, size = 56) {
+    const it = findEntry(subject);
+    return it ? _iconEl({ ...it, silhouette: false }, size) : null;
+  }
+  // Open the compendium on one entry: clears the search, opens its section
+  // (and group), scrolls to it and flashes it.
+  function openTo(subject) {
+    const f = _find(subject);
+    const panel = document.getElementById('compendium-panel');
+    if (!f || !panel) return false;
+    if (!panel.classList.contains('visible')) {
+      if (typeof closeOtherTopPanels === 'function') closeOtherTopPanels('compendium-panel');
+      panel.classList.add('visible');
+      document.getElementById('btn-compendium')?.classList.add('open');
+    }
+    const search = document.getElementById('cmp-search');
+    if (search) search.value = '';
+    _focusKey = f.it.key;
+    _openItems.add(f.it.key);
+    _revealed.add(f.it.key);
+    _expanded.add(f.sec.label);
+    if (f.sec.group) _expanded.add('group:' + f.sec.group);
+    renderPanel('');
+    _focusKey = null;   // glow once, not on every redraw
+    const el = [...panel.querySelectorAll('.cmp-card')].find(c => c.dataset.key === f.it.key);
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    return true;
+  }
+
   return {
     tick() { _scan(); },
     renderPanel,
+    findEntry,
+    iconFor,
+    openTo,
     serialise() {
       return {
         civic:    [..._civicDiscovered],

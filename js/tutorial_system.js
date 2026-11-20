@@ -25,7 +25,8 @@ const TutorialSystem = (() => {
       trigger: () => true,
       steps: [
         {
-          text: () => `Welcome to GRIDWORKS!\n\nYou own ${CityInfo.getCompanyName()}, hired by the local government of ${CityInfo.getCityName()} to build its power grid.\n\nBuild it, grow it and keep it running. More advanced power comes as you progress.`,
+          text: () => `Welcome to GRIDWORKS!\n\nYou own ${CityInfo.getCompanyName()}, hired by ${CityInfo.getCityName()} to build its power grid. Build it, grow it and keep it running.`,
+          more: () => `Welcome to GRIDWORKS!\n\nYou own ${CityInfo.getCompanyName()}, hired by the local government of ${CityInfo.getCityName()} to build its power grid.\n\nBuild it, grow it and keep it running. More advanced power comes as you progress.`,
           manual: true,
         },
         {
@@ -95,17 +96,21 @@ const TutorialSystem = (() => {
           ],
         },
         {
-          text: "INCOME and BALANCE: what you earn and hold (you start with $20,000). POPULATION grows as customers move in. GOVERNMENT is the council\'s happiness and CITY SCORE grades your grid\'s stability; blackouts hurt both.\n\nGRID breaks down supply and demand. WEATHER: heat waves and cold snaps raise demand, rain cuts solar, rainstorms bring lightning.\n\nPROGRESS lists upcoming requests and unlocks. Requests come as your total kWh grows, so if it feels slow, build more generators. (A Monitoring Station adds full breakdowns later.)",
+          text: "The top bar: INCOME and BALANCE (you start with $20,000), POPULATION, GOVERNMENT approval, CITY SCORE, GRID supply and demand, WEATHER and PROGRESS.\n\nRequests come as your total kWh grows: if they feel slow, build more generators.",
+          more: "INCOME and BALANCE: what you earn and hold (you start with $20,000). POPULATION grows as customers move in. GOVERNMENT is the council\'s happiness and CITY SCORE grades your grid\'s stability; blackouts hurt both.\n\nGRID breaks down supply and demand. WEATHER: heat waves and cold snaps raise demand, rain cuts solar, rainstorms bring lightning.\n\nPROGRESS lists upcoming requests and unlocks. Requests come as your total kWh grows, so if it feels slow, build more generators. (A Monitoring Station adds full breakdowns later.)",
           manual: true,
           highlightDom: ['income-balance-group', 'population-stat-btn', 'gov-stat-btn', 'score-stat-btn', 'grid-tab-btn', 'weather-tab-btn', 'btn-progress'],
         },
         {
-          text: "The clock shows the time. Pause with SPACE and change speed (up to 10x) with ALT.\n\nPANELS (bottom right) opens the side panels: the COMPENDIUM (every item and tutorial), RESEARCH, ACHIEVEMENTS and the MESSAGE LOG. More appear as you unlock them. RECENTER, just above PANELS, takes you back to City Hall.",
+          text: "Pause with SPACE and change speed (up to 10x) with ALT.\n\nPANELS (bottom right) opens the Compendium, Research, Achievements and Message Log. RECENTER takes you back to City Hall.",
+          more: "The clock shows the time. Pause with SPACE and change speed (up to 10x) with ALT.\n\nPANELS (bottom right) opens the side panels: the COMPENDIUM (every item and tutorial), RESEARCH, ACHIEVEMENTS and the MESSAGE LOG. More appear as you unlock them. RECENTER, just above PANELS, takes you back to City Hall.",
           manual: true,
           highlightDom: ['clock', 'playback-controls', 'btn-side-dock', 'btn-compendium', 'btn-achievements', 'btn-recenter', 'btn-msglog'],
         },
         {
-          text: () => `This is ${CityInfo.getCityName()} City Hall, your first customer. It needs up to 8 kW, day and night.\n\nFrom the GENERATION tab, place at least 3 Biofuel Generators near it (3 kW each, constant).\n\nMost buildings have an upkeep fee, so watch your INCOME.`,
+          text: () => `This is ${CityInfo.getCityName()} City Hall, your first customer. It needs up to 8 kW.\n\nFrom the GENERATION tab, place 3 Biofuel Generators near it.`,
+          more: () => `This is ${CityInfo.getCityName()} City Hall, your first customer. It needs up to 8 kW, day and night.\n\nFrom the GENERATION tab, place at least 3 Biofuel Generators near it (3 kW each, constant).\n\nMost buildings have an upkeep fee, so watch your INCOME.`,
+          subject: [T.BIOFUELGEN],
           highlight: T.BIOFUELGEN,
           highlightWorld: true,
           onEnter: () => {
@@ -118,11 +123,15 @@ const TutorialSystem = (() => {
           check: () => EntityRegistry.getByType(T.BIOFUELGEN).size >= 3,
         },
         {
-          text: () => `Now collect biofuel. Hold right-click over trees and bushes around ${CityInfo.getCityName()}. Your generators burn a lot of it.\n\n50 biofuel unlocks Wire.`,
+          text: "Now collect biofuel: Hold right-click over trees and bushes. Your generators burn a lot of it.\n\n50 biofuel unlocks Wire.",
+          more: () => `Now collect biofuel. Hold right-click over trees and bushes around ${CityInfo.getCityName()}. Your generators burn a lot of it.\n\n50 biofuel unlocks Wire.`,
+          subject: ['veg:tree'],
           check: () => Progression.isUnlocked(T.WIRE),
         },
         {
-          text: "Wire unlocked! Wire your generators together to stack their power, then run a wire to City Hall.\n\nAt most 3 wires in a row without a building or pole between them.",
+          text: "Wire unlocked! Wire your generators together, then run a wire to City Hall.\n\nAt most 3 wires in a row between buildings or poles.",
+          more: "Wire unlocked! Wire your generators together to stack their power, then run a wire to City Hall.\n\nAt most 3 wires in a row without a building or pole between them.",
+          subject: [T.WIRE],
           highlight: T.WIRE,
           highlightWorld: true,
           // No read-pause here: the player wires up while reading, and the
@@ -136,21 +145,29 @@ const TutorialSystem = (() => {
         },
         {
           text: "City Hall is powered! Keep collecting: 125 biofuel unlocks the Research Station.",
+          more: "City Hall is powered! Keep collecting: 125 biofuel unlocks the Research Station.",
+          subject: [T.RESEARCH],
           check: () => Progression.isUnlocked(T.RESEARCH),
         },
         {
-          text: "Research Station MK1 unlocked! Click it to unlock new items once you meet their requirements.\n\nPlace it now. It needs power, so keep 3 kW spare.",
+          text: "Research Station MK1 unlocked! Place it, then click it to unlock new items.\n\nIt needs 3 kW of spare power.",
+          more: "Research Station MK1 unlocked! Click it to unlock new items once you meet their requirements.\n\nPlace it now. It needs power, so keep 3 kW spare.",
+          subject: [T.RESEARCH],
           highlight: T.RESEARCH,
           check: () => EntityRegistry.getByType(T.RESEARCH).size > 0,
         },
         {
-          text: "Mae\'s Cabin wants a connection: your first residential customer!\n\nOpen the requests window to see the payment and daily fee, then pick a site. Your pick starts your first residential zone; later requests always offer a spot near it, and a far one starts a new zone.\n\nTIP: with the window open, press M to see the sites (A to G) on the map.",
+          text: "Mae\'s Cabin wants power: your first residential customer!\n\nOpen the requests window and pick a site. It starts your first residential zone.\n\nTIP: with the window open, press M to see the sites on the map.",
+          more: "Mae\'s Cabin wants a connection: your first residential customer!\n\nOpen the requests window to see the payment and daily fee, then pick a site. Your pick starts your first residential zone; later requests always offer a spot near it, and a far one starts a new zone.\n\nTIP: with the window open, press M to see the sites (A to G) on the map.",
+          subject: ['tier:budget'],
           highlightDom: ['hotbar-req-btn'],
           check: () => HouseRequestSystem.getCabinCleared(),
           pauseAnyway: true,
         },
         {
-          text: "Power Pole can now be unlocked at the Research Station.\n\nYou need a pole after every 3 wires. Hold LMB and drag to place one every 4 tiles.\n\nNow get Mae\'s Cabin online. HOOKUP DEAL: until it has power, wires are FREE and poles are 50% off.",
+          text: "Power Pole can now be unlocked. You need one after every 3 wires: Hold LMB and drag to place them in a line.\n\nHOOKUP DEAL: until Mae\'s Cabin has power, wires are FREE and poles are 50% off.",
+          more: "Power Pole can now be unlocked at the Research Station.\n\nYou need a pole after every 3 wires. Hold LMB and drag to place one every 4 tiles.\n\nNow get Mae\'s Cabin online. HOOKUP DEAL: until it has power, wires are FREE and poles are 50% off.",
+          subject: [T.POLE],
           highlight: T.POLE,
           check: () => {
             const cabin = [...EntityRegistry.getByType(T.HOUSE)][0];
@@ -164,7 +181,9 @@ const TutorialSystem = (() => {
           probePower: true,
         },
         {
-          text: "Your first residential customer is connected!\n\nYou got an upfront payment, and its daily fee pays out through the day. Click a property to see its draw and income.\n\nKeep customers lit: blackouts cut satisfaction and income, and one left dark too long leaves and charges you a fee.\n\nKeep collecting biofuel for your next generator. PROGRESS (or a Research Station) shows what\'s coming.",
+          text: "Your first customer is connected! It paid up front, and its daily fee pays out through the day.\n\nKeep customers lit: a customer left dark too long leaves and charges you a fee.",
+          more: "Your first residential customer is connected!\n\nYou got an upfront payment, and its daily fee pays out through the day. Click a property to see its draw and income.\n\nKeep customers lit: blackouts cut satisfaction and income, and one left dark too long leaves and charges you a fee.\n\nKeep collecting biofuel for your next generator. PROGRESS (or a Research Station) shows what\'s coming.",
+          subject: ['tier:budget'],
           manual: true,
         },
       ],
@@ -178,7 +197,8 @@ const TutorialSystem = (() => {
       trigger: () => typeof Seasons !== 'undefined' && Seasons.enabled() && _isSeqDone(SEQUENCES[0]),
       steps: [
         {
-          text: "The year runs Spring, Summer, Autumn, Winter, 14 days each; the clock shows the season.\n\nSUMMER: about 2 more hours of sun, but more cooling demand and heat waves.\nWINTER: about 2 hours less sun, more heating demand, snow instead of rain and blizzards instead of rainstorms.\n\nEach season brings town events: keep the pledged buildings lit for a bonus.",
+          text: "Four seasons of 14 days each. Summer brings more sun and heat waves; winter less sun, more heating demand and blizzards.\n\nSeasonal town events pay a bonus if you keep the pledged buildings lit.",
+          more: "The year runs Spring, Summer, Autumn, Winter, 14 days each; the clock shows the season.\n\nSUMMER: about 2 more hours of sun, but more cooling demand and heat waves.\nWINTER: about 2 hours less sun, more heating demand, snow instead of rain and blizzards instead of rainstorms.\n\nEach season brings town events: keep the pledged buildings lit for a bonus.",
           manual: true,
           highlightDom: ['clock'],
         },
@@ -196,14 +216,18 @@ const TutorialSystem = (() => {
           // player reading about a board they cannot open. Dismissable, so a
           // player who wants no contract work can close it for good.
           dismissable: true,
-          text: "Companies around the world will pay a contractor to build generation, run lines and restore supply. That contractor is you.\n\nUnlock a Communications Beacon at a Research Station and place it to hear from them. It\'s expensive and draws power constantly, so make it pay.",
+          text: "Companies around the world pay contractors to build power. That\'s you.\n\nUnlock and place a Communications Beacon to hear from them. It\'s expensive and always draws power.",
+          more: "Companies around the world will pay a contractor to build generation, run lines and restore supply. That contractor is you.\n\nUnlock a Communications Beacon at a Research Station and place it to hear from them. It\'s expensive and draws power constantly, so make it pay.",
+          subject: [T.BEACON],
           highlight: T.BEACON,
           check: () => EntityRegistry.getByType(T.BEACON).size > 0,
         },
         {
           // Shown once the beacon exists. Dismissed with Continue, since
           // it is the player's to read at their own pace.
-          text: "Click your beacon and choose OPEN CONTRACT BOARD.\n\nEach offer lists client, site, scope and pay. Most clients fund the equipment up front: build under budget and keep the difference, plus your margin, paid on sign-off.\n\nFIXED BID jobs pay no advance: you buy the kit and are repaid with a bigger margin on sign-off, so make sure you can afford it.\n\nOffers expire after a few days. The board holds ten, you can run three at once, and accepting takes you to the site.",
+          text: "Click your beacon and choose OPEN CONTRACT BOARD. Each offer lists the client, site, scope and pay.\n\nMost clients fund the equipment up front. FIXED BID jobs don\'t: you pay, and are repaid with a bigger margin.",
+          more: "Click your beacon and choose OPEN CONTRACT BOARD.\n\nEach offer lists client, site, scope and pay. Most clients fund the equipment up front: build under budget and keep the difference, plus your margin, paid on sign-off.\n\nFIXED BID jobs pay no advance: you buy the kit and are repaid with a bigger margin on sign-off, so make sure you can afford it.\n\nOffers expire after a few days. The board holds ten, you can run three at once, and accepting takes you to the site.",
+          subject: [T.BEACON],
           manual: true,
         },
         {
@@ -212,14 +236,17 @@ const TutorialSystem = (() => {
           // they are still standing at home. Dismissable rather than
           // manual: its Continue closes the card but leaves the sequence
           // parked here until the player actually reaches a site.
-          text: "Work doesn\'t come to you: open your beacon and run a sweep. It draws 12 kW while searching (3 kW on standby) and finds one to five offers, usually two or three, in about a day.",
+          text: "Open your beacon and run a sweep to find work. It takes about a day and turns up one to five offers.",
+          more: "Work doesn\'t come to you: open your beacon and run a sweep. It draws 12 kW while searching (3 kW on standby) and finds one to five offers, usually two or three, in about a day.",
+          subject: [T.BEACON],
           dismissable: true,
           check: () => typeof ContractSystem !== 'undefined' && ContractSystem.isAtSite(),
         },
         {
           // First arrival on a job site. Rings the two marker regions the
           // text is describing so "the highlighted areas" is unambiguous.
-          text: "You\'re at the jobsite.\n\nThe highlighted areas are the build area and the client\'s existing works your supply must reach; nothing outside the boundary is your job. The checklist tracks every requirement live: equipment must be WORKING, and the client\'s dark buildings must be back on supply.\n\nRETURN HOME and RETURN TO SITE travel freely, with the site kept as you left it, but the deadline keeps running. Miss it (or ABANDON) and the contract fails: no profit, the budget goes back and everything on site is lost. Finish on time and repeat work pays better.",
+          text: "You\'re at the jobsite. Build inside the highlighted area; the checklist tracks every requirement live.\n\nYou can travel home and back freely, but the deadline keeps running. Miss it and the contract fails.",
+          more: "You\'re at the jobsite.\n\nThe highlighted areas are the build area and the client\'s existing works your supply must reach; nothing outside the boundary is your job. The checklist tracks every requirement live: equipment must be WORKING, and the client\'s dark buildings must be back on supply.\n\nRETURN HOME and RETURN TO SITE travel freely, with the site kept as you left it, but the deadline keeps running. Miss it (or ABANDON) and the contract fails: no profit, the budget goes back and everything on site is lost. Finish on time and repeat work pays better.",
           manual: true,
           highlightWorld: () => {
             if (typeof ContractSystem === 'undefined' || !ContractSystem.isAtSite()) return null;
@@ -237,11 +264,13 @@ const TutorialSystem = (() => {
       trigger: () => typeof ContractSites !== 'undefined' && ContractSites.contractorRank().count >= 1,
       steps: [
         {
-          text: "Not every contract is the same job.\n\nRUSH: small, half the deadline, paid a premium.\nRETAINER: a 2 to 4 day supply guarantee with little new kit.\nPEAK SUPPORT: batteries holding a client\'s evening peak.\nSHOWCASE: extra work for better pay, only for contractors with a name.\n\nThe badge shows job size, SMALL to FLAGSHIP: bigger pays more and takes longer.\n\nCASH + PERK jobs pay a little less cash plus a perk; PAID MOSTLY IN KIND jobs pay little cash and a longer perk. Perks: free wires for a few days, an equipment discount, cheaper repairs or running costs, faster sweeps, or an extra job next sweep. They count down in home time only.",
+          text: "Kinds of job: RUSH (half the deadline, paid a premium), RETAINER (a supply guarantee), PEAK SUPPORT (batteries for the evening peak) and SHOWCASE (for known contractors).\n\nBigger jobs pay more. Some pay partly in perks.",
+          more: "Not every contract is the same job.\n\nRUSH: small, half the deadline, paid a premium.\nRETAINER: a 2 to 4 day supply guarantee with little new kit.\nPEAK SUPPORT: batteries holding a client\'s evening peak.\nSHOWCASE: extra work for better pay, only for contractors with a name.\n\nThe badge shows job size, SMALL to FLAGSHIP: bigger pays more and takes longer.\n\nCASH + PERK jobs pay a little less cash plus a perk; PAID MOSTLY IN KIND jobs pay little cash and a longer perk. Perks: free wires for a few days, an equipment discount, cheaper repairs or running costs, faster sweeps, or an extra job next sweep. They count down in home time only.",
           manual: true,
         },
         {
-          text: "Clients only ask for power you\'ve proven by running it on your own grid.\n\nEach client\'s rank lifts their rates as you finish their jobs, and your contractor rank opens Showcase work.\n\nReactor jobs carry a warning: a client\'s reactor can melt down like yours, ending the contract and making you liable for their losses, which can put you in debt. Keep it cooled and its steam drawn.",
+          text: "Clients only ask for power you\'ve run on your own grid, and pay better as you finish their jobs.\n\nA client\'s reactor can melt down like yours, and you\'re liable for their losses.",
+          more: "Clients only ask for power you\'ve proven by running it on your own grid.\n\nEach client\'s rank lifts their rates as you finish their jobs, and your contractor rank opens Showcase work.\n\nReactor jobs carry a warning: a client\'s reactor can melt down like yours, ending the contract and making you liable for their losses, which can put you in debt. Keep it cooled and its steam drawn.",
           manual: true,
         },
       ],
@@ -259,7 +288,8 @@ const TutorialSystem = (() => {
                      }),
       steps: [
         {
-          text: "After three finished jobs, a client trusts your crew: when they want the same job again, a REPEAT ORDER appears on the board.\n\nACCEPT & TRAVEL to do it yourself for full pay, or DISPATCH CREW: the crew rebuilds your last build there while you stay home. The client pays for the equipment, and you get half the usual profit on sign-off.\n\nYou have one crew. It takes one of your three contract slots and is sent from home. The deadline still runs; if the crew hits a snag, or the finished build fails the checklist, a notification calls you to the site. You can visit any time to help.",
+          text: "A client you\'ve done three jobs for may send a REPEAT ORDER.\n\nDo it yourself for full pay, or DISPATCH CREW: your crew rebuilds your last build there for half the profit while you stay home.",
+          more: "After three finished jobs, a client trusts your crew: when they want the same job again, a REPEAT ORDER appears on the board.\n\nACCEPT & TRAVEL to do it yourself for full pay, or DISPATCH CREW: the crew rebuilds your last build there while you stay home. The client pays for the equipment, and you get half the usual profit on sign-off.\n\nYou have one crew. It takes one of your three contract slots and is sent from home. The deadline still runs; if the crew hits a snag, or the finished build fails the checklist, a notification calls you to the site. You can visit any time to help.",
           manual: true,
         },
       ],
@@ -280,7 +310,8 @@ const TutorialSystem = (() => {
       },
       steps: [
         {
-          text: "You have a blackout!\n\nBlackouts cut the daily fees your properties pay, more the longer they last. Get power back fast; you may need more generators.\n\nLeft dark long enough, customers threaten to leave, and one that leaves costs you 90% of its upfront fee.",
+          text: "You have a blackout!\n\nDark properties pay less the longer they\'re out, and may leave (costing you 90% of their upfront fee). Get power back fast.",
+          more: "You have a blackout!\n\nBlackouts cut the daily fees your properties pay, more the longer they last. Get power back fast; you may need more generators.\n\nLeft dark long enough, customers threaten to leave, and one that leaves costs you 90% of its upfront fee.",
           manual: true,
         },
       ],
@@ -294,7 +325,9 @@ const TutorialSystem = (() => {
           // Names what actually knocked the wire out (weather_events.js
           // _markFault, lightning fire): it used to blame a storm every time,
           // even for a fault in fog, a heat wave or a dead calm.
-          text: () => _wireFaultCause() + "\n\nClick the red faulted wire and hit Repair Wire, or click any wire and use Repair All Faults to fix every broken wire at once.\n\nRepairs cost money per wire, 25% less with a Monitoring Station.",
+          text: () => _wireFaultCause() + "\n\nClick the red wire and hit Repair Wire, or Repair All Faults to fix them all.",
+          more: () => _wireFaultCause() + "\n\nClick the red faulted wire and hit Repair Wire, or click any wire and use Repair All Faults to fix every broken wire at once.\n\nRepairs cost money per wire, 25% less with a Monitoring Station.",
+          subject: [T.WIRE],
           manual: true,
           highlightWorld: () => _findFirstFaultedWire(),
           onEnter: () => {
@@ -313,7 +346,9 @@ const TutorialSystem = (() => {
       trigger: () => !!_findFirstLightningDamaged(),
       steps: [
         {
-          text: "Lightning hit one of your buildings!\n\nA struck building draws, makes and pays nothing until repaired; a struck Power Pole stops conducting, so everything past it goes dark.\n\nClick it and hit Repair. The cost scales with its value (25% off with a Monitoring Station), and it takes minutes for a pole, hours for a reactor.\n\nStrikes only come in rainstorms, and bigger grids and buildings are hit more often.",
+          text: "Lightning hit one of your buildings! It does nothing until repaired, and a struck pole cuts power past it.\n\nClick it and hit Repair.",
+          more: "Lightning hit one of your buildings!\n\nA struck building draws, makes and pays nothing until repaired; a struck Power Pole stops conducting, so everything past it goes dark.\n\nClick it and hit Repair. The cost scales with its value (25% off with a Monitoring Station), and it takes minutes for a pole, hours for a reactor.\n\nStrikes only come in rainstorms, and bigger grids and buildings are hit more often.",
+          subject: [T.LIGHTNINGROD],
           manual: true,
           highlightWorld: () => _findFirstLightningDamaged(),
           onEnter: () => {
@@ -332,7 +367,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.LIGHTNINGROD) || Progression.isUnlocked(T.LIGHTNINGROD),
       steps: [
         {
-          text: "That strike earned you the Lightning Rod!\n\nA 3x4 grounded mast that draws strikes away from everything within 14 tiles. Rods are never damaged.\n\nUnlock it at your Research Station MK2.",
+          text: "That strike earned you the Lightning Rod! It draws strikes away from everything within 14 tiles.\n\nUnlock it at your Research Station MK2.",
+          more: "That strike earned you the Lightning Rod!\n\nA 3x4 grounded mast that draws strikes away from everything within 14 tiles. Rods are never damaged.\n\nUnlock it at your Research Station MK2.",
+          subject: [T.LIGHTNINGROD],
           highlight: T.LIGHTNINGROD,
           // Unlocking is a menu click, not something that needs sim time
           // to elapse, so it's safe to pause and let the player read.
@@ -341,7 +378,9 @@ const TutorialSystem = (() => {
           check: () => Progression.isUnlocked(T.LIGHTNINGROD),
         },
         {
-          text: "Place rods near what you can least afford to lose: power plants and big customers.\n\nOne rod cuts strikes in its radius by about 60%; two overlapping, about 85%; three, about 95%.\n\nWired in, each intercepted strike feeds 10 kW back, fading over an in-game hour (an unwired rod still protects). Click a rod to see its coverage.",
+          text: "Place rods near what you can least afford to lose: power plants and big customers.\n\nOverlapping rods protect better. Click a rod to see its coverage.",
+          more: "Place rods near what you can least afford to lose: power plants and big customers.\n\nOne rod cuts strikes in its radius by about 60%; two overlapping, about 85%; three, about 95%.\n\nWired in, each intercepted strike feeds 10 kW back, fading over an in-game hour (an unwired rod still protects). Click a rod to see its coverage.",
+          subject: [T.LIGHTNINGROD],
           highlight: T.LIGHTNINGROD,
           manual: true,
           check: () => EntityRegistry.getByType(T.LIGHTNINGROD).size > 0,
@@ -354,7 +393,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isUnlocked(T.LAMP),
       steps: [
         {
-          text: "Street Lamp unlocked!\n\nProperties sometimes request an amenity like a Street Lamp or Security Camera; watch your notifications.\n\nPlace it within 1 tile of the building that asked. It boosts satisfaction for everyone nearby.",
+          text: "Street Lamp unlocked! Properties sometimes ask for an amenity like this; watch your notifications.\n\nPlace it within 1 tile of the building that asked.",
+          more: "Street Lamp unlocked!\n\nProperties sometimes request an amenity like a Street Lamp or Security Camera; watch your notifications.\n\nPlace it within 1 tile of the building that asked. It boosts satisfaction for everyone nearby.",
+          subject: [T.LAMP, T.CAMERA],
           manual: true,
           highlight: T.LAMP,
         },
@@ -366,7 +407,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isUnlocked(T.SURVEY),
       steps: [
         {
-          text: "Resource Survey Station unlocked: the way to geothermal power.\n\nPlace it, power it and click it to run a Geothermal Scan, which reveals hidden deposits.\n\nA scan takes 8 to 12 in-game hours (rarer resources take longer) and draws 40 kW (8 kW idle). Without power it pauses, keeping its progress. Each scan costs more and draws 5 kW more than the last.",
+          text: "Resource Survey Station unlocked! Place it, power it and click it to run a Geothermal Scan, which reveals hidden deposits.",
+          more: "Resource Survey Station unlocked: the way to geothermal power.\n\nPlace it, power it and click it to run a Geothermal Scan, which reveals hidden deposits.\n\nA scan takes 8 to 12 in-game hours (rarer resources take longer) and draws 40 kW (8 kW idle). Without power it pauses, keeping its progress. Each scan costs more and draws 5 kW more than the last.",
+          subject: [T.SURVEY],
           // Dismissable, not manual: `manual` ADVANCES on Continue, so this
           // card handed straight over to "You have completed your first
           // resource scan!" the instant the player closed it - before they
@@ -381,7 +424,9 @@ const TutorialSystem = (() => {
           check: () => GeothermalSystem.hasDeposits(),
         },
         {
-          text: "First scan complete! Open the map (M) to see the geothermal deposits it found.\n\nThe geothermal chain is now open at your Research Station.",
+          text: "First scan complete! Open the map (M) to see the geothermal deposits it found.",
+          more: "First scan complete! Open the map (M) to see the geothermal deposits it found.\n\nThe geothermal chain is now open at your Research Station.",
+          subject: [T.GEOWELL],
           // Manual, and deliberately WITHOUT a check. The old check here
           // waited on Progression.isUnlocked(T.GEOWELL) - but the well
           // unlocks on GeothermalSystem.hasDeposits() (progression.js), the
@@ -393,7 +438,9 @@ const TutorialSystem = (() => {
           manual: true,
         },
         {
-          text: "Geothermal Well unlocked.\n\nPlace one on a geothermal deposit, one per deposit (the map (M) shows them). The marked steam output port is where the turbine goes: press R before placing to turn it.\n\nThe well\'s pump needs power, so wire it in.",
+          text: "Geothermal Well unlocked! Place one on a geothermal deposit and wire it in.\n\nThe turbine goes on its steam port: press R before placing to turn it.",
+          more: "Geothermal Well unlocked.\n\nPlace one on a geothermal deposit, one per deposit (the map (M) shows them). The marked steam output port is where the turbine goes: press R before placing to turn it.\n\nThe well\'s pump needs power, so wire it in.",
+          subject: [T.GEOWELL],
           highlight: T.GEOWELL,
           // Dismissable, not manual: the next card says to unlock the
           // Geothermal Turbine, which only unlocks once a well is down
@@ -402,7 +449,9 @@ const TutorialSystem = (() => {
           check: () => EntityRegistry.getByType(T.GEOWELL).size > 0,
         },
         {
-          text: "Now unlock the Geothermal Turbine (E opens the Research Station from anywhere) and place it over the well\'s steam port, one per well.\n\nEach makes 35 to 55 kW depending on the world\'s heat and the weather, day and night; deposits never run dry.\n\nRun three turbines at once to unlock the Coal Scan.",
+          text: "Now unlock the Geothermal Turbine (E opens the Research Station from anywhere) and place it over the well\'s steam port.\n\nRun three at once to unlock the Coal Scan.",
+          more: "Now unlock the Geothermal Turbine (E opens the Research Station from anywhere) and place it over the well\'s steam port, one per well.\n\nEach makes 35 to 55 kW depending on the world\'s heat and the weather, day and night; deposits never run dry.\n\nRun three turbines at once to unlock the Coal Scan.",
+          subject: [T.GEOTURBINE],
           highlight: T.GEOTURBINE,
           manual: true,
           check: () => EntityRegistry.getByType(T.GEOTURBINE).size > 0,
@@ -419,7 +468,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.COALMINE) || Progression.isUnlocked(T.COALMINE),
       steps: [
         {
-          text: "Your Coal Scan found coal, and unlocked the Research Station MK2.\n\nPlace it: the Coal Mine is researched there.",
+          text: "Your Coal Scan found coal and unlocked the Research Station MK2. Place it: the Coal Mine is researched there.",
+          more: "Your Coal Scan found coal, and unlocked the Research Station MK2.\n\nPlace it: the Coal Mine is researched there.",
+          subject: [T.RESEARCH2],
           highlight: T.RESEARCH2,
           // Dismissable, not manual: `manual` advances on Continue, so closing
           // this card jumped straight to "Click the NEW Research Station"
@@ -430,7 +481,9 @@ const TutorialSystem = (() => {
           check: () => EntityRegistry.getByType(T.RESEARCH2).size > 0,
         },
         {
-          text: "Click the new Research Station and unlock the Coal Mine.\n\nThen place one on a coal deposit.",
+          text: "Click the new Research Station and unlock the Coal Mine, then place one on a coal deposit.",
+          more: "Click the new Research Station and unlock the Coal Mine.\n\nThen place one on a coal deposit.",
+          subject: [T.COALMINE],
           highlight: T.COALMINE,
           // Same again: the next card opens "By placing the coal mine, you can
           // now unlock Power Tower!", which is only true once a mine is down -
@@ -440,7 +493,9 @@ const TutorialSystem = (() => {
           check: () => EntityRegistry.getByType(T.COALMINE).size > 0,
         },
         {
-          text: "Placing a coal mine unlocks the Power Tower: it carries wire twice as far as a pole, handy for reaching a distant mine. Power up the Coal Mine!\n\nLike poles, holding down LMB and dragging places towers at their maximum spacing.",
+          text: "Power Tower unlocked: it carries wire twice as far as a pole. Use it to power your Coal Mine.\n\nLike poles, holding down LMB and dragging places them in a line.",
+          more: "Placing a coal mine unlocks the Power Tower: it carries wire twice as far as a pole, handy for reaching a distant mine. Power up the Coal Mine!\n\nLike poles, holding down LMB and dragging places towers at their maximum spacing.",
+          subject: [T.POWERTOWER],
           manual: true,
           highlight: T.POWERTOWER,
         },
@@ -458,7 +513,9 @@ const TutorialSystem = (() => {
                   && (Progression.isReady(T.PROTECTOR) || Progression.isUnlocked(T.PROTECTOR)),
       steps: [
         {
-          text: "Your wires are running hot; the Surge Protector can now be unlocked.\n\nEach wire network carries 85 kW to start. Green is comfortable, yellow tight, red at the limit. Past 80% a wire can burn out, darkening everything past it until repaired.\n\nMove load off the network or raise its cap: each Surge Protector on it adds 170 kW (255 kW with one, 425 kW with two). It needs no power, just $7/s upkeep.",
+          text: "Your wires are running hot! Past 80% load a wire can burn out.\n\nThe Surge Protector can now be unlocked: each one raises its network\'s wire capacity by 170 kW.",
+          more: "Your wires are running hot; the Surge Protector can now be unlocked.\n\nEach wire network carries 85 kW to start. Green is comfortable, yellow tight, red at the limit. Past 80% a wire can burn out, darkening everything past it until repaired.\n\nMove load off the network or raise its cap: each Surge Protector on it adds 170 kW (255 kW with one, 425 kW with two). It needs no power, just $7/s upkeep.",
+          subject: [T.PROTECTOR],
           manual: true,
           highlight: T.PROTECTOR,
         },
@@ -482,7 +539,8 @@ const TutorialSystem = (() => {
       },
       steps: [
         {
-          text: "Careful accepting more requests: your grid is close to its limit.\n\nAdd power before taking many more, especially industrial customers, which draw heavily around the clock.\n\nThe GRID panel shows live supply against demand, so check your headroom first.",
+          text: "Your grid is close to its limit. Add power before accepting many more requests, especially industrial ones.\n\nThe GRID panel shows your headroom.",
+          more: "Careful accepting more requests: your grid is close to its limit.\n\nAdd power before taking many more, especially industrial customers, which draw heavily around the clock.\n\nThe GRID panel shows live supply against demand, so check your headroom first.",
           manual: true,
           highlightDom: ['grid-tab-btn'],
         },
@@ -494,7 +552,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.SUBSTATION) || Progression.isUnlocked(T.SUBSTATION),
       steps: [
         {
-          text: "Substation unlocked!\n\nIt\'s big storage: it charges when you generate more than you use and covers the gap when demand runs ahead (an evening peak, a still night, a generator dropping out). Wire it in like anything else.\n\nWARNING: lightning detonates a charged substation, burning everything within several tiles. Keep it away from town or under a Lightning Rod.",
+          text: "Substation unlocked! It stores spare power and releases it when demand runs ahead.\n\n⚠ Lightning detonates a charged substation: keep it away from town or under a Lightning Rod.",
+          more: "Substation unlocked!\n\nIt\'s big storage: it charges when you generate more than you use and covers the gap when demand runs ahead (an evening peak, a still night, a generator dropping out). Wire it in like anything else.\n\nWARNING: lightning detonates a charged substation, burning everything within several tiles. Keep it away from town or under a Lightning Rod.",
+          subject: [T.SUBSTATION],
           manual: true,
           highlight: T.SUBSTATION,
         },
@@ -506,7 +566,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.MONITOR) || Progression.isUnlocked(T.MONITOR),
       steps: [
         {
-          text: "Monitoring Station unlocked!\n\nKeep one powered to open your city\'s analytics, including the population breakdown. It also takes 25% off every repair.",
+          text: "Monitoring Station unlocked! Keep one powered for your city\'s analytics and 25% off every repair.",
+          more: "Monitoring Station unlocked!\n\nKeep one powered to open your city\'s analytics, including the population breakdown. It also takes 25% off every repair.",
+          subject: [T.MONITOR],
           manual: true,
           highlight: T.MONITOR,
         },
@@ -518,7 +580,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.CIRCUITSWITCH) || Progression.isUnlocked(T.CIRCUITSWITCH),
       steps: [
         {
-          text: "Circuit Switch unlocked: a manual breaker.\n\nFrom its panel, assign buildings up to 500 kW of peak load (MK2: 1.4 MW). When power runs short, open the circuit: those buildings go dark so the rest stays lit instead of the whole grid browning out.\n\nIt needs no power, so it works mid-blackout. Shed buildings don\'t pay, so close it once power is back.",
+          text: "Circuit Switch unlocked: a manual breaker. Assign buildings to it, and when power runs short, open it to cut just those, keeping the rest lit.",
+          more: "Circuit Switch unlocked: a manual breaker.\n\nFrom its panel, assign buildings up to 500 kW of peak load (MK2: 1.4 MW). When power runs short, open the circuit: those buildings go dark so the rest stays lit instead of the whole grid browning out.\n\nIt needs no power, so it works mid-blackout. Shed buildings don\'t pay, so close it once power is back.",
+          subject: [T.CIRCUITSWITCH],
           manual: true,
           highlight: T.CIRCUITSWITCH,
         },
@@ -530,7 +594,8 @@ const TutorialSystem = (() => {
       trigger: () => typeof Economy !== 'undefined' && Economy.balance < 0 && !(typeof DevMode !== 'undefined' && DevMode.enabled),
       steps: [
         {
-          text: "Your balance is negative!\n\nEvery 6 in-game hours in debt, a customer disconnects and leaves without paying.\n\nGet back above $0: cut upkeep, connect more customers, or borrow $5,000 to $100,000 from the GOVERNMENT panel. Interest is 8% of the loan daily at noon until repaid ($800 a day on $10,000), so borrow what you can repay.",
+          text: "Your balance is negative! Every 6 hours in debt, a customer leaves.\n\nCut upkeep, connect more customers, or take a loan from the GOVERNMENT panel.",
+          more: "Your balance is negative!\n\nEvery 6 in-game hours in debt, a customer disconnects and leaves without paying.\n\nGet back above $0: cut upkeep, connect more customers, or borrow $5,000 to $100,000 from the GOVERNMENT panel. Interest is 8% of the loan daily at noon until repaid ($800 a day on $10,000), so borrow what you can repay.",
           manual: true,
           highlightDom: ['income-balance-group', 'gov-stat-btn'],
         },
@@ -542,7 +607,9 @@ const TutorialSystem = (() => {
       trigger: () => !!_findCritical([T.COALGENERATOR, T.FUELGEN]),
       steps: [
         {
-          text: "A generator has gone CRITICAL!\n\nOVERDRIVE gives Coal and Fuel Generators 50% more power for double the fuel, but at 100% heat or pressure a meltdown countdown starts, and at zero it explodes and takes out what\'s around it.\n\nClick it and switch to NORMAL or ECO now; the countdown drains once it\'s under 100%. A Throttle Governor (Research Station MK3) eases Overdrive back automatically.",
+          text: "A generator has gone CRITICAL! At zero it explodes.\n\nClick it and switch to NORMAL or ECO now. A Throttle Governor can do this for you.",
+          more: "A generator has gone CRITICAL!\n\nOVERDRIVE gives Coal and Fuel Generators 50% more power for double the fuel, but at 100% heat or pressure a meltdown countdown starts, and at zero it explodes and takes out what\'s around it.\n\nClick it and switch to NORMAL or ECO now; the countdown drains once it\'s under 100%. A Throttle Governor (Research Station MK3) eases Overdrive back automatically.",
+          subject: [T.GOVERNOR],
           manual: true,
           highlightWorld: () => _findCritical([T.COALGENERATOR, T.FUELGEN]),
           onEnter: () => _jumpTo(_findCritical([T.COALGENERATOR, T.FUELGEN])),
@@ -555,7 +622,8 @@ const TutorialSystem = (() => {
       trigger: () => typeof PollutionSystem !== 'undefined' && PollutionSystem.average() >= 20,
       steps: [
         {
-          text: "Your city\'s air is getting dirty.\n\nCoal and Fuel Generators, Refineries, Chemical Plants and Nuclear Reactors make smog that drifts downwind. It caps nearby satisfaction, dims solar and lowers your City Score; over the emissions allowance you pay carbon tax and lose approval. A plant with a full waste buffer pollutes up to twice as much, so keep the trucks hauling.\n\nKeep dirty plants downwind and away from housing, leave trees and parks between them, and lean on clean power. After $100,000 in carbon tax, with a Research Station MK2, you can fit scrubbers.\n\nThe map\'s SHOW AIR POLLUTION toggle shows where it\'s worst.",
+          text: "Your city\'s air is getting dirty. Smog drifts downwind, lowers satisfaction and City Score, and costs carbon tax.\n\nKeep dirty plants downwind and away from housing. The map\'s SHOW AIR POLLUTION toggle shows where it\'s worst.",
+          more: "Your city\'s air is getting dirty.\n\nCoal and Fuel Generators, Refineries, Chemical Plants and Nuclear Reactors make smog that drifts downwind. It caps nearby satisfaction, dims solar and lowers your City Score; over the emissions allowance you pay carbon tax and lose approval. A plant with a full waste buffer pollutes up to twice as much, so keep the trucks hauling.\n\nKeep dirty plants downwind and away from housing, leave trees and parks between them, and lean on clean power. After $100,000 in carbon tax, with a Research Station MK2, you can fit scrubbers.\n\nThe map\'s SHOW AIR POLLUTION toggle shows where it\'s worst.",
           manual: true,
         },
       ],
@@ -566,7 +634,9 @@ const TutorialSystem = (() => {
       trigger: () => T.SCRUBBER && (Progression.isReady(T.SCRUBBER) || Progression.isUnlocked(T.SCRUBBER)),
       steps: [
         {
-          text: "Scrubbers unlocked (Research Station MK2)!\n\nA scrubber is an upgrade, not a building: click a polluting plant like a Coal Generator and choose FIT SCRUBBER. It cuts that plant\'s emissions by 60%, shrinking its smog, its carbon tax and most of its approval hit.\n\nOne-off fee plus $4/s upkeep; removing the plant refunds two thirds of the fee. Fit the biggest burners and plants upwind of housing first. If smog still reaches town, move the plant or add a Carbon Capture Plant later.",
+          text: "Scrubbers unlocked! Click a polluting plant and choose FIT SCRUBBER to cut its emissions by 60%.",
+          more: "Scrubbers unlocked (Research Station MK2)!\n\nA scrubber is an upgrade, not a building: click a polluting plant like a Coal Generator and choose FIT SCRUBBER. It cuts that plant\'s emissions by 60%, shrinking its smog, its carbon tax and most of its approval hit.\n\nOne-off fee plus $4/s upkeep; removing the plant refunds two thirds of the fee. Fit the biggest burners and plants upwind of housing first. If smog still reaches town, move the plant or add a Carbon Capture Plant later.",
+          subject: [T.COALGENERATOR],
           manual: true,
           highlightWorld: () => _dirtiestUnscrubbed(),
           onEnter: () => _jumpTo(_dirtiestUnscrubbed()),
@@ -579,7 +649,9 @@ const TutorialSystem = (() => {
       trigger: () => T.CARBONCAPTURE && (Progression.isReady(T.CARBONCAPTURE) || Progression.isUnlocked(T.CARBONCAPTURE)),
       steps: [
         {
-          text: "Carbon Capture Plant unlocked (Research Station MK3)!\n\nIt\'s a building of its own. While powered it captures half the emissions of every polluting plant within 40 tiles, straight off the carbon tax (the approval hit goes too once the city is under its 12-unit allowance), and pulls smog from the air in that ring.\n\nBuild it beside your dirtiest plants: the placement ring shows its reach, and a second plant overlapping it takes half of what\'s left. It draws 120 kW plus upkeep. Pair it with scrubbers: they shrink each plant\'s output, and capture takes half the rest.",
+          text: "Carbon Capture Plant unlocked! While powered, it captures half the emissions of every polluting plant within 40 tiles.\n\nBuild it beside your dirtiest plants.",
+          more: "Carbon Capture Plant unlocked (Research Station MK3)!\n\nIt\'s a building of its own. While powered it captures half the emissions of every polluting plant within 40 tiles, straight off the carbon tax (the approval hit goes too once the city is under its 12-unit allowance), and pulls smog from the air in that ring.\n\nBuild it beside your dirtiest plants: the placement ring shows its reach, and a second plant overlapping it takes half of what\'s left. It draws 120 kW plus upkeep. Pair it with scrubbers: they shrink each plant\'s output, and capture takes half the rest.",
+          subject: [T.CARBONCAPTURE],
           manual: true,
           highlight: T.CARBONCAPTURE,
         },
@@ -591,7 +663,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.SOLAR) || Progression.isUnlocked(T.SOLAR),
       steps: [
         {
-          text: "Solar Panel MK1 can now be unlocked at the Research Station!\n\nOutput follows the sun: up to 7.5 kW around noon, nothing at night, and some weather cuts it.\n\nThe sun is in the south (bottom of the map), so a panel shades the row north of it. Side by side is fine; leave two empty rows between rows of panels. Shadows reach farther early, late and in winter.",
+          text: "Solar Panel MK1 can now be unlocked! It follows the sun: up to 7.5 kW at noon, nothing at night.\n\nLeave two empty rows between rows of panels, or they shade each other.",
+          more: "Solar Panel MK1 can now be unlocked at the Research Station!\n\nOutput follows the sun: up to 7.5 kW around noon, nothing at night, and some weather cuts it.\n\nThe sun is in the south (bottom of the map), so a panel shades the row north of it. Side by side is fine; leave two empty rows between rows of panels. Shadows reach farther early, late and in winter.",
+          subject: [T.SOLAR],
           highlight: T.SOLAR,
           manual: true,
           check: () => Progression.isUnlocked(T.SOLAR),
@@ -604,7 +678,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.WIND) || Progression.isUnlocked(T.WIND),
       steps: [
         {
-          text: "Wind Turbine MK1 can now be unlocked!\n\nOutput follows the wind through the day: 5 to 12.5 kW.\n\nTurbines placed touching share one grid; only one of them needs a wire.",
+          text: "Wind Turbine MK1 can now be unlocked! It makes 5 to 12.5 kW, following the wind.",
+          more: "Wind Turbine MK1 can now be unlocked!\n\nOutput follows the wind through the day: 5 to 12.5 kW.\n\nTurbines placed touching share one grid; only one of them needs a wire.",
+          subject: [T.WIND],
           highlight: T.WIND,
           manual: true,
           check: () => Progression.isUnlocked(T.WIND),
@@ -617,7 +693,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.BATTERY) || Progression.isUnlocked(T.BATTERY),
       steps: [
         {
-          text: "Battery Block can now be unlocked at the Research Station!\n\nEach stores 50 kWh and releases up to 50 kW, ideal for nights without solar. Blocks on the same grid stack.",
+          text: "Battery Block can now be unlocked! It stores 50 kWh for when generation falls short, like nights without solar.",
+          more: "Battery Block can now be unlocked at the Research Station!\n\nEach stores 50 kWh and releases up to 50 kW, ideal for nights without solar. Blocks on the same grid stack.",
+          subject: [T.BATTERY],
           highlight: T.BATTERY,
           // Dismissible with CONTINUE rather than only on the unlock landing —
           // the check still closes it automatically if they unlock it first.
@@ -632,17 +710,21 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.FISHINGPOLE) || Progression.isUnlocked(T.FISHINGPOLE),
       steps: [
         {
+          subject: [T.FISHINGPOLE],
           text: 'Check the Research Station. You can now unlock the Fishing Pole!',
           highlight: T.FISHINGPOLE,
           manual: true,
           check: () => Progression.isUnlocked(T.FISHINGPOLE),
         },
         {
-          text: "Why a fishing pole? Fish hold oil you can extract as biofuel, far more than trees and bushes.\n\nFind water and hold down LMB within 3 tiles of it to cast. If you can\'t find any, press M to open the map.",
+          text: "Fish hold oil you can extract as biofuel, far more than trees.\n\nHold down LMB within 3 tiles of water to cast.",
+          more: "Why a fishing pole? Fish hold oil you can extract as biofuel, far more than trees and bushes.\n\nFind water and hold down LMB within 3 tiles of it to cast. If you can\'t find any, press M to open the map.",
+          subject: [T.FISHINGPOLE],
           manual: true,
           highlight: T.FISHINGPOLE,
         },
         {
+          subject: [T.FISHINGPOLE],
           text: "Go ahead and catch your first fish!",
           // The next card talks about the fish you caught, so this waits for
           // one — but it can be closed, for a player who'd rather not fish.
@@ -651,7 +733,9 @@ const TutorialSystem = (() => {
         },
         {
           id: 'fishreward',
-          text: "You extracted biofuel from the fish, and got some money for it! Rarer fish give more; junk gives nothing.\n\nKeep the grid running on fish and plants until your next generator unlocks.\n\nEvery tutorial is kept in the Compendium (PANELS, bottom right), along with everything you unlock.",
+          text: "You got biofuel and cash from the fish! Rarer fish give more.\n\nEvery tutorial is kept in the Compendium (PANELS, bottom right).",
+          more: "You extracted biofuel from the fish, and got some money for it! Rarer fish give more; junk gives nothing.\n\nKeep the grid running on fish and plants until your next generator unlocks.\n\nEvery tutorial is kept in the Compendium (PANELS, bottom right), along with everything you unlock.",
+          subject: [T.FISHINGPOLE],
           manual: true,
           highlightDom: ['btn-side-dock', 'btn-compendium'],
         },
@@ -663,7 +747,9 @@ const TutorialSystem = (() => {
       trigger: () => HouseRequestSystem.hasCommercialRequestFired(),
       steps: [
         {
-          text: "Your city now attracts Commercial customers!\n\nThe first one you accept starts a COMMERCIAL ZONE, separate from your residential one. Commercial properties usually need more power than homes; click one to see its economics, draw and opening hours.",
+          text: "Your city now attracts Commercial customers! The first one you accept starts a COMMERCIAL ZONE.\n\nThey usually need more power than homes.",
+          more: "Your city now attracts Commercial customers!\n\nThe first one you accept starts a COMMERCIAL ZONE, separate from your residential one. Commercial properties usually need more power than homes; click one to see its economics, draw and opening hours.",
+          subject: ['commercial:cafe'],
           highlight: T.COMMERCIAL,
           manual: true,
           check: () => HouseRequestSystem.getCommercialsAccepted() >= 1,
@@ -676,7 +762,8 @@ const TutorialSystem = (() => {
       trigger: () => HouseRequestSystem.hasIndustrialRequestFired(),
       steps: [
         {
-          text: "Geothermal power is running, and heavy industry has noticed!\n\nThe first industrial customer you accept starts an INDUSTRIAL ZONE. Industry usually needs more power than commercial.",
+          text: "Heavy industry has noticed you! The first industrial customer you accept starts an INDUSTRIAL ZONE.\n\nIndustry needs the most power of all.",
+          more: "Geothermal power is running, and heavy industry has noticed!\n\nThe first industrial customer you accept starts an INDUSTRIAL ZONE. Industry usually needs more power than commercial.",
           highlight: T.INDUSTRIAL,
           manual: true,
           check: () => HouseRequestSystem.getIndustrialsAccepted() >= 1,
@@ -696,7 +783,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.CONVEYOR) && !Progression.isReady(T.WATEREXTRACTOR) && !Progression.isUnlocked(T.WATEREXTRACTOR)),
       steps: [
         {
-          text: "Your Coal Mine has dug 500t: the Conveyor Belt and Storage Container can now be unlocked.\n\nBelts carry solids between buildings; a belt into a Storage Container keeps the mine digging. The Underground Belt unlocks with them, to tunnel under anything in the way.\n\nAt 2,000t mined the Water Extractor unlocks, and running one unlocks the Coal Power Generator, so lay the belt toward where it will stand.",
+          text: "Your Coal Mine has dug 500t: Conveyor Belts and Storage Containers can now be unlocked.\n\nBelt the coal toward where your Coal Power Generator will stand.",
+          more: "Your Coal Mine has dug 500t: the Conveyor Belt and Storage Container can now be unlocked.\n\nBelts carry solids between buildings; a belt into a Storage Container keeps the mine digging. The Underground Belt unlocks with them, to tunnel under anything in the way.\n\nAt 2,000t mined the Water Extractor unlocks, and running one unlocks the Coal Power Generator, so lay the belt toward where it will stand.",
+          subject: [T.CONVEYOR, T.SOLIDSTORAGE],
           manual: true,
           highlight: T.CONVEYOR,
         },
@@ -708,7 +797,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.COALGENERATOR) || Progression.isUnlocked(T.COALGENERATOR),
       steps: [
         {
-          text: "Coal Power Generator unlocked: your first real production chain!\n\nIt needs coal by belt from your Coal Mine and water from your Water Extractor (Pipes unlock with it). Fully supplied it makes 100 kW, and a Coal Mine MK1 can feed nearly three.\n\nWatch three things: Ash Waste (at 100% it shuts down until cleared; waste management unlocks later), pollution (too much lowers nearby satisfaction) and your deposits, which run out.",
+          text: "Coal Power Generator unlocked: your first production chain!\n\nFeed it coal by belt and water by pipe. Fully supplied, it makes 100 kW.",
+          more: "Coal Power Generator unlocked: your first real production chain!\n\nIt needs coal by belt from your Coal Mine and water from your Water Extractor (Pipes unlock with it). Fully supplied it makes 100 kW, and a Coal Mine MK1 can feed nearly three.\n\nWatch three things: Ash Waste (at 100% it shuts down until cleared; waste management unlocks later), pollution (too much lowers nearby satisfaction) and your deposits, which run out.",
+          subject: [T.COALGENERATOR],
           manual: true,
           highlight: T.COALGENERATOR,
         },
@@ -721,7 +812,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.WATEREXTRACTOR) && !Progression.isReady(T.COALGENERATOR) && !Progression.isUnlocked(T.COALGENERATOR)),
       steps: [
         {
-          text: "Your Coal Mine has dug 2,000t: the Water Extractor can now be unlocked, the Coal Power Generator\'s water supply.\n\nIt needs power. Place it on a lake or river, and press R to rotate its pipe output. Once it\'s pumping, the Coal Power Generator and Pipes unlock.\n\nPipes run from a liquid output to a liquid input. Each generator drinks 10 units/s and an extractor gives 25, so one extractor runs two generators.",
+          text: "Water Extractor unlocked! Place it on a lake or river and power it. Press R to turn its pipe output.\n\nOnce it\'s pumping, Pipes and the Coal Power Generator unlock.",
+          more: "Your Coal Mine has dug 2,000t: the Water Extractor can now be unlocked, the Coal Power Generator\'s water supply.\n\nIt needs power. Place it on a lake or river, and press R to rotate its pipe output. Once it\'s pumping, the Coal Power Generator and Pipes unlock.\n\nPipes run from a liquid output to a liquid input. Each generator drinks 10 units/s and an extractor gives 25, so one extractor runs two generators.",
+          subject: [T.WATEREXTRACTOR],
           manual: true,
           highlight: T.WATEREXTRACTOR,
         },
@@ -735,7 +828,9 @@ const TutorialSystem = (() => {
       trigger: () => EntityRegistry.getByType(T.COALGENERATOR).size > 0,
       steps: [
         {
-          text: "Your Coal Generator pollutes as it burns.\n\nIts smoke becomes smog that drifts downwind and clears slowly, capping satisfaction and dimming solar beneath it. More in OVERDRIVE, less in ECO, and up to double when its Ash Waste backs up.\n\nBuild it downwind and well away from housing, with trees or parks in between. The map\'s SHOW AIR POLLUTION toggle shows where it goes.",
+          text: "Your Coal Generator pollutes as it burns. Its smog drifts downwind.\n\nKeep it well away from housing.",
+          more: "Your Coal Generator pollutes as it burns.\n\nIts smoke becomes smog that drifts downwind and clears slowly, capping satisfaction and dimming solar beneath it. More in OVERDRIVE, less in ECO, and up to double when its Ash Waste backs up.\n\nBuild it downwind and well away from housing, with trees or parks in between. The map\'s SHOW AIR POLLUTION toggle shows where it goes.",
+          subject: [T.COALGENERATOR],
           manual: true,
           highlightWorld: () => [...EntityRegistry.getByType(T.COALGENERATOR)][0],
         },
@@ -747,7 +842,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isUnlocked(T.EVCHARGER),
       steps: [
         {
-          text: "EV Charging Station unlocked!\n\nWith an EV Battery Factory running, residential zones will request chargers (like Cell Towers and Fiber Hubs); you can only build one in a zone that asked.\n\nIt gives a strong satisfaction boost and attracts higher-paying residents.",
+          text: "EV Charging Station unlocked! Residential zones will ask for one; you can only build it where a zone asked.\n\nIt gives a strong satisfaction boost.",
+          more: "EV Charging Station unlocked!\n\nWith an EV Battery Factory running, residential zones will request chargers (like Cell Towers and Fiber Hubs); you can only build one in a zone that asked.\n\nIt gives a strong satisfaction boost and attracts higher-paying residents.",
+          subject: [T.EVCHARGER],
           manual: true,
           highlight: T.EVCHARGER,
         },
@@ -759,7 +856,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isUnlocked(T.CELLTOWER),
       steps: [
         {
-          text: "Cell Tower unlocked!\n\nPlaced in a zone big enough to need one, it earns steady passive income and gives a modest satisfaction boost nearby. The later Fiber Hub is pure income.",
+          text: "Cell Tower unlocked! Place it in a zone big enough to need one for steady passive income.",
+          more: "Cell Tower unlocked!\n\nPlaced in a zone big enough to need one, it earns steady passive income and gives a modest satisfaction boost nearby. The later Fiber Hub is pure income.",
+          subject: [T.CELLTOWER],
           manual: true,
           highlight: T.CELLTOWER,
         },
@@ -771,7 +870,8 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.FASTTRAVEL) || Progression.isUnlocked(T.FASTTRAVEL),
       steps: [
         {
-          text: "Fast Travel can now be unlocked!\n\nDouble-click anywhere on the World Map to jump your camera there.",
+          text: "Fast Travel can now be unlocked! Double-click anywhere on the World Map to jump your camera there.",
+          more: "Fast Travel can now be unlocked!\n\nDouble-click anywhere on the World Map to jump your camera there.",
           manual: true,
         },
       ],
@@ -787,7 +887,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.OILSCAN) || Progression.isUnlocked(T.OILSCAN),
       steps: [
         {
-          text: "Oil Scan can now be unlocked!\n\nLike the geothermal scan, it reveals crude oil deposits around the map.",
+          text: "Oil Scan can now be unlocked! It reveals crude oil deposits.",
+          more: "Oil Scan can now be unlocked!\n\nLike the geothermal scan, it reveals crude oil deposits around the map.",
+          subject: [T.SURVEY],
           manual: true,
           check: () => Progression.isUnlocked(T.OILSCAN),
         },
@@ -800,7 +902,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.PUMPJACK) && !Progression.isReady(T.OILSTORAGE) && !Progression.isUnlocked(T.OILSTORAGE))),
       steps: [
         {
-          text: "Pump Jack can now be unlocked!\n\nIt pumps crude from a deposit until the deposit runs dry.\n\nThe Liquid Storage Tank unlocks after " + OILSTORAGE_CRUDE.toLocaleString('en-US') + " units of crude.",
+          text: "Pump Jack can now be unlocked! It pumps crude from a deposit until the deposit runs dry.",
+          more: "Pump Jack can now be unlocked!\n\nIt pumps crude from a deposit until the deposit runs dry.\n\nThe Liquid Storage Tank unlocks after " + OILSTORAGE_CRUDE.toLocaleString('en-US') + " units of crude.",
+          subject: [T.PUMPJACK],
           manual: true,
           highlight: T.PUMPJACK,
         },
@@ -813,7 +917,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.OILSTORAGE) && !Progression.isReady(T.REFINERY) && !Progression.isUnlocked(T.REFINERY))),
       steps: [
         {
-          text: "Liquid Storage Tank unlocked!\n\nIt banks surplus liquid: 1,000 units of one kind (oil, water, acid or fuel), locked to whichever fills it first. Pipe any liquid output into its input.\n\nThe Oil Refinery unlocks after " + REFINERY_CRUDE.toLocaleString('en-US') + " units of crude pumped in total.",
+          text: "Liquid Storage Tank unlocked! It banks 1,000 units of one liquid. Pipe any liquid output into it.",
+          more: "Liquid Storage Tank unlocked!\n\nIt banks surplus liquid: 1,000 units of one kind (oil, water, acid or fuel), locked to whichever fills it first. Pipe any liquid output into its input.\n\nThe Oil Refinery unlocks after " + REFINERY_CRUDE.toLocaleString('en-US') + " units of crude pumped in total.",
+          subject: [T.OILSTORAGE],
           manual: true,
           highlight: T.OILSTORAGE,
         },
@@ -826,7 +932,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.REFINERY) && !Progression.isReady(T.FUELGEN) && !Progression.isUnlocked(T.FUELGEN))),
       steps: [
         {
-          text: "Oil Refinery unlocked: it turns crude into fuel oil.\n\nPipe your Pump Jack into it, or through a Liquid Storage Tank to stockpile crude.\n\nRefining makes sludge. When its waste buffer fills it stops, until a truck hauls the sludge to an Oil Waste Processing Facility.",
+          text: "Oil Refinery unlocked: it turns crude into fuel oil. Pipe your Pump Jack into it.\n\nIts sludge has to be trucked away, or it stops.",
+          more: "Oil Refinery unlocked: it turns crude into fuel oil.\n\nPipe your Pump Jack into it, or through a Liquid Storage Tank to stockpile crude.\n\nRefining makes sludge. When its waste buffer fills it stops, until a truck hauls the sludge to an Oil Waste Processing Facility.",
+          subject: [T.REFINERY],
           manual: true,
           highlight: T.REFINERY,
         },
@@ -839,7 +947,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.FUELGEN) && EntityRegistry.getByType(T.FUELGEN).size === 0)),
       steps: [
         {
-          text: "Fuel Power Generator unlocked!\n\nWire it to your grid and pipe fuel from the refinery into its input. It makes 165 kW.\n\nLike the Coal Generator it needs outside power already on its network to start, and the fuel pipe carries no power, so it still needs a wire.",
+          text: "Fuel Power Generator unlocked! Pipe fuel oil from the refinery into it and wire it to your grid. It makes 165 kW.",
+          more: "Fuel Power Generator unlocked!\n\nWire it to your grid and pipe fuel from the refinery into its input. It makes 165 kW.\n\nLike the Coal Generator it needs outside power already on its network to start, and the fuel pipe carries no power, so it still needs a wire.",
+          subject: [T.FUELGEN],
           manual: true,
           highlight: T.FUELGEN,
           check: () => EntityRegistry.getByType(T.FUELGEN).size > 0,
@@ -852,7 +962,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.TRUCK) || Progression.isUnlocked(T.TRUCK),
       steps: [
         {
-          text: "Waste Trucks can now be unlocked!\n\nA Coal Generator stops when its Ash Waste hits 100%, until cleared; a Waste Processing Facility appears nearby once waste builds up.\n\nAssign a truck to haul there with a Path Tool patrol route or by queueing destinations.",
+          text: "Waste Trucks can now be unlocked! A generator stops when its waste fills up; trucks haul it to a Waste Processing Facility.",
+          more: "Waste Trucks can now be unlocked!\n\nA Coal Generator stops when its Ash Waste hits 100%, until cleared; a Waste Processing Facility appears nearby once waste builds up.\n\nAssign a truck to haul there with a Path Tool patrol route or by queueing destinations.",
+          subject: [T.TRUCK],
           manual: true,
           highlight: T.TRUCK,
           check: () => EntityRegistry.getByType(T.TRUCK).size > 0,
@@ -870,6 +982,7 @@ const TutorialSystem = (() => {
       trigger: () => _truckLowNoFuel(),
       steps: [
         {
+          subject: [T.GASSTATION],
           text: () => {
             const gas = Progression.isReady(T.GASSTATION) || Progression.isUnlocked(T.GASSTATION);
             const head = "Your trucks are running low on fuel!\n\nTrucks burn fuel whenever they drive, and the only place to fill up is a Gas Station. A truck that runs dry stops where it is until it can be refuelled.";
@@ -891,7 +1004,8 @@ const TutorialSystem = (() => {
       trigger: () => typeof GovernmentSystem !== 'undefined' && GovernmentSystem.getContracts().some(c => !c._completed),
       steps: [
         {
-          text: "The mayor sent you a commission!\n\nCommissions are City Hall jobs: connect customers, put up street lamps, bring new power online. Up to three are open at once, and a new one comes every few minutes.\n\nNo deadline, nothing to hand in: once its goals are met it pays cash, +8 government approval and a little lasting trust.\n\nThe GOVERNMENT panel shows open commissions and the civic buildings the city is working toward, like a Town Hall. Those are built for you as population and reliability grow, and then need power.",
+          text: "The mayor sent you a commission! Meet its goals for cash and government approval. No deadline.\n\nThe GOVERNMENT panel shows open commissions.",
+          more: "The mayor sent you a commission!\n\nCommissions are City Hall jobs: connect customers, put up street lamps, bring new power online. Up to three are open at once, and a new one comes every few minutes.\n\nNo deadline, nothing to hand in: once its goals are met it pays cash, +8 government approval and a little lasting trust.\n\nThe GOVERNMENT panel shows open commissions and the civic buildings the city is working toward, like a Town Hall. Those are built for you as population and reliability grow, and then need power.",
           manual: true,
           highlightDom: ['gov-stat-btn'],
         },
@@ -903,7 +1017,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.HAULER) || Progression.isUnlocked(T.HAULER),
       steps: [
         {
-          text: "Hauler unlocked: a cargo truck.\n\nIt carries ore, coal, fuel rods, crude, fuel oil, water or acid by road, 200 units a trip (750 of a process gas), one kind at a time, never waste.\n\nOpen a Storage Container, Liquid Storage Tank or Gas Holder where you need a material, click REQUEST TRUCK SUPPLY and pick it. Then place a Hauler: it runs itself, moving surplus from producers and unflagged storage and refuelling at Gas Stations.\n\nHaulers are slower and thirstier than Waste Trucks and need roads at both ends, so a belt or pipe is cheaper where it reaches.",
+          text: "Hauler unlocked: a cargo truck for resources.\n\nOpen a storage building, click REQUEST TRUCK SUPPLY and pick a material. Haulers do the rest.",
+          more: "Hauler unlocked: a cargo truck.\n\nIt carries ore, coal, fuel rods, crude, fuel oil, water or acid by road, 200 units a trip (750 of a process gas), one kind at a time, never waste.\n\nOpen a Storage Container, Liquid Storage Tank or Gas Holder where you need a material, click REQUEST TRUCK SUPPLY and pick it. Then place a Hauler: it runs itself, moving surplus from producers and unflagged storage and refuelling at Gas Stations.\n\nHaulers are slower and thirstier than Waste Trucks and need roads at both ends, so a belt or pipe is cheaper where it reaches.",
+          subject: [T.HAULER],
           manual: true,
           highlight: T.HAULER,
         },
@@ -920,7 +1036,8 @@ const TutorialSystem = (() => {
       },
       steps: [
         {
-          text: "A new civic building is going up!\n\nThe council builds these as population and reliability grow, faster if you power the site. Once finished it needs power like City Hall; leaving it dark hurts government approval.",
+          text: "A new civic building is going up! Once finished it needs power like City Hall.",
+          more: "A new civic building is going up!\n\nThe council builds these as population and reliability grow, faster if you power the site. Once finished it needs power like City Hall; leaving it dark hurts government approval.",
           manual: true,
           onEnter: () => {
             for (const t of [T.TOWNHALL, T.CIVICCENTER, T.COURTHOUSE, T.EMS, T.HOSPITAL, T.UNIVERSITY, T.TRANSPORTHUB]) {
@@ -943,7 +1060,9 @@ const TutorialSystem = (() => {
       trigger: () => !!_findFirstPark(),
       steps: [
         {
-          text: "A park has appeared in a residential zone!\n\nParks come as a reward when a zone grows big enough, and need no power. They earn you a little passive income and help nearby houses recover satisfaction faster.",
+          text: "A park has appeared! Parks need no power, earn a little income and help nearby homes recover from outages.",
+          more: "A park has appeared in a residential zone!\n\nParks come as a reward when a zone grows big enough, and need no power. They earn you a little passive income and help nearby houses recover satisfaction faster.",
+          subject: [T.SMALLPARK],
           manual: true,
           highlightWorld: () => _findFirstPark(),
           onEnter: () => {
@@ -962,7 +1081,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.BLUEPRINT) || Progression.isUnlocked(T.BLUEPRINT),
       steps: [
         {
-          text: "Blueprints can now be unlocked!\n\nDrag-select a group of placed buildings to save a blueprint, then stamp copies elsewhere (press R to rotate). It also unlocks Copy (Ctrl+C, or the Copy tile in the Function tab): drag over what you built, then click to paste; Ctrl+V pastes again.\n\nEach stamp costs full price. Trees, water, deposits, customers, trucks and roads aren\'t captured.",
+          text: "Blueprints can now be unlocked! Drag-select a group of placed buildings to save it, then stamp copies anywhere.\n\nEach stamp costs full price.",
+          more: "Blueprints can now be unlocked!\n\nDrag-select a group of placed buildings to save a blueprint, then stamp copies elsewhere (press R to rotate). It also unlocks Copy (Ctrl+C, or the Copy tile in the Function tab): drag over what you built, then click to paste; Ctrl+V pastes again.\n\nEach stamp costs full price. Trees, water, deposits, customers, trucks and roads aren\'t captured.",
+          subject: [T.BLUEPRINT],
           manual: true,
           highlight: T.BLUEPRINT,
         },
@@ -974,7 +1095,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.URANIUMSCAN) || Progression.isUnlocked(T.URANIUMSCAN),
       steps: [
         {
-          text: "Uranium Scan and Sulfur Scan can now be unlocked!\n\nThey reveal uranium and sulfur deposits. Mine both; mining enough sulfur unlocks the Chemical Plant.",
+          text: "Uranium Scan and Sulfur Scan can now be unlocked! Mine both: enough sulfur unlocks the Chemical Plant.",
+          more: "Uranium Scan and Sulfur Scan can now be unlocked!\n\nThey reveal uranium and sulfur deposits. Mine both; mining enough sulfur unlocks the Chemical Plant.",
+          subject: [T.URANIUMMINE, T.SULFURMINE],
           manual: true,
         },
       ],
@@ -989,7 +1112,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.CHEMICALPLANT) && !Progression.isReady(T.NUCLEARREACTOR) && !Progression.isUnlocked(T.NUCLEARREACTOR))),
       steps: [
         {
-          text: "Chemical Plant unlocked!\n\nIt turns mined sulfur and piped water into sulfuric acid. The Fuel Processing Plant then turns acid and uranium ore into fuel rods.\n\n800 fuel rods unlock the Nuclear Reactor.",
+          text: "Chemical Plant unlocked! It makes sulfuric acid, which the Fuel Processing Plant turns into fuel rods.\n\n800 fuel rods unlock the Nuclear Reactor.",
+          more: "Chemical Plant unlocked!\n\nIt turns mined sulfur and piped water into sulfuric acid. The Fuel Processing Plant then turns acid and uranium ore into fuel rods.\n\n800 fuel rods unlock the Nuclear Reactor.",
+          subject: [T.CHEMICALPLANT, T.FUELPLANT],
           manual: true,
           highlight: T.CHEMICALPLANT,
         },
@@ -1002,7 +1127,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.NUCLEARREACTOR) && EntityRegistry.getByType(T.NUCLEARREACTOR).size === 0)),
       steps: [
         {
-          text: "Nuclear Reactor unlocked!\n\nIt burns fuel rods into steam and waste, not grid power. It needs 20 u/s of cooled water at COOL IN or its steam drops to 40%; a Cooling Tower fed water at H₂O IN makes 15 u/s, so pipe two per reactor. Steam Turbines turn the steam into 300 kW each; one reactor runs up to 3.\n\n⚠ WARNING: an uncooled reactor heats up, and pulling its rods won\'t stop it at once. At critical it melts down and EXPLODES, levelling everything around it. Keep its towers powered and watered, and build it far from your city.",
+          text: "Nuclear Reactor unlocked! It turns fuel rods into steam for Steam Turbines. Each reactor needs two Cooling Towers.\n\n⚠ An uncooled reactor melts down and EXPLODES. Build it far from your city.",
+          more: "Nuclear Reactor unlocked!\n\nIt burns fuel rods into steam and waste, not grid power. It needs 20 u/s of cooled water at COOL IN or its steam drops to 40%; a Cooling Tower fed water at H₂O IN makes 15 u/s, so pipe two per reactor. Steam Turbines turn the steam into 300 kW each; one reactor runs up to 3.\n\n⚠ WARNING: an uncooled reactor heats up, and pulling its rods won\'t stop it at once. At critical it melts down and EXPLODES, levelling everything around it. Keep its towers powered and watered, and build it far from your city.",
+          subject: [T.NUCLEARREACTOR, T.COOLINGTOWER, T.STEAMTURBINE],
           manual: true,
           highlight: T.NUCLEARREACTOR,
           check: () => EntityRegistry.getByType(T.NUCLEARREACTOR).size > 0,
@@ -1015,7 +1142,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.DAM) || Progression.isUnlocked(T.DAM),
       steps: [
         {
-          text: "The Dam can now be unlocked!\n\nBuild it across a river to form a reservoir, then place a Hydro Turbine partly submerged in it. The turbine makes rotation, not electricity.\n\nRun it a while to unlock the Drive Shaft and Hydroelectric Generator.",
+          text: "The Dam can now be unlocked! Build it across a river to form a reservoir, then put a Hydro Turbine in it.",
+          more: "The Dam can now be unlocked!\n\nBuild it across a river to form a reservoir, then place a Hydro Turbine partly submerged in it. The turbine makes rotation, not electricity.\n\nRun it a while to unlock the Drive Shaft and Hydroelectric Generator.",
+          subject: [T.DAM],
           manual: true,
           highlight: T.DAM,
         },
@@ -1030,7 +1159,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.HYDROGENERATOR) && EntityRegistry.getByType(T.HYDROGENERATOR).size === 0)),
       steps: [
         {
-          text: "Drive Shaft and Hydroelectric Generator unlocked!\n\nShafts carry the turbine\'s rotation to the generator in one unbroken line. Output follows turbine speed, up to 235 kW. Wire the generator in like any other.",
+          text: "Hydroelectric Generator unlocked! Connect it to your Hydro Turbine with Drive Shafts in a straight line, then wire it in.",
+          more: "Drive Shaft and Hydroelectric Generator unlocked!\n\nShafts carry the turbine\'s rotation to the generator in one unbroken line. Output follows turbine speed, up to 235 kW. Wire the generator in like any other.",
+          subject: [T.HYDROGENERATOR],
           manual: true,
           highlight: T.HYDROGENERATOR,
           check: () => EntityRegistry.getByType(T.HYDROGENERATOR).size > 0,
@@ -1043,7 +1174,9 @@ const TutorialSystem = (() => {
       trigger: () => !!_findCritical([T.NUCLEARREACTOR]),
       steps: [
         {
-          text: "A Nuclear Reactor is close to meltdown!\n\nIt\'s only safe while cooled and while its steam has somewhere to go:\n\n• Heat: its cooling water stopped (a burst pipe, an unpowered tower, a dry extractor). Check the tower is powered and fed, and its pipe reaches COOL IN.\n\n• Pressure: no Steam Turbine is drawing its steam. Pipe a working turbine to STEAM OUT, or cut its fuel rods to vent.\n\nIf it goes, it levels the neighbourhood around it.",
+          text: "A Nuclear Reactor is close to meltdown!\n\nCheck its Cooling Towers are powered and fed, and that a Steam Turbine is drawing its steam.",
+          more: "A Nuclear Reactor is close to meltdown!\n\nIt\'s only safe while cooled and while its steam has somewhere to go:\n\n• Heat: its cooling water stopped (a burst pipe, an unpowered tower, a dry extractor). Check the tower is powered and fed, and its pipe reaches COOL IN.\n\n• Pressure: no Steam Turbine is drawing its steam. Pipe a working turbine to STEAM OUT, or cut its fuel rods to vent.\n\nIf it goes, it levels the neighbourhood around it.",
+          subject: [T.NUCLEARREACTOR],
           manual: true,
           highlightWorld: () => _findCritical([T.NUCLEARREACTOR]),
           onEnter: () => _jumpTo(_findCritical([T.NUCLEARREACTOR])),
@@ -1056,7 +1189,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.MK4RESEARCH) || Progression.isUnlocked(T.MK4RESEARCH),
       steps: [
         {
-          text: "Six turbines at once: the MK4 Research Station is yours!\n\nIt researches faster and opens the next era: spent fuel reprocessing, plutonium and the Advanced Nuclear Reactor.\n\nPlacing it brings the National Government, who will set up a zone far out in the world, so be ready to run a long line.",
+          text: "Six turbines at once: the MK4 Research Station is yours! It opens the next era of research.",
+          more: "Six turbines at once: the MK4 Research Station is yours!\n\nIt researches faster and opens the next era: spent fuel reprocessing, plutonium and the Advanced Nuclear Reactor.\n\nPlacing it brings the National Government, who will set up a zone far out in the world, so be ready to run a long line.",
+          subject: [T.MK4RESEARCH],
           manual: true,
           highlight: T.MK4RESEARCH,
         },
@@ -1068,7 +1203,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.SPENTFUELPOOL) || Progression.isUnlocked(T.SPENTFUELPOOL) || Progression.isReady(T.REPROCESSOR) || Progression.isUnlocked(T.REPROCESSOR),
       steps: [
         {
-          text: "Spent fuel doesn\'t have to be waste.\n\nBelt it from a reactor\'s SPENT FUEL OUT into a Spent Fuel Pool to cool, then to a Reprocessing Plant with a water pipe. It becomes recovered uranium, plutonium and a little high-level waste, which is trucked to the Nuclear Waste Processing Facility.\n\nAny full output stops the plant, so give the uranium somewhere to go even if you only want plutonium.",
+          text: "Spent fuel doesn\'t have to be waste. Cool it in a Spent Fuel Pool, then reprocess it into uranium and plutonium.",
+          more: "Spent fuel doesn\'t have to be waste.\n\nBelt it from a reactor\'s SPENT FUEL OUT into a Spent Fuel Pool to cool, then to a Reprocessing Plant with a water pipe. It becomes recovered uranium, plutonium and a little high-level waste, which is trucked to the Nuclear Waste Processing Facility.\n\nAny full output stops the plant, so give the uranium somewhere to go even if you only want plutonium.",
+          subject: [T.SPENTFUELPOOL, T.REPROCESSOR],
           manual: true,
           highlight: T.SPENTFUELPOOL,
         },
@@ -1080,7 +1217,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.MOXPLANT) || Progression.isUnlocked(T.MOXPLANT),
       steps: [
         {
-          text: "Advanced Fuel Processing unlocked!\n\nIt blends plutonium and uranium into MOX fuel rods: belt plutonium into one intake and uranium (recovered or fresh ore) into the other. MOX fuels the Advanced Nuclear Reactor.",
+          text: "Advanced Fuel Processing unlocked! It blends plutonium and uranium into MOX fuel rods for the Advanced Nuclear Reactor.",
+          more: "Advanced Fuel Processing unlocked!\n\nIt blends plutonium and uranium into MOX fuel rods: belt plutonium into one intake and uranium (recovered or fresh ore) into the other. MOX fuels the Advanced Nuclear Reactor.",
+          subject: [T.MOXPLANT],
           manual: true,
           highlight: T.MOXPLANT,
         },
@@ -1092,7 +1231,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.COOLINGTOWER2) || Progression.isUnlocked(T.COOLINGTOWER2),
       steps: [
         {
-          text: "Cryogenic Cooling Tower unlocked!\n\nThe MOX reactor needs Cryogenic Coolant, and this makes it. Pipe 70 u/s of cooled water into its COOL IN (five MK1 Cooling Towers on one line); short of that it makes nothing. It also draws 110 kW.\n\nOnce it runs, the Advanced Nuclear Reactor unlocks.",
+          text: "Cryogenic Cooling Tower unlocked! It makes the coolant a MOX reactor needs, from 70 u/s of cooled water.",
+          more: "Cryogenic Cooling Tower unlocked!\n\nThe MOX reactor needs Cryogenic Coolant, and this makes it. Pipe 70 u/s of cooled water into its COOL IN (five MK1 Cooling Towers on one line); short of that it makes nothing. It also draws 110 kW.\n\nOnce it runs, the Advanced Nuclear Reactor unlocks.",
+          subject: [T.COOLINGTOWER2],
           manual: true,
           highlight: T.COOLINGTOWER2,
         },
@@ -1104,12 +1245,16 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.ADVREACTOR) || Progression.isUnlocked(T.ADVREACTOR),
       steps: [
         {
-          text: "Advanced Nuclear Reactor unlocked!\n\nIt burns MOX and raises steam for twelve Steam Turbines, four times a standard reactor on the same burn.\n\nIt needs Cryogenic Coolant: pipe a Cryogenic Cooling Tower\'s CRYO OUT to its CRYO IN before loading rods. One tower per reactor is enough.",
+          text: "Advanced Nuclear Reactor unlocked! It burns MOX and drives twelve Steam Turbines.\n\nPipe Cryogenic Coolant into its CRYO IN before loading rods.",
+          more: "Advanced Nuclear Reactor unlocked!\n\nIt burns MOX and raises steam for twelve Steam Turbines, four times a standard reactor on the same burn.\n\nIt needs Cryogenic Coolant: pipe a Cryogenic Cooling Tower\'s CRYO OUT to its CRYO IN before loading rods. One tower per reactor is enough.",
+          subject: [T.ADVREACTOR],
           manual: true,
           highlight: T.ADVREACTOR,
         },
         {
-          text: "☢ READ THIS BEFORE YOU BUILD ONE ☢\n\nA MOX core is far less forgiving: lose cooling and it goes critical in seconds, not minutes. Its meltdown is EXTREMELY CATASTROPHIC, worse than any standard reactor, and there is no cleaning up after it.\n\nKeep its Cryogenic Cooling Tower supplied and powered, and keep lightning away from all of it.",
+          text: "☢ READ THIS BEFORE YOU BUILD ONE ☢\n\nLose cooling and a MOX core goes critical in seconds. Its meltdown is EXTREMELY CATASTROPHIC.\n\nKeep its Cryogenic Cooling Tower supplied and powered.",
+          more: "☢ READ THIS BEFORE YOU BUILD ONE ☢\n\nA MOX core is far less forgiving: lose cooling and it goes critical in seconds, not minutes. Its meltdown is EXTREMELY CATASTROPHIC, worse than any standard reactor, and there is no cleaning up after it.\n\nKeep its Cryogenic Cooling Tower supplied and powered, and keep lightning away from all of it.",
+          subject: [T.ADVREACTOR],
           manual: true,
           danger: true,
           highlight: T.ADVREACTOR,
@@ -1122,17 +1267,23 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.DRONEPORT) || Progression.isUnlocked(T.DRONEPORT),
       steps: [
         {
-          text: "Drone Port unlocked!\n\nA 9×9 vertiport with ten drones that fly straight, with no roads or fuel, at over twice a truck\'s speed, inside its coverage square (220 tiles across). Ports whose areas touch form one network, and drones top up at ports they pass, so a chain covers a district; long haul is still for trucks.\n\nPorts can also be placed from the World Map, handy for long chains. Each costs $300,000 and $60/s.",
+          text: "Drone Port unlocked! Its ten drones fly straight, fast and fuel-free, inside its coverage square.",
+          more: "Drone Port unlocked!\n\nA 9×9 vertiport with ten drones that fly straight, with no roads or fuel, at over twice a truck\'s speed, inside its coverage square (220 tiles across). Ports whose areas touch form one network, and drones top up at ports they pass, so a chain covers a district; long haul is still for trucks.\n\nPorts can also be placed from the World Map, handy for long chains. Each costs $300,000 and $60/s.",
+          subject: [T.DRONEPORT],
           manual: true,
           highlight: T.DRONEPORT,
         },
         {
-          text: "Drones choose their own work, in this order:\n\nREPAIR damage from lightning, fire or blasts. You pay the usual cost, and a repair runs 60% faster with a drone on it, including ones you started.\n\nSERVICE lines at 80-100% of their rating, cutting their fault chance (an overloaded line still fails).\n\nSHAVE WASTE off a coal generator, refinery or reactor from 85% full until it\'s under 70%. That buys time; it doesn\'t replace trucks.\n\nFLY CARGO: open a container, tank or gas holder and click REQUEST DRONE SUPPLY. Drones fetch from producers and unflagged storage in the network, so a bin beside a plant feeds it with no belt or pipe.",
+          text: "Drones choose their own work: REPAIR damage, SERVICE busy lines, SHAVE WASTE off full plants and FLY CARGO you request.",
+          more: "Drones choose their own work, in this order:\n\nREPAIR damage from lightning, fire or blasts. You pay the usual cost, and a repair runs 60% faster with a drone on it, including ones you started.\n\nSERVICE lines at 80-100% of their rating, cutting their fault chance (an overloaded line still fails).\n\nSHAVE WASTE off a coal generator, refinery or reactor from 85% full until it\'s under 70%. That buys time; it doesn\'t replace trucks.\n\nFLY CARGO: open a container, tank or gas holder and click REQUEST DRONE SUPPLY. Drones fetch from producers and unflagged storage in the network, so a bin beside a plant feeds it with no belt or pipe.",
+          subject: [T.DRONEPORT],
           manual: true,
           highlight: T.DRONEPORT,
         },
         {
-          text: "What limits the fleet:\n\nPOWER: a port idles at 40 kW, plus up to 30 kW per drone recharging (340 kW for a full fleet landing empty). An unpowered port can\'t launch.\n\nBATTERY: 66 seconds of flight, enough for its coverage in normal weather.\n\nWEATHER: storms, rainstorms and blizzards halve their speed or worse. Light rain is fine. A cold snap cuts range by 30%, a heat wave halves recharging.\n\nDRONES in the side panels shows what each port is doing, and why one isn\'t flying.",
+          text: "Drones need a powered port to launch, and storms slow them down.\n\nDRONES in the side panels shows what each port is doing.",
+          more: "What limits the fleet:\n\nPOWER: a port idles at 40 kW, plus up to 30 kW per drone recharging (340 kW for a full fleet landing empty). An unpowered port can\'t launch.\n\nBATTERY: 66 seconds of flight, enough for its coverage in normal weather.\n\nWEATHER: storms, rainstorms and blizzards halve their speed or worse. Light rain is fine. A cold snap cuts range by 30%, a heat wave halves recharging.\n\nDRONES in the side panels shows what each port is doing, and why one isn\'t flying.",
+          subject: [T.DRONEPORT],
           manual: true,
           highlightDom: ['btn-drones'],
         },
@@ -1144,11 +1295,15 @@ const TutorialSystem = (() => {
       trigger: () => EntityRegistry.getByType(T.MK5RESEARCH).size > 0,
       steps: [
         {
-          text: "You\'ve reached the final tier: the MK5 Research Station!\n\nIt opens a long chain ending in frozen fusion fuel pellets: Electrolyzer, Lithium Mine, Atmosphere Collector, Haber-Bosch Complex, Isotopic Wash Tower and Fusion Fuel Plant.\n\nIt starts at the Fusion Research Facility, just arrived in the National Government Zone. Keep it powered through its plasma shots: achieving fusion unlocks the Electrolyzer.",
+          text: "You\'ve reached the final tier: the MK5 Research Station! It opens the long chain to fusion fuel.\n\nIt starts at the Fusion Research Facility. Keep it powered.",
+          more: "You\'ve reached the final tier: the MK5 Research Station!\n\nIt opens a long chain ending in frozen fusion fuel pellets: Electrolyzer, Lithium Mine, Atmosphere Collector, Haber-Bosch Complex, Isotopic Wash Tower and Fusion Fuel Plant.\n\nIt starts at the Fusion Research Facility, just arrived in the National Government Zone. Keep it powered through its plasma shots: achieving fusion unlocks the Electrolyzer.",
+          subject: [T.MK5RESEARCH],
           manual: true,
         },
         {
-          text: "Make D-T Fuel Pellets (bank them in Storage Containers) to unlock the Helium Scan.\n\nThe Fusion Reactor\'s magnets need liquid helium: scan for a helium field, put a Helium Well on it and bank enough helium in Gas Holders to unlock the Cryo Plant. Once it makes liquid helium, the Fusion Reactor unlocks.",
+          text: "Make D-T Fuel Pellets to unlock the Helium Scan. The Fusion Reactor\'s magnets need liquid helium.",
+          more: "Make D-T Fuel Pellets (bank them in Storage Containers) to unlock the Helium Scan.\n\nThe Fusion Reactor\'s magnets need liquid helium: scan for a helium field, put a Helium Well on it and bank enough helium in Gas Holders to unlock the Cryo Plant. Once it makes liquid helium, the Fusion Reactor unlocks.",
+          subject: [T.FUSIONFUELPLANT],
           manual: true,
           check: () => Progression.isUnlocked(T.HELIUMSCAN),
         },
@@ -1163,7 +1318,9 @@ const TutorialSystem = (() => {
         || (Progression.isUnlocked(T.HULKINGFUSIONREACTOR) && EntityRegistry.getByType(T.HULKINGFUSIONREACTOR).size === 0)),
       steps: [
         {
-          text: "Fusion Reactor unlocked!\n\nIt burns D-T pellets and breeds its own tritium: belt Lithium Compound into Li COMPOUND IN and pipe TRITIUM OUT back to the Fuel Plant. Until it runs, a Tritium Breeding Facility piped to the Fuel Plant\'s TRITIUM IN starts the loop.\n\nPipe your Cryo Plant\'s LHe OUT into its LHe IN. Once the magnets are cold, a 5 MW surge ignites it. It makes steam: twenty Steam Turbines give about 6 MW.\n\nOnce helium-3 flows, the Fuel Plant also makes D-He3 pellets for the Advanced Fusion Reactor.",
+          text: "Fusion Reactor unlocked! It burns D-T pellets, and its magnets need liquid helium from a Cryo Plant.\n\nIts steam drives twenty Steam Turbines.",
+          more: "Fusion Reactor unlocked!\n\nIt burns D-T pellets and breeds its own tritium: belt Lithium Compound into Li COMPOUND IN and pipe TRITIUM OUT back to the Fuel Plant. Until it runs, a Tritium Breeding Facility piped to the Fuel Plant\'s TRITIUM IN starts the loop.\n\nPipe your Cryo Plant\'s LHe OUT into its LHe IN. Once the magnets are cold, a 5 MW surge ignites it. It makes steam: twenty Steam Turbines give about 6 MW.\n\nOnce helium-3 flows, the Fuel Plant also makes D-He3 pellets for the Advanced Fusion Reactor.",
+          subject: [T.HULKINGFUSIONREACTOR],
           manual: true,
           highlight: T.HULKINGFUSIONREACTOR,
           check: () => EntityRegistry.getByType(T.HULKINGFUSIONREACTOR).size > 0,
@@ -1178,7 +1335,9 @@ const TutorialSystem = (() => {
       trigger: () => { const v = _fusionV(); return !!(v && v.researching); },
       steps: [
         {
-          text: "This is the Fusion Research Facility, researching fusion one plasma shot at a time.\n\nEvery half hour from 09:00 to 18:00 it fires a shot that pulls 1 MW (it idles at 280–430 kW). A shot that stays powered is a GOOD SHOT; one that browns out is ABORTED.\n\n45 good shots achieve fusion and unlock the Electrolyzer: about two and a half days if your grid carries every spike. The ring round the tokamak and the control board track the count (click the facility for the exact number).\n\nSize your supply for the 1 MW spikes: batteries and substations cover them without a whole new plant.",
+          text: "This is the Fusion Research Facility. Every half hour from 09:00 to 18:00 it fires a 1 MW plasma shot.\n\n45 fully powered shots achieve fusion.",
+          more: "This is the Fusion Research Facility, researching fusion one plasma shot at a time.\n\nEvery half hour from 09:00 to 18:00 it fires a shot that pulls 1 MW (it idles at 280–430 kW). A shot that stays powered is a GOOD SHOT; one that browns out is ABORTED.\n\n45 good shots achieve fusion and unlock the Electrolyzer: about two and a half days if your grid carries every spike. The ring round the tokamak and the control board track the count (click the facility for the exact number).\n\nSize your supply for the 1 MW spikes: batteries and substations cover them without a whole new plant.",
+          subject: [T.FUSIONLAB],
           manual: true,
           highlightWorld: () => _fusionLab(),
           onEnter: () => _jumpTo(_fusionLab()),
@@ -1191,7 +1350,9 @@ const TutorialSystem = (() => {
       trigger: () => { const v = _fusionV(); return !!(v && v.researching && v.lastFailed && v.everPowered); },
       steps: [
         {
-          text: "A plasma shot browned out and was aborted.\n\nThe facility needs its full 1 MW for the whole shot, or it counts for nothing: half an hour of research lost. Add generation, or batteries and substations to cover the spikes.",
+          text: "A plasma shot browned out and was aborted. It needs its full 1 MW for the whole shot.",
+          more: "A plasma shot browned out and was aborted.\n\nThe facility needs its full 1 MW for the whole shot, or it counts for nothing: half an hour of research lost. Add generation, or batteries and substations to cover the spikes.",
+          subject: [T.FUSIONLAB],
           manual: true,
           highlightWorld: () => _fusionLab(),
           onEnter: () => _jumpTo(_fusionLab()),
@@ -1204,7 +1365,9 @@ const TutorialSystem = (() => {
       trigger: () => { const v = _fusionV(); return !!(v && v.researching && v.stage > 0); },
       steps: [
         {
-          text: "The fusion programme hit its first milestone!\n\nMilestones at 25%, 50% and 75% each light a beacon on the progress ring. Keep the shots coming.",
+          text: "The fusion programme hit its first milestone! Keep the shots coming.",
+          more: "The fusion programme hit its first milestone!\n\nMilestones at 25%, 50% and 75% each light a beacon on the progress ring. Keep the shots coming.",
+          subject: [T.FUSIONLAB],
           manual: true,
           highlightWorld: () => _fusionLab(),
         },
@@ -1216,7 +1379,9 @@ const TutorialSystem = (() => {
       trigger: () => { const v = _fusionV(); return !!(v && v.imminent); },
       steps: [
         {
-          text: "The Fusion Research Facility is a couple of good shots from ignition!\n\nIf it loses power now, the experiment is ruined and you lose 2 good shots of data. Keep it powered until it ignites.",
+          text: "The Fusion Research Facility is a couple of shots from ignition! Keep it powered until it ignites.",
+          more: "The Fusion Research Facility is a couple of good shots from ignition!\n\nIf it loses power now, the experiment is ruined and you lose 2 good shots of data. Keep it powered until it ignites.",
+          subject: [T.FUSIONLAB],
           manual: true,
           highlightWorld: () => _fusionLab(),
           onEnter: () => _jumpTo(_fusionLab()),
@@ -1229,7 +1394,9 @@ const TutorialSystem = (() => {
       trigger: () => typeof FusionResearch !== 'undefined' && FusionResearch.isComplete() && !FusionResearch.isActive() && !!_fusionLab(),
       steps: [
         {
-          text: "Fusion achieved! The Electrolyzer is ready to research at your MK5 Research Station.\n\nThe facility keeps firing: every good shot now cuts the remaining fusion-chain goals (hydrogen, lithium, nitrogen and the rest) by 1%, up to 20%. The gold ring shows how far it has got, so keep it powered.",
+          text: "Fusion achieved! The Electrolyzer is ready to research at your MK5 Research Station.",
+          more: "Fusion achieved! The Electrolyzer is ready to research at your MK5 Research Station.\n\nThe facility keeps firing: every good shot now cuts the remaining fusion-chain goals (hydrogen, lithium, nitrogen and the rest) by 1%, up to 20%. The gold ring shows how far it has got, so keep it powered.",
+          subject: [T.ELECTROLYZER],
           manual: true,
           highlightWorld: () => _fusionLab(),
         },
@@ -1244,7 +1411,8 @@ const TutorialSystem = (() => {
         && _isSeqDone(SEQUENCES.find(s => s.id === 'fusionachieved')),
       steps: [
         {
-          text: "You\'re in the final stretch.\n\nOperation Hyperion stands between your city and powering the nation: 10 MW commissioning surges, then 20 MW around the clock, then 30 MW for a full day with no coal or oil running.\n\nMore reactors will get you there, but Field Cores make the ones you have run harder: up to three in a Fusion or Advanced Fusion Reactor add +50%, +30% and +20% output for a little more fuel.\n\nBurn 100 D-He3 pellets in an Advanced Fusion Reactor to unlock the Rare Earth Scan; the Leach Plant follows at Hyperion Stage II, the Superconductor Mill at Stage III and the Core Works at Stage IV. Start mining rare earths early.",
+          text: "You\'re in the final stretch: Operation Hyperion, powering the whole nation.\n\nField Cores make your fusion reactors run harder. Start mining rare earths early.",
+          more: "You\'re in the final stretch.\n\nOperation Hyperion stands between your city and powering the nation: 10 MW commissioning surges, then 20 MW around the clock, then 30 MW for a full day with no coal or oil running.\n\nMore reactors will get you there, but Field Cores make the ones you have run harder: up to three in a Fusion or Advanced Fusion Reactor add +50%, +30% and +20% output for a little more fuel.\n\nBurn 100 D-He3 pellets in an Advanced Fusion Reactor to unlock the Rare Earth Scan; the Leach Plant follows at Hyperion Stage II, the Superconductor Mill at Stage III and the Core Works at Stage IV. Start mining rare earths early.",
           manual: true,
         },
       ],
@@ -1257,13 +1425,17 @@ const TutorialSystem = (() => {
       trigger: () => T.COREWORKS && EntityRegistry.getByType(T.COREWORKS).size > 0,
       steps: [
         {
-          text: "This is the Core Works: it winds HTS tape into Field Cores and charges them.\n\nBelt tape from your Superconductor Mills (or a Storage Container) into TAPE IN on its bottom face.\n\nIt has four bays and charges one core at a time: 4 in-game hours at 800 kW (100 kW idle). Spent cores are recharged first (28 tape, 56 if quenched); otherwise it winds a new core for 120 tape.\n\nClick it for OFF-PEAK CHARGING (22:00 to 06:00 only) or to turn off WIND NEW CORES.",
+          text: "This is the Core Works: it turns superconductor tape into Field Cores and charges them. Belt tape into TAPE IN.",
+          more: "This is the Core Works: it winds HTS tape into Field Cores and charges them.\n\nBelt tape from your Superconductor Mills (or a Storage Container) into TAPE IN on its bottom face.\n\nIt has four bays and charges one core at a time: 4 in-game hours at 800 kW (100 kW idle). Spent cores are recharged first (28 tape, 56 if quenched); otherwise it winds a new core for 120 tape.\n\nClick it for OFF-PEAK CHARGING (22:00 to 06:00 only) or to turn off WIND NEW CORES.",
+          subject: [T.COREWORKS],
           manual: true,
           highlightWorld: () => { for (const e of EntityRegistry.getByType(T.COREWORKS)) return e; return null; },
           onEnter: () => { for (const e of EntityRegistry.getByType(T.COREWORKS)) { _jumpTo(e); break; } },
         },
         {
-          text: "Cores never ride belts: Drones and Haulers carry them to your Fusion and Advanced Fusion Reactors and bring spent ones back.\n\nClick a reactor to set up to 3 cores: +50%, +30% and +20% output, for 0.7x that boost in extra fuel. A starved reactor loses the boost first, never its base output.\n\nA core lasts 24 in-game hours of running. Each boils off 1.5 liquid helium a second, so leave cryo headroom. A quench takes every core in the reactor down.\n\nRule of thumb: 3 Core Works keep 12 cores charged, enough for 4 reactors running 3 each.",
+          text: "Drones and Haulers carry cores to your fusion reactors. Up to 3 per reactor add +50%, +30% and +20% output.",
+          more: "Cores never ride belts: Drones and Haulers carry them to your Fusion and Advanced Fusion Reactors and bring spent ones back.\n\nClick a reactor to set up to 3 cores: +50%, +30% and +20% output, for 0.7x that boost in extra fuel. A starved reactor loses the boost first, never its base output.\n\nA core lasts 24 in-game hours of running. Each boils off 1.5 liquid helium a second, so leave cryo headroom. A quench takes every core in the reactor down.\n\nRule of thumb: 3 Core Works keep 12 cores charged, enough for 4 reactors running 3 each.",
+          subject: [T.COREWORKS],
           manual: true,
           highlightWorld: () => { for (const e of EntityRegistry.getByType(T.COREWORKS)) return e; return null; },
         },
@@ -1275,7 +1447,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.GASSTORAGE) || Progression.isUnlocked(T.GASSTORAGE),
       steps: [
         {
-          text: "Gas Holder unlocked!\n\nThe fusion chain\'s unlock goals are bigger than any producer\'s buffer, and a full buffer stops production, so bank the surplus.\n\nA Gas Holder stores 5,000 units of one gas: producer into GAS IN, GAS OUT to what uses it. Plants fed straight off the producer come first; only the spare is banked. Storage Containers do the same for solids. Neither needs power.",
+          text: "Gas Holder unlocked! It banks 5,000 units of one gas, so a full buffer doesn\'t stop production.",
+          more: "Gas Holder unlocked!\n\nThe fusion chain\'s unlock goals are bigger than any producer\'s buffer, and a full buffer stops production, so bank the surplus.\n\nA Gas Holder stores 5,000 units of one gas: producer into GAS IN, GAS OUT to what uses it. Plants fed straight off the producer come first; only the spare is banked. Storage Containers do the same for solids. Neither needs power.",
+          subject: [T.GASSTORAGE],
           manual: true,
           highlight: T.GASSTORAGE,
         },
@@ -1287,7 +1461,9 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.CRYOPLANT) || Progression.isUnlocked(T.CRYOPLANT),
       steps: [
         {
-          text: "Cryo Plant unlocked!\n\nThe Fusion Reactor\'s superconducting magnets only work near 4 K, and this plant liquefies helium to keep them there. Pipe helium gas from your wells into HE IN; once it makes liquid helium (LHe), the Fusion Reactor unlocks.\n\nThen pipe LHe OUT to the reactor\'s LHe IN. The reactor\'s HE ASH OUT can be recycled back in.\n\nKeep it powered: an outage can trip its compressors, the magnets warm the whole time, and at 9 K they quench.",
+          text: "Cryo Plant unlocked! It liquefies helium for the Fusion Reactor\'s magnets. Pipe helium gas into HE IN.\n\nKeep it powered, or the magnets warm and quench.",
+          more: "Cryo Plant unlocked!\n\nThe Fusion Reactor\'s superconducting magnets only work near 4 K, and this plant liquefies helium to keep them there. Pipe helium gas from your wells into HE IN; once it makes liquid helium (LHe), the Fusion Reactor unlocks.\n\nThen pipe LHe OUT to the reactor\'s LHe IN. The reactor\'s HE ASH OUT can be recycled back in.\n\nKeep it powered: an outage can trip its compressors, the magnets warm the whole time, and at 9 K they quench.",
+          subject: [T.CRYOPLANT],
           manual: true,
           highlight: T.CRYOPLANT,
         },
@@ -1299,11 +1475,14 @@ const TutorialSystem = (() => {
       trigger: () => Progression.isReady(T.MHDRING) || Progression.isUnlocked(T.MHDRING),
       steps: [
         {
-          text: "The Advanced Fusion Reactor and MHD Decelerator Ring are unlocked: the top of the fusion chain!\n\nD-He3 fuel releases charged particles, which the ring turns straight into electricity: no steam, no turbines, 4 MW per ring, and one reactor feeds four.\n\nBelt D-He3 pellets (from your Fuel Plants\' D-He3 OUT, or banked) into the reactor\'s PELLETS IN and pipe its ION OUT ports into the rings. It needs serious cooling: two or three Cryo Plants on its magnets and two Cryogenic Cooling Towers on CRYO IN.",
+          text: "The Advanced Fusion Reactor and MHD Decelerator Ring are unlocked! The ring turns its fuel straight into electricity: 4 MW each, four per reactor.",
+          more: "The Advanced Fusion Reactor and MHD Decelerator Ring are unlocked: the top of the fusion chain!\n\nD-He3 fuel releases charged particles, which the ring turns straight into electricity: no steam, no turbines, 4 MW per ring, and one reactor feeds four.\n\nBelt D-He3 pellets (from your Fuel Plants\' D-He3 OUT, or banked) into the reactor\'s PELLETS IN and pipe its ION OUT ports into the rings. It needs serious cooling: two or three Cryo Plants on its magnets and two Cryogenic Cooling Towers on CRYO IN.",
+          subject: [T.ADVFUSIONREACTOR, T.MHDRING],
           manual: true,
           highlight: T.MHDRING,
         },
         {
+          subject: [T.MHDRING],
           text: () => (typeof NationalProject !== 'undefined' && NationalProject.reached('briefed'))
             ? "Unlocking the ring also means Hyperion Station can rise.\n\nOpen the ◈ HYPERION dossier in the top bar to see Stage II · Foundations."
             : "Keep an eye on the National Government Zone. The Ministry has plans that need a grid this size.",
@@ -1318,7 +1497,9 @@ const TutorialSystem = (() => {
       trigger: () => EntityRegistry.getByType(T.NATIONALGOV).size > 0,
       steps: [
         {
-          text: "The National Government has arrived!\n\nIts Government Center founded a zone far out in the world. It needs power like any civic building, and leaving it dark hurts your approval. Run a line out there; Power Towers make it easier.",
+          text: "The National Government has arrived far out in the world! Run a line out there: it needs power.",
+          more: "The National Government has arrived!\n\nIts Government Center founded a zone far out in the world. It needs power like any civic building, and leaving it dark hurts your approval. Run a line out there; Power Towers make it easier.",
+          subject: [T.NATIONALGOV],
           manual: true,
           highlightWorld: () => { for (const e of EntityRegistry.getByType(T.NATIONALGOV)) return e; return null; },
           onEnter: () => { for (const e of EntityRegistry.getByType(T.NATIONALGOV)) { _jumpTo(e); break; } },
@@ -1331,7 +1512,8 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.reached('classified'),
       steps: [
         {
-          text: "Something is happening in the National Government Zone.\n\nThe Ministry of Energy has fenced off a site there and opened a sealed file on your company. Nobody will say what it\'s for, or what it\'s called.\n\nThe ◈ CLASSIFIED button in the top bar is that file, nearly all blacked out for now. Keep climbing: the Ministry will be in touch once your fusion programme proves itself.",
+          text: "Something is happening in the National Government Zone. The ◈ CLASSIFIED button in the top bar is your file. Keep climbing.",
+          more: "Something is happening in the National Government Zone.\n\nThe Ministry of Energy has fenced off a site there and opened a sealed file on your company. Nobody will say what it\'s for, or what it\'s called.\n\nThe ◈ CLASSIFIED button in the top bar is that file, nearly all blacked out for now. Keep climbing: the Ministry will be in touch once your fusion programme proves itself.",
           manual: true,
           onEnter: () => NationalProject.jumpToSite(),
         },
@@ -1343,7 +1525,9 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.reached('briefed'),
       steps: [
         {
-          text: "Operation Hyperion is the end of the road: build Hyperion Station, tie the nation\'s grid to yours and power the whole country from your city.\n\nIt runs in five stages, each harder than the last. The ◈ HYPERION button in the top bar opens the dossier with every requirement and your progress.\n\nGround breaks the day your first Fusion Reactor ignites.",
+          text: "Operation Hyperion: build Hyperion Station and power the whole country from your city.\n\nThe ◈ HYPERION button in the top bar shows every requirement.",
+          more: "Operation Hyperion is the end of the road: build Hyperion Station, tie the nation\'s grid to yours and power the whole country from your city.\n\nIt runs in five stages, each harder than the last. The ◈ HYPERION button in the top bar opens the dossier with every requirement and your progress.\n\nGround breaks the day your first Fusion Reactor ignites.",
+          subject: [T.NATIONALGRID],
           manual: true,
         },
       ],
@@ -1354,7 +1538,9 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.phase() === 'ignition' && !!NationalProject.station(),
       steps: [
         {
-          text: "Your Fusion Reactor is burning, and Hyperion Station has broken ground!\n\nThe Ministry wants proof the burn holds: burn 500 pellets in Fusion Reactors while the station\'s site has power. The station goes up as you do.\n\nRun power out to the site: only 500 kW for now, but that won\'t last.",
+          text: "Hyperion Station has broken ground! Burn 500 pellets in Fusion Reactors while its site has power.",
+          more: "Your Fusion Reactor is burning, and Hyperion Station has broken ground!\n\nThe Ministry wants proof the burn holds: burn 500 pellets in Fusion Reactors while the station\'s site has power. The station goes up as you do.\n\nRun power out to the site: only 500 kW for now, but that won\'t last.",
+          subject: [T.NATIONALGRID],
           manual: true,
           highlightWorld: () => NationalProject.station(),
           onEnter: () => _jumpTo(NationalProject.station()),
@@ -1367,7 +1553,9 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.phase() === 'stage1' && !!NationalProject.station(),
       steps: [
         {
-          text: "Construction on Hyperion Station can resume!\n\nTo raise it:\n• Commit $2.5M of funding (the button in the dossier)\n• Burn 1,000 D-He3 pellets in an Advanced Fusion Reactor\n\nThe station rises as you go.",
+          text: "Construction on Hyperion Station can resume! Commit $2.5M in the dossier and burn 1,000 D-He3 pellets.",
+          more: "Construction on Hyperion Station can resume!\n\nTo raise it:\n• Commit $2.5M of funding (the button in the dossier)\n• Burn 1,000 D-He3 pellets in an Advanced Fusion Reactor\n\nThe station rises as you go.",
+          subject: [T.NATIONALGRID],
           manual: true,
           highlightWorld: () => NationalProject.station(),
           onEnter: () => _jumpTo(NationalProject.station()),
@@ -1380,7 +1568,9 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.phase() === 'stage2',
       steps: [
         {
-          text: "The station stands. Now its converters have to be commissioned.\n\nEvery hour, day and night, it fires a 10 MW surge. A surge that stays powered counts; one that browns out is aborted. 24 good surges bring it online.\n\nThe line out to the station has to carry it: batteries and substations near the station help.",
+          text: "The station stands. Every hour it fires a 10 MW surge; 24 fully powered surges bring it online.",
+          more: "The station stands. Now its converters have to be commissioned.\n\nEvery hour, day and night, it fires a 10 MW surge. A surge that stays powered counts; one that browns out is aborted. 24 good surges bring it online.\n\nThe line out to the station has to carry it: batteries and substations near the station help.",
+          subject: [T.NATIONALGRID],
           manual: true,
           highlightWorld: () => NationalProject.station(),
           onEnter: () => _jumpTo(NationalProject.station()),
@@ -1393,7 +1583,9 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.phase() === 'stage3',
       steps: [
         {
-          text: "The nation\'s grid is ready to tie in to yours, on your signal.\n\nOnce you press INITIATE STAGE IV in the dossier, the station draws 20 MW around the clock. While the line is up it pays 5× your city\'s net income after every deduction (7.5× on the final 30 MW day), so stay in profit: a city at a loss earns nothing from it.\n\nHold it for two full days. Every power loss trips the national grid and costs an hour of progress.\n\nNothing starts until you press INITIATE, so build first: the dossier\'s Ready check shows your spare at the tightest hour, and you want 20 MW and a little over. Use Power Towers, not wires.",
+          text: "The nation\'s grid is ready to tie in. Press INITIATE STAGE IV in the dossier, then hold 20 MW for two full days.\n\nBuild first: the Ready check shows your spare.",
+          more: "The nation\'s grid is ready to tie in to yours, on your signal.\n\nOnce you press INITIATE STAGE IV in the dossier, the station draws 20 MW around the clock. While the line is up it pays 5× your city\'s net income after every deduction (7.5× on the final 30 MW day), so stay in profit: a city at a loss earns nothing from it.\n\nHold it for two full days. Every power loss trips the national grid and costs an hour of progress.\n\nNothing starts until you press INITIATE, so build first: the dossier\'s Ready check shows your spare at the tightest hour, and you want 20 MW and a little over. Use Power Towers, not wires.",
+          subject: [T.NATIONALGRID],
           manual: true,
           highlightWorld: () => NationalProject.station(),
         },
@@ -1405,7 +1597,9 @@ const TutorialSystem = (() => {
       trigger: () => _np() && NationalProject.phase() === 'stage4',
       steps: [
         {
-          text: "The final day. For 24 hours, all at once:\n• Keep Hyperion Station powered at 30 MW\n• No Coal or Fuel Generators anywhere on the map\n• City Score of 70 or better\n• $5M of Wind Turbines, Solar Panels and Hydro (Dams, Hydro Turbines, Hydroelectric Generators) standing, by build cost\n\nProgress only moves while all four hold. Press INITIATE STAGE V in the dossier once its Ready check is all green.\n\nFinish the day and the country is yours.",
+          text: "The final day: 24 hours at 30 MW, with no coal or oil running. Press INITIATE STAGE V when the Ready check is green.\n\nFinish the day and the country is yours.",
+          more: "The final day. For 24 hours, all at once:\n• Keep Hyperion Station powered at 30 MW\n• No Coal or Fuel Generators anywhere on the map\n• City Score of 70 or better\n• $5M of Wind Turbines, Solar Panels and Hydro (Dams, Hydro Turbines, Hydroelectric Generators) standing, by build cost\n\nProgress only moves while all four hold. Press INITIATE STAGE V in the dossier once its Ready check is all green.\n\nFinish the day and the country is yours.",
+          subject: [T.NATIONALGRID],
           manual: true,
           highlightWorld: () => NationalProject.station(),
           onEnter: () => _jumpTo(NationalProject.station()),
@@ -1690,10 +1884,13 @@ const TutorialSystem = (() => {
     [/\bHover\b/g, 'Tap'],
     [/\bhover\b/g, 'tap'],
   ];
-  function _stepText(step) {
-    if (_padOn() && step.padText) return step.padText;
-    if (_touchOn() && step.touchText) return step.touchText;
-    const txt = typeof step.text === 'function' ? step.text() : (step.text || '');
+  // full: the card's longer original wording (`more`), kept for the
+  // Compendium's Tutorial Notes now the cards themselves are short.
+  function _stepText(step, full = false) {
+    if (_padOn() && step.padText && !(full && step.more)) return step.padText;
+    if (_touchOn() && step.touchText && !(full && step.more)) return step.touchText;
+    const src = (full && step.more) || step.text;
+    const txt = typeof src === 'function' ? src() : (src || '');
     if (_touchOn()) return TOUCH_SUBS.reduce((t, [re, to]) => t.replace(re, to), txt);
     if (!_padOn()) return txt;
     return PAD_SUBS.reduce((t, [re, to]) => t.replace(re, to), txt);
@@ -1718,6 +1915,55 @@ const TutorialSystem = (() => {
     const stopped = typeof DevMode === 'undefined' || DevMode.timeScale === 0;
     tag.classList.toggle('off', !stopped);
     if (!_pausedTagTimer) _pausedTagTimer = setInterval(_syncPausedTag, 250);
+  }
+
+  // ── Compendium links ─────────────────────────────────────────────────
+  // A step's `subject` (a T type or a compendium key, or a list of them)
+  // puts that object's picture on the card; clicking the picture, or the
+  // "More info in the compendium" line, opens its Compendium entry. Cards
+  // about a mechanic rather than an object link to their own Tutorial Notes
+  // entry, which keeps the card's longer original wording (`more`).
+  function _subjects(step) {
+    const s = step.subject;
+    return (Array.isArray(s) ? s : (s != null ? [s] : [])).filter(x => x != null);
+  }
+  function _openCompendium(subject) {
+    if (typeof CompendiumSystem === 'undefined' || !CompendiumSystem.openTo) return;
+    try { SFX.click?.(); } catch (_e) {}
+    CompendiumSystem.openTo(subject);
+  }
+  function _subjectPics(step) {
+    if (typeof CompendiumSystem === 'undefined' || !CompendiumSystem.iconFor) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'tut-pics';
+    for (const subj of _subjects(step)) {
+      const entry = CompendiumSystem.findEntry(subj);
+      const icon = entry && CompendiumSystem.iconFor(subj, 56);
+      if (!icon) continue;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'tut-pic';
+      btn.title = `${entry.label}: open in the Compendium`;
+      btn.setAttribute('aria-label', btn.title);
+      btn.appendChild(icon);
+      btn.addEventListener('click', (e) => { e.stopPropagation(); _openCompendium(subj); });
+      wrap.appendChild(btn);
+    }
+    return wrap.childElementCount ? wrap : null;
+  }
+  function _compendiumLink(seq, step, forced) {
+    if (typeof CompendiumSystem === 'undefined' || !CompendiumSystem.openTo) return null;
+    let target = _subjects(step).find(subj => CompendiumSystem.findEntry(subj));
+    // A mechanic card links to its own note, unless it is that note being
+    // re-read from the Compendium already.
+    if (target == null && step.more && !forced) target = `tutnote:${seq.id}:${seq.steps.indexOf(step)}`;
+    if (target == null) return null;
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'tut-cmp-link';
+    link.textContent = 'More info in the compendium';
+    link.addEventListener('click', (e) => { e.stopPropagation(); _openCompendium(target); });
+    return link;
   }
 
   function _renderStepCard(seq, step, forced) {
@@ -1830,7 +2076,18 @@ const TutorialSystem = (() => {
       const text = document.createElement('div');
       text.className = 'tut-text';
       text.textContent = _stepText(step);
-      card.appendChild(text);
+      const pics = _subjectPics(step);
+      if (pics) {
+        const body = document.createElement('div');
+        body.className = 'tut-body';
+        body.appendChild(pics);
+        body.appendChild(text);
+        card.appendChild(body);
+      } else {
+        card.appendChild(text);
+      }
+      const link = _compendiumLink(seq, step, forced);
+      if (link) card.appendChild(link);
     }
 
     if (forced) {
@@ -2056,7 +2313,7 @@ const TutorialSystem = (() => {
       for (let i = 0; i <= maxIdx; i++) {
         const step = seq.steps[i];
         if (!step || step.choice) continue;
-        notes.push({ index: i, text: _stepText(step) });
+        notes.push({ index: i, text: _stepText(step, true) });
       }
       return { id: seq.id, title: seq.title, notes };
     }).filter(s => s.notes.length);
