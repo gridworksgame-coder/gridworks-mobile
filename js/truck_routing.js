@@ -137,13 +137,45 @@ const TruckRouting = (() => {
   // findPath's `wedges`), treated as solid for the one search in progress so
   // the reroute can't hand back the same line that just trapped it.
   let _wedged = null;   // Set of row*COLS+col, or null
-  function _isBlocked(col, row) {
+  // Answers already worked out during the search in progress, or null
+  // outside one. Per tile: _isBlocked (bit 1 known, bit 2 yes),
+  // _truckBlocked (4 known, 8 yes) and _truckSlot (16 known, 32 yes). The grid can't change mid-search,
+  // so a tile's answer is the same every time it is asked: and the fallback
+  // searches and the route tidy-up ask of the same tiles over and over (a
+  // cross-map route asked millions of times, seconds of a phone's time).
+  let _memo = null, _memoBuf = null;
+  let _memoFull = false;   // every tile's _isBlocked is in it (_memoSeed)
+  function _memoStart() {
+    const n = COLS * ROWS;
+    if (!_memoBuf || _memoBuf.length !== n) _memoBuf = new Uint8Array(n);
+    else _memoBuf.fill(0);
+    _memo = _memoBuf;
+    _memoFull = false;
+  }
+  function _isBlockedRaw(col, row) {
     if (_wedged && _wedged.has(row * COLS + col)) return true;
     const ent = GridManager.getEntity(col, row);
     if (!ent) return false;
     if (ent._bridge) return WaterBuild.railAt(ent, col, row);   // a bridge's truss edge is solid
     return !TruckSystem.isPassthrough(ent.type);
   }
+  function _isBlocked(col, row) {
+    if (!_memo || col < 0 || row < 0 || col >= COLS || row >= ROWS) return _isBlockedRaw(col, row);
+    const i = row * COLS + col, v = _memo[i];
+    if (v & 1) return (v & 2) !== 0;
+    const b = _isBlockedRaw(col, row);
+    _memo[i] = v | (b ? 3 : 1);
+    return b;
+  }
+  // A whole-map _blockedGrid has _isBlocked for every tile already: hand it
+  // to the memo, so the fallback searches after it don't ask the grid again.
+  function _memoSeed(B) {
+    if (!_memo || B.minC !== 0 || B.maxC !== COLS - 1 || B.minR !== 0 || B.maxR !== ROWS - 1) return;
+    const a = B.a, m = _memo, n = COLS * ROWS;
+    for (let k = 0; k < n; k++) if (!(m[k] & 1)) m[k] |= a[k + COLS] === 1 ? 3 : 1;
+    _memoFull = true;
+  }
+  const _onMap = (col, row) => _memo !== null && col >= 0 && row >= 0 && col < COLS && row < ROWS;
 
   // Route tiles are the truck's CENTRE, but its collision box is 1×3 and
   // never rotates: centred on (col,row) it covers rows row-1..row+1. Testing
@@ -151,6 +183,14 @@ const TruckRouting = (() => {
   // approach tiles — where the real body hits a building, so the truck
   // wedged, backed out, rerouted to the same spot and eventually gave up.
   function _truckBlocked(col, row) {
+    if (!_onMap(col, row)) return _truckBlockedRaw(col, row);
+    const i = row * COLS + col, v = _memo[i];
+    if (v & 4) return (v & 8) !== 0;
+    const b = _truckBlockedRaw(col, row);
+    _memo[i] |= b ? 12 : 4;   // re-read: the call above may have set bits 1/2
+    return b;
+  }
+  function _truckBlockedRaw(col, row) {
     return _isBlocked(col, row) || _isBlocked(col, row - 1) || _isBlocked(col, row + 1);
   }
 
@@ -162,6 +202,14 @@ const TruckRouting = (() => {
   // belt gap between two Coal Generators drove in, stuck, backed out, was
   // given the same route, and shuttled there until its tank ran dry.
   function _truckSlot(col, row) {
+    if (!_onMap(col, row)) return _truckSlotRaw(col, row);
+    const i = row * COLS + col, v = _memo[i];
+    if (v & 16) return (v & 32) !== 0;
+    const b = _truckSlotRaw(col, row);
+    _memo[i] |= b ? 48 : 16;
+    return b;
+  }
+  function _truckSlotRaw(col, row) {
     return (_truckBlocked(col - 1, row) && _truckBlocked(col + 1, row))
         || (_isBlocked(col, row - 2) && _isBlocked(col, row + 2));
   }
@@ -306,6 +354,11 @@ const TruckRouting = (() => {
   // _astarCapped: the last search gave up at maxIter rather than running out
   // of cells (so a bigger budget, not a different box, is what it lacked).
   let _asG = null, _asFrom = null, _asSeen = null, _asBlk = null, _asPen = null;
+  // The B and start the blocked flags in _asBlk were last worked out for. A
+  // whole-map route that runs out of budget is searched again at once over
+  // the same B (see _searchWithRetries), and on a big map the flags are a
+  // good part of each search; the second search reuses them.
+  let _asBlkFor = null, _asBlkStart = -1;
   let _astarCapped = false;
   function _astar(startC, startR, goalC, goalR, box, avoid, maxIter, B, hw = 1) {
     _astarCapped = false;
@@ -314,33 +367,16 @@ const TruckRouting = (() => {
     if (!_asG || _asG.length < cells) {
       _asG = new Float64Array(cells); _asFrom = new Int32Array(cells); _asSeen = new Uint8Array(cells);
       _asBlk = new Uint8Array(cells); _asPen = new Uint8Array(cells);
+      _asBlkFor = null;
     }
     const g = _asG, from = _asFrom, seen = _asSeen, blk = _asBlk, pen = _asPen;
     g.fill(Infinity, 0, cells); from.fill(-1, 0, cells); seen.fill(0, 0, cells); pen.fill(0, 0, cells);
-    // _truckBlocked for every cell of the box. B holds a row either side of
-    // the box, so a cell's own row in it is one down: _truckBlockedIn.
-    if (B) {
-      const a = B.a, w2 = w * 2;
-      for (let k = 0; k < cells; k++) blk[k] = a[k + w] | a[k] | a[k + w2];
-    } else {
-      for (let k = 0; k < cells; k++) blk[k] = _truckBlocked(box.minC + k % w, box.minR + ((k / w) | 0)) ? 1 : 0;
+    const startKey = idx(startC, startR);
+    if (!B || B !== _asBlkFor || startKey !== _asBlkStart) {
+      _asBlkFor = B || null; _asBlkStart = startKey;
+      _astarBlocked(box, w, cells, B, blk);
+      blk[startKey] = 0;   // the start tile stays open (see _astarBlocked)
     }
-    // Slots the box only fits flush into (_truckSlot) are closed too, worked
-    // out from the plain blocked flags before any slot is marked. Bit 2 marks
-    // them so the pass doesn't read its own output. The start tile stays open
-    // (a truck already standing in one has to be able to leave it).
-    {
-      const raw =(c, r) => (r >= box.minR - 1 && r <= box.maxR + 1 && B) ? B.a[(r - box.minR + 1) * w + (c - box.minC)] === 1 : _isBlocked(c, r);
-      for (let k = 0; k < cells; k++) {
-        if (blk[k] & 1) continue;
-        const c = box.minC + k % w, r = box.minR + ((k / w) | 0);
-        const left  = c > box.minC ? (blk[k - 1] & 1) === 1 : _truckBlocked(c - 1, r);
-        const right = c < box.maxC ? (blk[k + 1] & 1) === 1 : _truckBlocked(c + 1, r);
-        if ((left && right) || (raw(c, r - 2) && raw(c, r + 2))) blk[k] |= 2;
-      }
-      for (let k = 0; k < cells; k++) if (blk[k] & 2) blk[k] = 1;
-    }
-    blk[idx(startC, startR)] = 0;
 
     // The heap: hf[i] its f, hc/hr the tile.
     const hf = [], hc = [], hr = [];
@@ -434,6 +470,43 @@ const TruckRouting = (() => {
       }
     }
     return null;
+  }
+
+  // _astar's blocked flags for every cell of the box, into blk.
+  function _astarBlocked(box, w, cells, B, blk) {
+    // _truckBlocked for every cell of the box. B holds a row either side of
+    // the box, so a cell's own row in it is one down: _truckBlockedIn.
+    if (B) {
+      const a = B.a, w2 = w * 2;
+      for (let k = 0; k < cells; k++) blk[k] = a[k + w] | a[k] | a[k + w2];
+    } else {
+      for (let k = 0; k < cells; k++) blk[k] = _truckBlocked(box.minC + k % w, box.minR + ((k / w) | 0)) ? 1 : 0;
+    }
+    // Slots the box only fits flush into (_truckSlot) are closed too, worked
+    // out from the plain blocked flags before any slot is marked. Bit 2 marks
+    // them so the pass doesn't read its own output. The start tile stays open
+    // (a truck already standing in one has to be able to leave it): the
+    // caller reopens it.
+    // Walked row by row, with B read straight off for the rows it holds
+    // (every row of the box, and one either side); the same tests as
+    // _truckSlot, a fraction of the time on a whole-map box.
+    const h = box.maxR - box.minR + 1, a = B ? B.a : null;
+    for (let y = 0, k = 0; y < h; y++) {
+      const r = box.minR + y;
+      // Rows r-2 and r+2 in B (B's row index = y + 1), or -1: off B, ask the grid.
+      const up = a && y - 1 >= 0 ? (y - 1) * w : -1;
+      const dn = a && y + 3 <= h + 1 ? (y + 3) * w : -1;
+      for (let x = 0; x < w; x++, k++) {
+        if (blk[k] & 1) continue;
+        const c = box.minC + x;
+        const left  = x > 0     ? (blk[k - 1] & 1) === 1 : _truckBlocked(c - 1, r);
+        const right = x < w - 1 ? (blk[k + 1] & 1) === 1 : _truckBlocked(c + 1, r);
+        if (left && right) { blk[k] |= 2; continue; }
+        const above = up >= 0 ? a[up + x] === 1 : _isBlocked(c, r - 2);
+        if (above && (dn >= 0 ? a[dn + x] === 1 : _isBlocked(c, r + 2))) blk[k] |= 2;
+      }
+    }
+    for (let k = 0; k < cells; k++) if (blk[k] & 2) blk[k] = 1;
   }
 
   function _heuristic(c0, r0, c1, r1) {
@@ -582,6 +655,7 @@ const TruckRouting = (() => {
     if (allowFullMap) {
       const box = { minC: 0, maxC: COLS - 1, minR: 0, maxR: ROWS - 1 };
       const B = _blockedGrid(box);
+      _memoSeed(B);
       const avoid = { ...baseAvoid, building: _buildBuildingBufferTest(box, destEntity, startC, startR, B) };
       // Plain A* floods everything cheaper than the best route, which on a
       // long haul across buffered ground is most of the map: over a second
@@ -685,43 +759,67 @@ const TruckRouting = (() => {
   // `strict` also keeps out of slots (_truckSlot); findPath tries that first
   // and only takes a route through one when there is no other way at all.
   function _bfsFallback(startC, startR, candidates, strict) {
-    const targets = new Set(candidates.map(c => `${c.c},${c.r}`));
-    if (targets.has(`${startC},${startR}`)) return [{ col: startC, row: startR }];
+    // Tiles keyed row*COLS+col, not "c,r": a string built per tile looked at
+    // was most of a whole-map search (approach tiles are always on the map).
+    // Kept in a map-sized mask rather than a Set: asked of every neighbour.
+    const N = COLS * ROWS, targets = new Uint8Array(N);
+    for (const c of candidates) targets[c.r * COLS + c.c] = 1;
+    if (targets[startR * COLS + startC]) return [{ col: startC, row: startR }];
 
-    const visited = new Uint8Array(COLS * ROWS);
-    const cameFrom = new Int32Array(COLS * ROWS).fill(-1);
+    const visited = new Uint8Array(N);
+    const cameFrom = new Int32Array(N).fill(-1);
     const startIdx = startR * COLS + startC;
     visited[startIdx] = 1;
-    let frontier = [startIdx];
-
-    while (frontier.length) {
-      const next = [];
-      for (const idx of frontier) {
-        const c = idx % COLS, r = (idx / COLS) | 0;
-        for (const n of NEIGHBOURS) {
-          const nc = c + n.dc, nr = r + n.dr;
-          if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) continue;
-          const nIdx = nr * COLS + nc;
-          if (visited[nIdx]) continue;
-          if (n.dc !== 0 && n.dr !== 0 && (_truckBlocked(c + n.dc, r) || _truckBlocked(c, r + n.dr))) continue;
-          const isTarget = targets.has(`${nc},${nr}`);
-          if ((_truckBlocked(nc, nr) || (strict && _truckSlot(nc, nr))) && !isTarget) continue;
-          visited[nIdx] = 1;
-          cameFrom[nIdx] = idx;
-          if (isTarget) {
-            const path = [];
-            let k = nIdx;
-            while (k !== -1) {
-              path.push({ col: k % COLS, row: (k / COLS) | 0 });
-              k = cameFrom[k];
-            }
-            path.reverse();
-            return path;
-          }
-          next.push(nIdx);
-        }
+    // One first-in-first-out queue: it visits tiles in exactly the order the
+    // frontier-by-frontier arrays it replaced did, so the route is the same.
+    const queue = new Int32Array(N);
+    let head = 0, tail = 0;
+    queue[tail++] = startIdx;
+    // Per tile, worked out once (it is a neighbour of up to eight others):
+    // 1 known, 2 the truck doesn't fit (_truckBlocked), 4 closed to this
+    // search (that, or a slot when `strict`).
+    const info = new Uint8Array(N);
+    // With every tile's _isBlocked in the memo already (_memoSeed), the fit
+    // test is three reads; rows off the map are open, as _isBlocked has them.
+    const m = _memoFull ? _memo : null;
+    const tile = (i, c, r) => {
+      let v = info[i];
+      if (!v) {
+        const b = m ? ((m[i] | (r > 0 ? m[i - COLS] : 0) | (r < ROWS - 1 ? m[i + COLS] : 0)) & 2) !== 0
+                    : _truckBlocked(c, r);
+        v = 1 | (b ? 6 : 0);
+        if (!b && strict && _truckSlot(c, r)) v |= 4;
+        info[i] = v;
       }
-      frontier = next;
+      return v;
+    };
+
+    while (head < tail) {
+      const idx = queue[head++];
+      const c = idx % COLS, r = (idx / COLS) | 0;
+      for (let ni = 0; ni < 8; ni++) {
+        const n = NEIGHBOURS[ni];
+        const nc = c + n.dc, nr = r + n.dr;
+        if (nc < 0 || nc >= COLS || nr < 0 || nr >= ROWS) continue;
+        const nIdx = nr * COLS + nc;
+        if (visited[nIdx]) continue;
+        if (n.dc !== 0 && n.dr !== 0 && ((tile(idx + n.dc, c + n.dc, r) & 2) || (tile(idx + n.dr * COLS, c, r + n.dr) & 2))) continue;
+        const isTarget = targets[nIdx] === 1;
+        if ((tile(nIdx, nc, nr) & 4) && !isTarget) continue;
+        visited[nIdx] = 1;
+        cameFrom[nIdx] = idx;
+        if (isTarget) {
+          const path = [];
+          let k = nIdx;
+          while (k !== -1) {
+            path.push({ col: k % COLS, row: (k / COLS) | 0 });
+            k = cameFrom[k];
+          }
+          path.reverse();
+          return path;
+        }
+        queue[tail++] = nIdx;
+      }
     }
     return null;
   }
@@ -743,6 +841,11 @@ const TruckRouting = (() => {
   }
   function _floodReach(fromWx, fromWy, destEntity, waterOk) {
     if (!destEntity) return false;
+    if (_memo) return _floodReachIn(fromWx, fromWy, destEntity, waterOk);
+    try { _memoStart(); return _floodReachIn(fromWx, fromWy, destEntity, waterOk); }
+    finally { _memo = null; }
+  }
+  function _floodReachIn(fromWx, fromWy, destEntity, waterOk) {
     const isWater = (c, r) => { const e = GridManager.getEntity(c, r); return !!e && e.type === T.WATER; };
     const dry = (c, r) => !GridManager.inBounds(c, r) || (waterOk && isWater(c, r)) || !_isBlocked(c, r);
     const fits = (c, r) => dry(c, r) && dry(c, r - 1) && dry(c, r + 1);
@@ -793,11 +896,13 @@ const TruckRouting = (() => {
       if (wedges && wedges.length) {
         _wedged = new Set(wedges.map(w => w.r * COLS + w.c));
         let path;
-        try { path = this._findPath(fromWx, fromWy, destEntity, avoidApproaches); }
-        finally { _wedged = null; }
+        try { _memoStart(); path = this._findPath(fromWx, fromWy, destEntity, avoidApproaches); }
+        finally { _wedged = null; _memo = null; }
         if (path) return path;
       }
-      return this._findPath(fromWx, fromWy, destEntity, avoidApproaches);
+      // A fresh memo: the wedged tiles counted as solid in the one above.
+      try { _memoStart(); return this._findPath(fromWx, fromWy, destEntity, avoidApproaches); }
+      finally { _memo = null; }
     },
     _findPath(fromWx, fromWy, destEntity, avoidApproaches) {
       let startC = Math.max(0, Math.min(COLS - 1, Math.floor(fromWx / TILE)));

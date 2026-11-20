@@ -541,27 +541,69 @@ const TruckPatrolPanel = (() => {
       }
       document.body.style.cursor = '';
     };
+    const liftRow = (d) => {
+      d.lifted = true;
+      for (const r of d.rows) { r.style.transition = QUEUE_EASE; r.style.position = 'relative'; }
+      d.row.style.transition = 'box-shadow 120ms, background 120ms';
+      d.row.style.zIndex = '2';
+      d.row.style.boxShadow = '0 6px 14px rgba(0,0,0,0.55), 0 0 0 1px #6cb8ff';
+      d.row.style.cursor = 'grabbing';
+      document.body.style.cursor = 'grabbing';
+    };
+    // On a phone a finger on the list is scrolling it, so a row only picks
+    // up once it has been held still for a moment; a finger that moves
+    // first is left to scroll (the rows allow vertical panning there, see
+    // _refreshQueueList). With a mouse a row picks up as soon as it moves.
+    const HOLD_MS = 400, HOLD_SLOP = 8;   // ms; screen px the finger may wander while held
+    const touchHold = (ev) => !!window.GW_MOBILE && ev.pointerType !== 'mouse';
     _el.addEventListener('pointerdown', (ev) => {
       if (ev.button !== 0 || ev.target.closest('button')) return;
       const row = ev.target.closest('[data-queue-index]');
       if (!row || !_target || !_target._destQueue) return;
       const rows = [..._refs.queueList.querySelectorAll('[data-queue-index]')];
       const pitch = rows.length > 1 ? rows[1].offsetTop - rows[0].offsetTop : row.offsetHeight;
-      _qDrag = { row, rows, pitch, src: Number(row.dataset.queueIndex), dest: Number(row.dataset.queueIndex),
-                 startY: ev.clientY, lastY: ev.clientY, startScroll: _refs.queueList.scrollTop,
-                 lifted: false, pointerId: ev.pointerId, raf: 0 };
+      // Screen px per layout px. On a phone the UI-size setting zooms the
+      // panel to something other than PANEL_ZOOM, and dividing by that made
+      // a dragged row trail the finger by half: measure it there instead.
+      const zoom = (window.GW_MOBILE && row.offsetHeight) ? row.getBoundingClientRect().height / row.offsetHeight : PANEL_ZOOM;
+      _qDrag = { row, rows, pitch, zoom, src: Number(row.dataset.queueIndex), dest: Number(row.dataset.queueIndex),
+                 startX: ev.clientX, startY: ev.clientY, lastY: ev.clientY, startScroll: _refs.queueList.scrollTop,
+                 lifted: false, pointerId: ev.pointerId, raf: 0, hold: 0, waiting: false };
+      ev.stopPropagation();     // no map pan / outside-click close
+      if (touchHold(ev)) {
+        const d = _qDrag;
+        d.waiting = true;
+        d.hold = setTimeout(() => {
+          if (_qDrag !== d) return;
+          d.waiting = false;
+          // Measured afresh: the list may have scrolled a little under the finger.
+          d.startY = d.lastY; d.startScroll = _refs.queueList.scrollTop;
+          try { _refs.queueList.setPointerCapture(d.pointerId); } catch (_) {}
+          liftRow(d);
+          placeQueueRows(d);
+          if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
+        }, HOLD_MS);
+        return;                 // no preventDefault: the list can still scroll
+      }
       // Capture keeps moves coming if the pointer leaves the list; a drag
       // still works without it, so a refused capture mustn't abort it.
       try { _refs.queueList.setPointerCapture(ev.pointerId); } catch (_) {}
       ev.preventDefault();      // no text selection
-      ev.stopPropagation();     // no map pan / outside-click close
+    });
+    // Once a row is held, the finger drags it rather than scrolling the list.
+    _el.addEventListener('touchmove', (ev) => {
+      if (_qDrag && _qDrag.lifted) ev.preventDefault();
+    }, { passive: false });
+    // A long press must not bring up the browser's own menu on the row.
+    _el.addEventListener('contextmenu', (ev) => {
+      if (window.GW_MOBILE && ev.target.closest('[data-queue-index]')) ev.preventDefault();
     });
     // Lay the rows out for the pointer at d.lastY. The list may have scrolled
     // since the grab, which carries the grabbed row's slot with it, so the
     // scroll since then counts towards how far it has moved.
     const placeQueueRows = (d) => {
-      // The panel is zoomed (PANEL_ZOOM), so screen px shrink back to layout px.
-      let dy = (d.lastY - d.startY) / PANEL_ZOOM + (_refs.queueList.scrollTop - d.startScroll);
+      // The panel is zoomed (d.zoom), so screen px shrink back to layout px.
+      let dy = (d.lastY - d.startY) / d.zoom + (_refs.queueList.scrollTop - d.startScroll);
       const n = d.rows.length;
       dy = Math.max(-d.src * d.pitch, Math.min((n - 1 - d.src) * d.pitch, dy));
       d.row.style.transform = `translateY(${dy}px) scale(1.02)`;
@@ -598,15 +640,17 @@ const TruckPatrolPanel = (() => {
       if (!_qDrag || ev.pointerId !== _qDrag.pointerId) return;
       const d = _qDrag;
       d.lastY = ev.clientY;
+      if (d.waiting) {
+        // Moved before the hold was up: a scroll, not a drag. Let it go.
+        if (Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) > HOLD_SLOP) {
+          clearTimeout(d.hold);
+          _qDrag = null;
+        }
+        return;
+      }
       if (!d.lifted) {
-        if (Math.abs((ev.clientY - d.startY) / PANEL_ZOOM) < 4) return;   // a plain click on a row stays a click
-        d.lifted = true;
-        for (const r of d.rows) { r.style.transition = QUEUE_EASE; r.style.position = 'relative'; }
-        d.row.style.transition = 'box-shadow 120ms, background 120ms';
-        d.row.style.zIndex = '2';
-        d.row.style.boxShadow = '0 6px 14px rgba(0,0,0,0.55), 0 0 0 1px #6cb8ff';
-        d.row.style.cursor = 'grabbing';
-        document.body.style.cursor = 'grabbing';
+        if (Math.abs((ev.clientY - d.startY) / d.zoom) < 4) return;   // a plain click on a row stays a click
+        liftRow(d);
       }
       placeQueueRows(d);
       if (!d.raf) autoScrollQueue();
@@ -616,6 +660,7 @@ const TruckPatrolPanel = (() => {
     const endQueueDrag = (ev, commit) => {
       if (!_qDrag || ev.pointerId !== _qDrag.pointerId) return;
       const d = _qDrag;
+      clearTimeout(d.hold);
       if (d.raf) cancelAnimationFrame(d.raf);
       if (_refs.queueList.hasPointerCapture(ev.pointerId)) _refs.queueList.releasePointerCapture(ev.pointerId);
       clearRowStyles();
@@ -1043,7 +1088,7 @@ const TruckPatrolPanel = (() => {
         : _numberedLabel('Gas Station', GridManager.getEntity(d.col, d.row));
       const active = _target._autoDispatch && i === _target._queueIdx;
       return `
-      <div data-queue-index="${i}" title="Drag to reorder" style="display:flex;align-items:center;gap:4px;background:${active ? '#1a2536' : '#141b26'};border:1px solid ${active ? '#6cb8ff' : '#263244'};border-radius:4px;padding:3px 4px;cursor:grab;user-select:none;touch-action:none">
+      <div data-queue-index="${i}" title="${window.GW_MOBILE ? 'Hold, then drag to reorder' : 'Drag to reorder'}" style="display:flex;align-items:center;gap:4px;background:${active ? '#1a2536' : '#141b26'};border:1px solid ${active ? '#6cb8ff' : '#263244'};border-radius:4px;padding:3px 4px;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:${window.GW_MOBILE ? 'pan-y' : 'none'}">
         <span style="color:#3a4658;font-size:10px">⠿</span>
         <span style="color:#6cb8ff;font-weight:bold;min-width:14px;font-size:11px">${i + 1}.</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${label}${active ? ' (en route)' : ''}</span>
