@@ -103,8 +103,11 @@ const FuelGenAudio = (() => {
 })();
 
 // ── Water Extractor Audio ───────────────────────────────────────────
+// Powered as well: placing one (and loading a save, or arriving on a
+// contract site) seeds _waterRate at the full rate before the power check
+// zeroes it, so a fresh, unwired extractor started pumping sounds at once.
 const WaterExtractorAudio = makeProximityBedAudio('audio/sfx/waterext.mp3',
-  () => EntityRegistry.getByType(T.WATEREXTRACTOR), e => e._waterRate > 0, 0.075, 0.3);
+  () => EntityRegistry.getByType(T.WATEREXTRACTOR), e => e.powered && e._waterRate > 0, 0.075, 0.3);
 
 // ── Hydro Turbine Audio ─────────────────────────────────────────────
 const HydroTurbineAudio = makeProximityBedAudio('audio/sfx/hydroturbine.mp3',
@@ -465,7 +468,8 @@ const GeothermalWellAudio = makeSeamlessLoopAudio({
   src: 'audio/sfx/geothermalwell.mp3',
   sources: () => {
     const out = [];
-    for (const e of EntityRegistry.getByType(T.GEOWELL)) if (e._flowing) out.push(e);
+    // Its pumps run on grid power: no power, no sound, even with steam flowing.
+    for (const e of EntityRegistry.getByType(T.GEOWELL)) if (e._flowing && e.powered) out.push(e);
     return out;
   },
   level: (zoomT) => 0.078 + zoomT * 0.2925,
@@ -871,7 +875,14 @@ const MACHINE_BEDS = [
   ...bed,
   sources: () => {
     const out = [];
-    for (const type of Object.keys(on)) out.push(..._heldGenerating(type, e => !e._lightningDamaged && on[type](e)));
+    // A machine that draws power is silent without it, whatever its own
+    // flags say: several (_hotConnected, _refStatus, _running...) are set
+    // from its inputs alone, so an unwired plant hummed as soon as it was
+    // piped up. Generators and storage draw nothing and keep their own tests.
+    for (const type of Object.keys(on)) {
+      const grid = (EntityDefs[type]?.powerInput || 0) > 0;
+      out.push(..._heldGenerating(type, e => !e._lightningDamaged && (!grid || e.powered) && on[type](e)));
+    }
     return out;
   },
 }));

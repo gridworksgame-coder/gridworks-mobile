@@ -836,6 +836,13 @@ const OilSystem = (() => {
 
       if (dep._pressure === undefined) dep._pressure = 1.0;
       if (dep._crudeBuffer === undefined) dep._crudeBuffer = 0;
+      // The buffer is capped (MINE_BUFFER_CAP) like a mine's: once it's full
+      // the jack stops pumping until crude goes down the pipe (or a drone
+      // takes some). With nowhere to send it — no tank or refinery piped up,
+      // or only ones that can't take it — it used to pump on without end,
+      // draining the deposit into the buffer. Older saves can hold more than
+      // the cap: trim them down to it.
+      if (dep._crudeBuffer > MINE_BUFFER_CAP) dep._crudeBuffer = MINE_BUFFER_CAP;
       e._pressure = dep._pressure;
       if (dep._pressure <= 0) {
         e._crudeRate     = 0;
@@ -862,36 +869,43 @@ const OilSystem = (() => {
         e._backPressured = true;   // PowerNetwork._outputFull: draw nothing while backed up
         return;
       }
-      e._backPressured = false;
+      // Full buffer: pump nothing and draw no power (PowerNetwork._outputFull
+      // reads _backPressured), but still push the buffered crude out below.
+      const full = dep._crudeBuffer >= MINE_BUFFER_CAP;
+      e._backPressured = full;
       // Room opened up, but this tick was solved as idle (no power charged) —
       // start pumping again next tick.
-      if (e._idleFull) { e._crudeRate = 0; return; }
+      if (e._idleFull && !full) { e._crudeRate = 0; return; }
 
       const rateMult = e.type === T.PUMPJACK2 ? PUMPJACK2_RATE_MULT : 1;
-      const depletionRate = rateMult * dt * DEPLETION_SPEED_MULT / (14400 * DEPOSIT_SIZE_MULT * 2 * (typeof Difficulty !== 'undefined' ? Difficulty.depositMult() : 1));
-      dep._pressure = Math.max(0, dep._pressure - depletionRate);
-      if (dep._pressure <= 0) depositEverExhausted = true;
-      e._pressure   = dep._pressure;
-
-      // Low/exhausted warnings — see checkDepositDepletion in
-      // resource_helpers.js. The low warning used to be a toast, and
-      // reaching zero pressure produced no notice at all: the pump simply
-      // stopped and the player was left to work out why on their own.
-      checkDepositDepletion(dep, dep._pressure, 'oil');
-
-      // A pump jack pumps at its full rated speed for as long as the deposit
-      // holds any oil — pressure is how much is LEFT, not how fast it comes
-      // out. It used to scale the rate by pressure (and harder still below
-      // 30%), so a half-drained deposit quietly halved every generator
-      // downstream long before it ran dry.
-      // The rate is anchored to the refinery's crudePerSec, so one pump jack
-      // keeps a refinery running at its max fuelPerSec output (2.2 fuel
-      // oil/s — enough for 2.2 Fuel Generators, each drawing 1/s), boosted by
-      // PUMPJACK_YIELD_MULT on top.
-      const crudeRate = EntityDefs[T.REFINERY].crudePerSec * PUMPJACK_YIELD_MULT * rateMult;
-      dep._crudeBuffer = (dep._crudeBuffer || 0) + crudeRate * dt;
-      totalCrudeProduced += crudeRate * dt;
-      e._crudeRate = crudeRate;
+      if (full) e._crudeRate = 0;
+      else {
+        const depletionRate = rateMult * dt * DEPLETION_SPEED_MULT / (14400 * DEPOSIT_SIZE_MULT * 2 * (typeof Difficulty !== 'undefined' ? Difficulty.depositMult() : 1));
+        dep._pressure = Math.max(0, dep._pressure - depletionRate);
+        if (dep._pressure <= 0) depositEverExhausted = true;
+        e._pressure   = dep._pressure;
+  
+        // Low/exhausted warnings — see checkDepositDepletion in
+        // resource_helpers.js. The low warning used to be a toast, and
+        // reaching zero pressure produced no notice at all: the pump simply
+        // stopped and the player was left to work out why on their own.
+        checkDepositDepletion(dep, dep._pressure, 'oil');
+  
+        // A pump jack pumps at its full rated speed for as long as the deposit
+        // holds any oil — pressure is how much is LEFT, not how fast it comes
+        // out. It used to scale the rate by pressure (and harder still below
+        // 30%), so a half-drained deposit quietly halved every generator
+        // downstream long before it ran dry.
+        // The rate is anchored to the refinery's crudePerSec, so one pump jack
+        // keeps a refinery running at its max fuelPerSec output (2.2 fuel
+        // oil/s — enough for 2.2 Fuel Generators, each drawing 1/s), boosted by
+        // PUMPJACK_YIELD_MULT on top.
+        const crudeRate = EntityDefs[T.REFINERY].crudePerSec * PUMPJACK_YIELD_MULT * rateMult;
+        const pumped = Math.min(crudeRate * dt, MINE_BUFFER_CAP - dep._crudeBuffer);
+        dep._crudeBuffer = (dep._crudeBuffer || 0) + pumped;
+        totalCrudeProduced += pumped;
+        e._crudeRate = crudeRate;
+      }
 
       // Push crude via the pipe network into Liquid Storage Tanks and/or
       // straight into Refinery crude intakes, split across ALL of them. It

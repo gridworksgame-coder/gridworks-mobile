@@ -251,6 +251,10 @@ const AmenityRequestSystem = (() => {
         if (distFootprintToEntity(col, row, w, h, req.entity) <= FULFIL_RADIUS) {
           req.fulfilled = true;
           req.entity._amenityDone = true;
+          // Which amenity answered it, so only this property thanks that one
+          // (CitizenChatter's "the {name} we asked for" lines). Not saved: the
+          // news it feeds lasts a game day or so.
+          req.entity._amenityGot = { type, col, row };
           totalFulfilled++;
           req.entity.satisfaction = Math.min(100, req.entity.satisfaction + FULFIL_BOOST);
           if (req.notifId) NotificationStack.dismiss(req.notifId);

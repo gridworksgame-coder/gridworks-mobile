@@ -572,13 +572,17 @@ function updateStats() {
     _tempEl.style.color = _temp >= 35 ? '#ff4020' : _temp >= 28 ? '#c06020' : _temp <= 2 ? '#4080ff' : _temp <= 10 ? '#60a0d0' : '';
   }
 
-  document.getElementById('stat-income').textContent   = formatRate(Economy.income);
+  // The headline is net: what the balance actually moves by each second
+  // (income less upkeep, carbon tax and scrubbers, as Economy.tick banks
+  // it). Gross income sat there before, with net in small print under it,
+  // so a city clearing $1.7k/s read as earning $11k/s. Gross is the small
+  // line now; the breakdown panel still itemises both.
   const _net = Economy.income - Economy.upkeep;
-  const _netEl = document.getElementById('stat-net-hud');
-  if (_netEl) {
-    _netEl.textContent = `net ${_net >= 0 ? '+' : ''}${formatRate(_net)}`;
-    _netEl.style.color = _net >= 0 ? '#40c060' : '#ff6040';
-  }
+  const _incEl = document.getElementById('stat-income');
+  _incEl.textContent = `${_net >= 0 ? '+' : '-'}${formatRate(Math.abs(_net))}`;
+  _incEl.style.color = _net >= 0 ? '' : '#ff6040';
+  const _grossEl = document.getElementById('stat-net-hud');
+  if (_grossEl) _grossEl.textContent = `gross ${formatRate(Economy.income)}`;
   // Cloud + wind stats
   const cloudEl = document.getElementById('stat-cloud');
   if (cloudEl) {

@@ -699,13 +699,17 @@ const TruckPatrolPanel = (() => {
       // window resize) would otherwise be unreachable, including its own
       // Close button. offsetWidth/Height are pre-zoom layout px, so scale up
       // to compare against the viewport.
-      const w = _el.offsetWidth  * PANEL_ZOOM;
-      const h = _el.offsetHeight * PANEL_ZOOM;
+      // On a phone the UI-size setting zooms the panel to something other
+      // than PANEL_ZOOM: with 1.15 assumed there, a tall panel read as taller
+      // than the screen and was pinned to the top whenever it was dragged.
+      const z = window.GW_MOBILE ? (parseFloat(getComputedStyle(_el).zoom) || PANEL_ZOOM) : PANEL_ZOOM;
+      const w = _el.offsetWidth  * z;
+      const h = _el.offsetHeight * z;
       const left = Math.min(Math.max(0, _pos.left), Math.max(0, window.innerWidth  - w));
       const top  = Math.min(Math.max(0, _pos.top),  Math.max(0, window.innerHeight - h));
       _el.style.right = '';
-      _el.style.left  = `${(left + _anchorFix.dx) / PANEL_ZOOM}px`;
-      _el.style.top   = `${(top  + _anchorFix.dy) / PANEL_ZOOM}px`;
+      _el.style.left  = `${(left + _anchorFix.dx) / z}px`;
+      _el.style.top   = `${(top  + _anchorFix.dy) / z}px`;
       const r = _el.getBoundingClientRect();
       _anchorFix = { dx: _anchorFix.dx + (left - r.left), dy: _anchorFix.dy + (top - r.top) };
       return;

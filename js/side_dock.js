@@ -237,9 +237,12 @@ const SideDock = (() => {
       rb.classList.toggle('unlocked', any);
       rb.classList.toggle('open', typeof InspectionPanel !== 'undefined' && InspectionPanel.isOpen());
     }
-    // News inside (every button with news marks itself has-new) lights the tile.
+    // News inside (every button with news marks itself has-new) lights the
+    // tile. Not a new message: the log fills all game long, so the dot was
+    // nearly always on and stopped meaning anything. The Messages button in
+    // the tray still marks its own.
     if (toggle) {
-      const news = ORDER.some(([id]) => { const el = $(id); return !!el && el.classList.contains('has-new'); });
+      const news = ORDER.some(([id]) => { if (id === 'btn-msglog') return false; const el = $(id); return !!el && el.classList.contains('has-new'); });
       toggle.classList.toggle('has-new', news && !open);
     }
     // A tutorial card pointing at one of the buttons opens the tray to show it.

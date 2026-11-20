@@ -2862,8 +2862,20 @@ const ContractSystem = (() => {
   // panel is torn down and replaced several times a second for no reason,
   // which both wastes work and makes it feel unresponsive to click.
   let _lastSig = null;
+  // The job the player was standing on at the last draw (null at home).
+  // Arriving on a site starts the list collapsed: the site is what they came
+  // to look at, and the open list covered a good part of it. One tap on the
+  // header opens it; it stays as they leave it until the next arrival.
+  let _hereAtLastDraw = null;
 
   function renderChecklist() {
+    const here = currentJob();
+    if (here && here !== _hereAtLastDraw && !collapsed) {
+      collapsed = true;
+      try { localStorage.setItem(COLLAPSE_KEY, '1'); } catch (_e) {}
+      _lastSig = null;
+    }
+    _hereAtLastDraw = here || null;
     const active = shownJob();
     if (!active) return hideChecklist();
     const el = ensureChecklistEl();

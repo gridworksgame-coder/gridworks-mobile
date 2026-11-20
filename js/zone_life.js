@@ -38,7 +38,7 @@ const ZoneLife = (() => {
   // (CitizenChatter's speech bubbles) finds one and follows them. id is
   // stable for one walk along one run (or one group's stay).
   let _people = [], _peopleNext = [], _peopleT = -1;
-  // Likewise the police cars and ambulances drawn on commercial streets last
+  // Likewise the police cars and ambulances drawn on commercial streets (and the roads between zones) last
   // frame, { ref, kind, x, y } (ref: the vehicle itself, stable while it
   // drives), for OutdoorAmbience's sirens.
   let _emerg = [], _emergNext = [], _emergT = -1;
@@ -1443,9 +1443,10 @@ const ZoneLife = (() => {
       }
       if (a <= 0) continue;
       if (--_budget < 0) return;
-      // A police car or ambulance out on a commercial street: OutdoorAmbience
-      // gives it a siren (see emergency()).
-      if ((v.kind === 'police' || v.kind === 'ambulance') && sim.zoneKey === 'commercial' && a > 0.5 && !inT && !outT && _emergNext.length < 16)
+      // A police car or ambulance out on a commercial street, or on a road
+      // between zones: OutdoorAmbience gives it a siren (see emergency()).
+      // The connector roads carry them too, but used to stay silent.
+      if ((v.kind === 'police' || v.kind === 'ambulance') && (sim.zoneKey === 'commercial' || sim.zoneKey === 'connector') && a > 0.5 && !inT && !outT && _emergNext.length < 16)
         _emergNext.push({ ref: v, kind: v.kind, x: v.x, y: v.y });
       // Ruts where it drives through lying snow (weather_state.js decides if there is any).
       if (_snowy && !inT && !outT && typeof SnowTracks !== 'undefined') { const V = VEH[v.kind]; if (V) SnowTracks.vehicle(v, v.x, v.y, v.ang, V.len, V.wid); }

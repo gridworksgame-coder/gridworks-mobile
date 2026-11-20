@@ -715,9 +715,13 @@ const CitizenChatter = (() => {
       building: { any: ["A research lab, here?", "Scientists moving in!"] },
       done:     { any: ["The {name}'s lights are on all night.", "Boffins at the {name}. Wonder what they're up to.", "That {name} is very hush-hush."] },
     },
+    // 'done' is only for the people it actually serves (see _chooseLine):
+    // 'asked' from the property whose request it answered, 'any' from those
+    // close enough to use it.
     amenity: {
       building: { any: ["Ooh, a new {name}?", "Something new for the street."] },
-      done:     { any: ["Finally, the {name} we asked for!", "New {name}! The street feels better already.", "Love the new {name}.", "Someone listened: a new {name}!"] },
+      done:     { any: ["New {name}! The street feels better already.", "Love the new {name}."],
+                  asked: ["Finally, the {name} we asked for!", "Someone listened: a new {name}!", "They put in the {name} we asked for!"] },
     },
     park: {
       building: { any: ["Is that a park going in?", "A {name}? Finally, somewhere to go!"] },
@@ -834,6 +838,16 @@ const CitizenChatter = (() => {
       if (n.doneAt === null && !n.e._constructing) n.doneAt = gnow;
       if (n.doneAt !== null && gnow - n.doneAt > keepFor) _news.splice(i, 1);
     }
+  }
+
+  // A street lamp within a few tiles of a speaker's footprint.
+  const LAMP_NEAR = 4;
+  function _lampNear(e) {
+    if (typeof T === 'undefined' || T.LAMP === undefined) return false;
+    const c0 = e.col - LAMP_NEAR, c1 = e.col + (e.width || 1) - 1 + LAMP_NEAR;
+    const r0 = e.row - LAMP_NEAR, r1 = e.row + (e.height || 1) - 1 + LAMP_NEAR;
+    for (const l of EntityRegistry.getByType(T.LAMP)) if (l.col >= c0 && l.col <= c1 && l.row >= r0 && l.row <= r1) return true;
+    return false;
   }
 
   // The nearest piece of news to a speaker, or null.
@@ -1158,9 +1172,22 @@ const CitizenChatter = (() => {
     if (news) {
       const set = NEW_LINES[news.kind] && NEW_LINES[news.kind][news.doneAt === null ? 'building' : 'done'];
       if (set) {
-        const pool = [...(set.any || []), ...((zone === 'residential' ? set.res : set.work) || [])];
+        let pool = [...(set.any || []), ...((zone === 'residential' ? set.res : set.work) || [])];
+        // A finished amenity serves only the properties right beside it, so
+        // only they talk about it, and only the one that asked thanks it.
+        // Anyone within NEW_RADIUS used to: a lamp put in for one house had
+        // the house down the road with none saying "the lamp we asked for".
+        if (set.asked) {
+          const a = news.e, got = e._amenityGot;
+          const asked = !!got && got.type === a.type && got.col === a.col && got.row === a.row;
+          const reach = (typeof AmenityRequestSystem !== 'undefined' && AmenityRequestSystem.FULFIL_RADIUS) || 1;
+          const gapC = Math.max(a.col - (e.col + (e.width || 1)), e.col - (a.col + (a.width || 1)), -1) + 1;
+          const gapR = Math.max(a.row - (e.row + (e.height || 1)), e.row - (a.row + (a.height || 1)), -1) + 1;
+          const serves = asked || Math.max(gapC, gapR) <= reach;
+          pool = !serves ? [] : asked ? [...pool, ...set.asked] : pool;
+        }
         const label = (typeof EntityDefs !== 'undefined' && EntityDefs[news.e.type]?.label) || 'building';
-        add(6, pool, { name: label });
+        if (pool.length) add(6, pool, { name: label });
       }
     }
     // A national landmark's own people (or, for a walker, the nearest one's):
@@ -1189,7 +1216,8 @@ const CitizenChatter = (() => {
     let smog = 0;
     try { if (typeof PollutionSystem !== 'undefined') smog = PollutionSystem.exposureFor(e) || 0; } catch (_e) {}
     if (smog > 25) add(4 + Math.min(4, smog / 25), L.smog);
-    if (!sombre && e.powered && !dark && (e.satisfaction ?? 0) >= 85) add(2, L.happy);
+    // "Love the street lamps" only where there is one to love.
+    if (!sombre && e.powered && !dark && (e.satisfaction ?? 0) >= 85) add(2, _lampNear(e) ? L.happy : L.happy.filter(s => !/street lamp/i.test(s)));
     // The world around them.
     let ev = null;
     try { ev = typeof WeatherEventSystem !== 'undefined' ? WeatherEventSystem.getActiveEvent() : null; } catch (_e) {}

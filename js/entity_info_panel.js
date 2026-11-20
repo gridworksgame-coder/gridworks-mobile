@@ -4371,6 +4371,10 @@ const EntityInfoPanel = (() => {
         row('Crude Rate',    depleted ? '0 crude/s' : `${fmtFlow(e._crudeRate||0)} crude/s`, !depleted && e.powered ? 'good' : 'bad'),
         supportsRow(row, depleted ? 0 : (e._crudeRate || 0), EntityDefs[T.REFINERY].crudePerSec, EntityDefs[T.REFINERY].label || 'Oil Refinery', 'crude/s'),
         ...deliveryRows(e, row, 'nothing: pipe it to a Refinery or a Liquid Storage Tank'),
+        // Crude pumped out of the deposit, waiting to go down the pipe. Red when
+        // it can't (the buffer is at its cap, or the pipe has nowhere with room),
+        // so the jack has stopped pumping.
+        row('Crude Buffer', dep ? `${Math.floor(dep._crudeBuffer || 0)} / ${MINE_BUFFER_CAP} units` : '—', e._backPressured ? 'bad' : ''),
         ...(isMk2 ? [row('Pump Tier', `MK2: ×${OilSystem.PUMPJACK2_RATE_MULT.toFixed(1)} MK1 rate`, 'good')] : []),
         row('Power Draw',    `${formatPower(jdef.powerInput)}`, e.powered ? 'good' : 'bad'),
         row('Status',        e.powered ? 'Powered' : 'NEEDS POWER', e.powered ? 'good' : 'bad'),
