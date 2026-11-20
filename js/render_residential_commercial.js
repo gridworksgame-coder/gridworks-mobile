@@ -2819,6 +2819,7 @@ function renderSkyscraper(e, px, py, t) {
       else if (night){ g.addColorStop(0, '#1a2a44'); g.addColorStop(0.5, '#243a5a'); g.addColorStop(1, '#101a2c'); }
       else           { g.addColorStop(0, '#bfe0f4'); g.addColorStop(0.45, '#5a9ac8'); g.addColorStop(1, '#2a5a86'); }
       ctx.fillStyle = g; _fillRectG(ctx, x0, y0, x1 - x0, y1 - y0);
+      if (on) _glassReflect(ctx, x0, y0, x1 - x0, y1 - y0);
       const fh = (y1 - y0)/floors, cw = (x1 - x0)/cols;
       for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) {
         const n = Math.sin((f + seed)*12.9898 + c*78.233)*43758.5453, fr = n - Math.floor(n);
@@ -2877,6 +2878,7 @@ function renderSkyscraper(e, px, py, t) {
     else               { cg.addColorStop(0, '#2a3440'); cg.addColorStop(1, '#12181e'); }
     ctx.fillStyle = cg;
     ctx.beginPath(); ctx.moveTo(c0, uTop); ctx.lineTo(c1, uTop); ctx.lineTo(c1, cTop + 14*S); ctx.lineTo(c0, cTop); ctx.closePath(); _fillG(ctx);
+    if (on) _glassReflect(ctx);
     ctx.strokeStyle = on ? 'rgba(220,235,245,0.6)' : 'rgba(60,70,80,0.6)'; ctx.lineWidth = S;
     for (let k = 1; k < 5; k++) { const x = c0 + (c1 - c0)*k/5; ctx.beginPath(); ctx.moveTo(x, uTop); ctx.lineTo(x, cTop + 14*S*k/5); ctx.stroke(); }
     if (on) {
@@ -6541,6 +6543,7 @@ function renderLumiereCondos(e, px, py, t) {
     const glass = ctx.createLinearGradient(K.X(14), 0, K.X(106), 0);
     glass.addColorStop(0, on || !dim ? '#5a9aa8' : '#223a40'); glass.addColorStop(0.75, on || !dim ? '#3a7888' : '#1a2e34'); glass.addColorStop(1, on || !dim ? '#2a5664' : '#122024');
     ctx.fillStyle = glass; ctx.fillRect(K.X(14), K.Y(36), 92*K.sx, (GND - 36)*K.sy);
+    if (on || !dim) _glassReflect(ctx, K.X(14), K.Y(36), 92*K.sx, (GND - 36)*K.sy, 0.8);
     // curved right corner: a highlight strip and a rounded shade
     R(98, 36, 8, GND - 36, 'rgba(0,0,0,0.18)'); R(96, 36, 2, GND - 36, on || !dim ? 'rgba(220,245,255,0.25)' : 'rgba(80,100,110,0.2)');
     dusk(14, 36, 92, GND - 36, 0.35);
@@ -20646,6 +20649,7 @@ function _renderTechOffice(e, px, py, W, H, t) {
   else if (night) { gl.addColorStop(0, '#16223a'); gl.addColorStop(1, '#0a1020'); }
   else            { gl.addColorStop(0, '#8cc4ea'); gl.addColorStop(0.45, '#4a88c0'); gl.addColorStop(1, '#27507e'); }
   ctx.fillStyle = gl; ctx.fillRect(X(tx), Y(ty), tw*S, th*S);
+  if (on) _glassReflect(ctx, X(tx), Y(ty), tw*S, th*S);
   // Floors of windows
   const floors = 10, cols = 8;
   const fH = (th - 12) / floors, cW = tw / cols;
@@ -23096,6 +23100,7 @@ function _renderSummitTower(e, px, py, W, H, t) {
     const glass = ctx.createLinearGradient(K.X(x0), K.Y(y0), K.X(x1), K.Y(y1));
     glass.addColorStop(0, L('#7aa8d4', '#1c2c44', '#141a24')); glass.addColorStop(0.45, L('#4678a8', '#142238', '#10161e')); glass.addColorStop(1, L('#2c5480', '#0e1828', '#0c1018'));
     ctx.fillStyle = glass; ctx.fillRect(K.X(x0), K.Y(y0), (x1 - x0) * K.S, (y1 - y0) * K.S);
+    if (on) _glassReflect(ctx, K.X(x0), K.Y(y0), (x1 - x0) * K.S, (y1 - y0) * K.S);
     const fh = (y1 - y0) / nF, bw = (x1 - x0) / BAYS;
     for (let f = 0; f < nF; f++) {
       const gf = f0 + f, y = y0 + f * fh;                                              // gf: 0 = top floor
@@ -27730,6 +27735,9 @@ function _renderClothingStore(e, px, py, W, H, t) {
     ctx.fillStyle = g; _fillRectG(ctx, X(x - r), Y(y - r), 2 * r * S, 2 * r * S);
   };
   const hash = k => { const v = Math.sin((e.col || 0) * 12.9898 + (e.row || 0) * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v); };
+  // Surface textures (HallTex, render_world_civic.js): [pattern, alpha] layers
+  // over a rect in authored units, or the current path; false if none laid.
+  const tex = (layers, x, y, w, h) => typeof HallTex !== 'undefined' && HallTex.lay(ctx, layers, px, py, S, ...(w === undefined ? [] : [X(x), Y(y), w * S, h * S]));
 
   const hr = DayNight.hour(), dark = DayNight.darkness();
   const night = dark > 0.3;
@@ -27749,16 +27757,17 @@ function _renderClothingStore(e, px, py, W, H, t) {
 
   // ── Ground: pavement + street ──
   R(0, 0, 160, 120, L('#4e7a3e', '#22382a', '#162018'));
-  R(0, 92, 160, 12, L('#9a9ea4', '#44484e', '#222428'));
+  R(0, 92, 160, 12, L('#9a9ea4', '#44484e', '#222428')); tex([['grit', 0.3]], 0, 92, 160, 12);
   R(0, 103, 160, 1.5, L('#b8bcc0', '#5a5e64', '#2a2c30'));
-  R(0, 104.5, 160, 15.5, L('#46494e', '#202226', '#141518'));
+  R(0, 104.5, 160, 15.5, L('#46494e', '#202226', '#141518')); tex([['grit', 0.35]], 0, 104.5, 160, 15.5);
   for (let i = 0; i < 5; i++) R(6 + i * 34, 112, 14, 1.4, L('rgba(255,255,255,0.4)', 'rgba(220,220,200,0.18)', 'rgba(0,0,0,0.1)'));
   if (detail) for (let x = 4; x < 160; x += 12) R(x, 92, 0.5, 11, 'rgba(0,0,0,0.12)');   // paving joints
 
   // ── Building ──
   R(8, 8, 144, 84, BRICK);
-  if (detail) for (let y = 10; y < 92; y += 3) R(8, y, 144, 0.4, 'rgba(0,0,0,0.1)');
-  R(6, 4, 148, 6, TRIM);                                                  // cornice
+  const brickTex = tex([['mottle', 0.6], ['brickRun', 1]], 8, 8, 144, 84);
+  if (detail && !brickTex) for (let y = 10; y < 92; y += 3) R(8, y, 144, 0.4, 'rgba(0,0,0,0.1)');
+  R(6, 4, 148, 6, TRIM); tex([['stone', 0.6]], 6, 4, 148, 6);            // cornice
   for (let x = 10; x < 152; x += 6) R(x, 10, 3, 2, TRIM);                 // dentils
   R(8, 44, 144, 3, TRIM);                                                 // string course over the shopfront
   R(8, 8, 2, 84, 'rgba(255,255,255,0.08)'); R(150, 8, 2, 84, 'rgba(0,0,0,0.12)');
@@ -27806,6 +27815,7 @@ function _renderClothingStore(e, px, py, W, H, t) {
   const AW = ['#2a6a5a', '#f2ece0'];
   for (let i = 0; i < 18; i++) poly([[10 + i * 8, 58], [18 + i * 8, 58], [18 + i * 8, 66], [10 + i * 8, 66]], on || !night ? AW[i % 2] : ['#15352d', '#6a665c'][i % 2]);
   for (let i = 0; i < 18; i++) ell(14 + i * 8, 66, 4, 1.6, on || !night ? AW[i % 2] : ['#15352d', '#6a665c'][i % 2]);
+  if (typeof HallTex !== 'undefined') HallTex.lay(ctx, [['canvas', 1]], X(10), Y(58), S, X(10), Y(58), 144 * S, 9.6 * S);   // folds line up with the stripes
   if (night) R(10, 58, 144, 10, 'rgba(10,12,32,0.35)');
 
   // ── Display windows with mannequins ──
@@ -27916,6 +27926,9 @@ function _renderLibrary(e, px, py, W, H, t) {
     RR(x - 1.2 * s, y - 4 * s - lift, 2.4 * s, 4 * s, 0.9 * s, top);
     dot(x, y - 5 * s - lift, 1.1 * s, skin);
   };
+  // Surface textures (HallTex, render_world_civic.js): [pattern, alpha] layers
+  // over a rect in authored units, or the current path; false if none laid.
+  const tex = (layers, x, y, w, h) => typeof HallTex !== 'undefined' && HallTex.lay(ctx, layers, px, py, S, ...(w === undefined ? [] : [X(x), Y(y), w * S, h * S]));
 
   const hr = DayNight.hour(), dark = DayNight.darkness();
   const night = dark > 0.3;
@@ -27944,7 +27957,7 @@ function _renderLibrary(e, px, py, W, H, t) {
   }
 
   // ── Building: roof, lantern dome, front face ──
-  R(22, 30, 156, 16, ROOF);
+  R(22, 30, 156, 16, ROOF); tex([['slate', 0.9]], 22, 30, 156, 16);
   R(22, 44, 156, 3, STONE_D);
   if (detail) for (let x = 26; x < 176; x += 4) R(x, 40, 1.8, 4, STONE);        // balustrade
   R(22, 39.5, 156, 1.2, STONE);
@@ -27952,14 +27965,15 @@ function _renderLibrary(e, px, py, W, H, t) {
   R(90, 18, 20, 14, STONE);
   for (let k = 0; k < 3; k++) R(93 + k * 5.5, 20, 2.6, 10, on && (night || open) ? '#ffd890' : L('#4a5a66', '#1c2430', '#101418'));
   R(88, 30, 24, 2.5, STONE_D); R(88, 16.5, 24, 2.5, STONE_D);
-  ctx.fillStyle = COPPER; ctx.beginPath(); ctx.ellipse(X(100), Y(17), 11 * S, 10 * S, 0, Math.PI, Math.PI * 2); ctx.closePath(); _fillG(ctx);
+  ctx.fillStyle = COPPER; ctx.beginPath(); ctx.ellipse(X(100), Y(17), 11 * S, 10 * S, 0, Math.PI, Math.PI * 2); ctx.closePath(); _fillG(ctx); tex([['patina', 1]]);
   ell(96, 12, 3, 2, L('rgba(200,240,220,0.35)', 'rgba(100,140,120,0.2)', 'rgba(0,0,0,0)'));
   R(99.4, 3, 1.2, 5, L('#c8a040', '#6a5828', '#3a3018')); dot(100, 3, 1.2, L('#c8a040', '#6a5828', '#3a3018'));
   if (on && night) glow(100, 24, 24, '255,210,130', 0.35);
 
   R(22, 47, 156, 73, STONE);
+  const stoneTex = tex([['stone', 0.6], ['ashlarFine', 0.9]], 22, 47, 156, 73);
   R(22, 114, 156, 6, STONE_D);                                              // plinth
-  if (detail) for (let y = 50; y < 114; y += 5) R(22, y, 156, 0.4, 'rgba(0,0,0,0.07)');
+  if (detail && !stoneTex) for (let y = 50; y < 114; y += 5) R(22, y, 156, 0.4, 'rgba(0,0,0,0.07)');
   R(22, 47, 2, 73, 'rgba(255,255,255,0.1)'); R(176, 47, 2, 73, 'rgba(0,0,0,0.1)');
   // frieze band (the name itself is cut into the portico entablature below:
   // the pediment covers the middle of this band)
@@ -27993,7 +28007,7 @@ function _renderLibrary(e, px, py, W, H, t) {
   if (open) R(92, 84, 16, 5, night ? '#ffd890' : '#a8c0cc');
   if (open && night) glow(100, 96, 18, '255,210,130', 0.35);
   for (const cx of [70, 84, 116, 130]) {
-    R(cx - 3, 66, 6, 48, STONE);
+    R(cx - 3, 66, 6, 48, STONE); tex([['stone', 0.6]], cx - 3, 66, 6, 48);
     R(cx + 0.5, 66, 2.5, 48, 'rgba(0,0,0,0.08)');
     R(cx - 4, 64, 8, 3, STONE_D); R(cx - 4, 112, 8, 3, STONE_D);
   }
@@ -28011,7 +28025,7 @@ function _renderLibrary(e, px, py, W, H, t) {
     ctx.fillText('ASHBY PUBLIC LIBRARY', X(100), Y(59.2));
     ctx.restore();
   }
-  poly([[60, 57], [100, 40], [140, 57]], STONE);                            // pediment
+  poly([[60, 57], [100, 40], [140, 57]], STONE); tex([['stone', 0.6]]);      // pediment
   poly([[70, 55], [100, 44], [130, 55]], STONE_D);
   ln(60, 57, 100, 40, STONE_S, 1); ln(100, 40, 140, 57, STONE_S, 1);
   // pediment clock

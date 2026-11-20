@@ -459,12 +459,17 @@ const GroundTextures = (() => {
   // black shadow with alpha, high-passed from Poly Haven scans, laid over a
   // building's own flat fill with _bldGrain (render_core.js) so it keeps its
   // colour and gains a surface. 256 px, no scale, world-anchored.
+  // BLD_GRAIN_TILES: scans laid in n x n smaller copies inside the 256 px
+  // tile, so their features come out finer (mottle at 1x read as big marble
+  // splotches on the stone buildings; Pierce wants a fine grain).
+  const BLD_GRAIN_TILES = { mottle: 4, stain: 2 };
   api.bldGrain = { grit: null, mottle: null, stain: null, metal: null, rust: null, brushed: null, corrugated: null };   // rust is coloured, the rest light/shadow
   for (const name of Object.keys(api.bldGrain)) {
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas'); c.width = c.height = 256;
-      c.getContext('2d').drawImage(img, 0, 0, 256, 256);
+      const n = BLD_GRAIN_TILES[name] || 1, s = 256 / n;
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) c.getContext('2d').drawImage(img, i*s, j*s, s, s);
       api.bldGrain[name] = c.getContext('2d').createPattern(c, 'repeat');
     };
     img.src = `img/bld_grain_${name}.png`;

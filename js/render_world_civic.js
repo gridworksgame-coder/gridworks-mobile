@@ -5594,6 +5594,14 @@ const HallTex = (() => {
     // Flemish bond: stretcher, header, stretcher...; dark burnt headers; lime mortar
     brick: (d) => courses(d, { ch: 3.2, lmin: 2.6, lmax: 6, tv: 0.12, hi: 0.06, joint: 0.3, jw: 0.5, stagger: 4.2,
       pick: (i) => i % 2 ? 2.8 : 5.6, unitTone: (i) => i % 2 ? -0.16 : 0 }),
+    // stretcher bond: plain half-lap brick, lime mortar
+    brickRun: (d) => courses(d, { ch: 3.2, lmin: 6.4, lmax: 6.4, stagger: 3.2, pick: () => 6.4, tv: 0.12, hi: 0.05, joint: 0.26, jw: 0.5, speck: 1 }),
+    // striped awning canvas: a fine weave, a soft fold every 8 units
+    canvas: (d) => {
+      for (let x = 0; x < P; x += 8) d.grad(x, 0, 8, P, [[0, 0.1], [0.5, 0], [1, -0.14]]);
+      for (let x = 0; x < P; x += 1) d.line(x + 0.5, -1, x + 0.5, P + 1, x % 2 ? -0.05 : 0.04, 0.4);
+      for (let y = 0; y < P; y += 1) d.line(-1, y + 0.5, P + 1, y + 0.5, y % 2 ? -0.04 : 0.03, 0.4);
+    },
     // Roman brick: long thin units, raked (shadowed) beds, flush heads
     roman: (d) => courses(d, { ch: 2.56, lmin: 10, lmax: 16, tv: 0.1, joint: -0.3, head: -0.1, jw: 0.45, speck: 1 }),
     // board-formed concrete: plank imprints, their grain, tie holes in a grid
@@ -5768,8 +5776,37 @@ const HallTex = (() => {
   }
   const get = (name) => MAKERS[name] ? structPattern(name) : photoPat(name);
 
-  return { get, RES, isStruct: (n) => !!MAKERS[n] };
+  // For other buildings: lay [pattern, alpha] layers over the rect
+  // (x, y, w, h), or with no rect over the current path, on g. Drawn
+  // patterns are anchored at (ox, oy) at s world px per unit. Same gates and
+  // night fade as the hall; returns whether anything could be laid (callers
+  // drop their own hand-drawn coursing then).
+  function lay(g, layers, ox, oy, s, x, y, w, h) {
+    if ((typeof _imageFillsOff !== 'undefined' && _imageFillsOff) || Camera.zoom < 0.45) return false;
+    if (g.globalAlpha < 0.9 || g.globalCompositeOperation !== 'source-over') return false;
+    const fade = 1 - DayNight.darkness()*0.6, fs = g.fillStyle, ga = g.globalAlpha;
+    let any = false;
+    for (const [n, a] of layers) {
+      const p = get(n); if (!p) continue;
+      if (MAKERS[n]) p.setTransform(new DOMMatrix([s/RES, 0, 0, s/RES, ox, oy]));
+      g.globalAlpha = ga*a*fade; g.fillStyle = p; any = true;
+      if (w !== undefined) g.fillRect(x, y, w, h); else g.fill();
+    }
+    g.globalAlpha = ga; g.fillStyle = fs;
+    return any;
+  }
+
+  return { get, lay, RES, isStruct: (n) => !!MAKERS[n] };
 })();
+
+// Curtain-wall glass on the towers: sky and cloud reflections broken up per
+// pane (img/hall_grain_glass.png, made in scripts/hall_grain_png.py), by
+// day only, fading out through dusk. Over the rect, or the current path.
+function _glassReflect(g, x, y, w, h, a = 1) {
+  if (typeof HallTex === 'undefined') return;
+  const k = a * (1 - DayNight.darkness());
+  if (k > 0.02) HallTex.lay(g, [['glass', k]], 0, 0, 1, x, y, w, h);
+}
 
 // Per style: [pattern, alpha] layers for walls, roofs, dome and trim.
 const HALL_TEX_STYLE = {
