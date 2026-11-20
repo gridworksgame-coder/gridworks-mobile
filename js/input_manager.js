@@ -3913,6 +3913,7 @@ const InputManager = (() => {
   let dragOffsetR  = 0;
   let dragStarted  = false;  // true once cursor moved to a different tile
   let _lmbDownSX = 0, _lmbDownSY = 0;   // where the last left press went down (a click vs a pan)
+  let _vegLastClick = null;             // { ent, t } of the last click on a tree/bush (double-click opens its panel)
   let dragDownSX   = 0;      // screen coords at mousedown — lets trucks (which
   let dragDownSY   = 0;      // move continuously, not tile-to-tile) tell a real
                               // drag apart from ordinary click jitter
@@ -4784,13 +4785,21 @@ const InputManager = (() => {
       }
       _pathDragging = false;
     }
-    // Open panel for vegetation on LMB click (no drag)
+    // Open panel for vegetation on LMB double-click (two quick clicks on
+    // the same plant, neither of them a drag)
     if (!dragEntity && mouseButton === 0 && !_zoneDeleteDragging) {
       const _vw = Camera.screenToWorld(lastMouseSX, lastMouseSY);
       const _vt = GridManager.worldToTile(_vw.x, _vw.y);
       const _ve = GridManager.getEntity(_vt.col, _vt.row);
-      if (_ve && (_ve.type === T.TREE || _ve.type === T.BUSH)) {
-        EntityInfoPanel.open(_ve);
+      if (_ve && (_ve.type === T.TREE || _ve.type === T.BUSH)
+          && Math.hypot(lastMouseSX - _lmbDownSX, lastMouseSY - _lmbDownSY) < 6) {
+        const _now = performance.now();
+        if (_vegLastClick && _vegLastClick.ent === _ve && _now - _vegLastClick.t < 400) {
+          _vegLastClick = null;
+          EntityInfoPanel.open(_ve);
+        } else {
+          _vegLastClick = { ent: _ve, t: _now };
+        }
       }
       // A reservoir's water: its level, inflow and turbines. Only for a
       // click, not the end of a drag that panned the map across it.
