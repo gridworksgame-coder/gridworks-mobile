@@ -4072,7 +4072,18 @@ function renderCoalMine(e, px, py, t) {
     const ell = (x, y, rx, ry, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(X(x), Y(y), Math.max(0.01, w*rx), Math.max(0.01, h*ry), 0, 0, Math.PI*2); ctx.fill(); };
     const ln = (x1, y1, x2, y2, c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw*s; ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); };
     const poly = (pts, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(X(pts[0][0]), Y(pts[0][1])); for (let i = 1; i < pts.length; i++) ctx.lineTo(X(pts[i][0]), Y(pts[i][1])); ctx.closePath(); ctx.fill(); };
-    const shadow = (x, y, ww, hh) => R(x + 0.02, y + 0.025, ww, hh, 'rgba(0,0,0,0.3)');
+    // soft-edged: a wide faint pool under a tighter core (no blur filter)
+    const shadow = (x, y, ww, hh) => {
+      R(x + 0.012, y + 0.016, ww + 0.022, hh + 0.022, 'rgba(0,0,0,0.12)');
+      R(x + 0.02, y + 0.025, ww, hh, 'rgba(0,0,0,0.22)');
+    };
+    // Photo textures (Poly Haven scans via PhotoGround) and the building
+    // grain, unless image fills are off (read-back canvases, file://).
+    const imgOK = !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && typeof PhotoGround !== 'undefined';
+    const photo = (name, span) => imgOK ? PhotoGround.pattern(ctx, name, span) : null;
+    const detail = typeof Camera === 'undefined' || Camera.zoom >= 0.45;
+    const grain = (kind, a) => { if (detail && typeof _bldGrain === 'function') _bldGrain(ctx, kind, a); };
+    const grainR = (kind, x, y, ww, hh, a) => { if (detail && typeof _bldGrainRect === 'function') _bldGrainRect(ctx, kind, X(x), Y(y), w*ww, h*hh, a); };
     const S = (n) => { const v = Math.sin((e.col || 0) * 127.1 + (e.row || 0) * 311.7 + n * 74.3) * 43758.5; return v - Math.floor(v); };
     const dark  = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
     const lamps = on && dark > 0.3;
@@ -4089,7 +4100,22 @@ function renderCoalMine(e, px, py, t) {
     const yg = ctx.createRadialGradient(X(0.5), Y(0.55), 0, X(0.5), Y(0.55), Math.max(w, h)*0.7);
     yg.addColorStop(0, '#4a3e2e'); yg.addColorStop(1, '#2e271e');
     ctx.fillStyle = yg; ctx.beginPath(); ctx.roundRect(X(0.02), Y(0.02), w*0.96, h*0.96, 4*s); ctx.fill();
-    for (let i = 0; i < 26; i++) ell(0.06 + S(i)*0.88, 0.06 + S(i + 9)*0.88, 0.012 + S(i + 3)*0.02, 0.008 + S(i + 5)*0.012, i % 3 ? 'rgba(20,16,12,0.35)' : 'rgba(120,100,70,0.25)');
+    // the ground itself: the coal deposit's scanned rock ground, stained
+    // brown-black with coal dust, darkest round the shaft and the heap
+    const yard = photo('ground_coal_rim', 128);
+    if (yard) {
+      ctx.fillStyle = yard; ctx.fill();
+      const dust = ctx.createRadialGradient(X(0.55), Y(0.62), 0, X(0.55), Y(0.62), Math.max(w, h)*0.62);
+      dust.addColorStop(0, 'rgba(24,18,12,0.74)'); dust.addColorStop(1, 'rgba(44,34,22,0.56)');
+      ctx.fillStyle = dust; ctx.fill();
+      // trodden paths between the buildings: paler, compacted
+      ctx.save(); ctx.lineCap = 'round';
+      ln(0.17, 0.31, 0.44, 0.62, 'rgba(150,128,96,0.13)', 7);
+      ln(0.66, 0.38, 0.56, 0.62, 'rgba(150,128,96,0.1)', 6);
+      ctx.restore();
+    } else {
+      for (let i = 0; i < 26; i++) ell(0.06 + S(i)*0.88, 0.06 + S(i + 9)*0.88, 0.012 + S(i + 3)*0.02, 0.008 + S(i + 5)*0.012, i % 3 ? 'rgba(20,16,12,0.35)' : 'rgba(120,100,70,0.25)');
+    }
     ln(0.30, 0.97, 0.36, 0.66, 'rgba(18,14,10,0.35)', 2.2);                   // cart ruts up to the collar
     ln(0.40, 0.97, 0.44, 0.66, 'rgba(18,14,10,0.35)', 2.2);
     ell(0.56, 0.70, 0.035, 0.012, 'rgba(70,90,110,0.55)');                    // puddles
@@ -4107,15 +4133,39 @@ function renderCoalMine(e, px, py, t) {
     for (let k = 0; k <= 8; k++) { dot(0.03 + k*0.1175, 0.03, 1.3, '#5a4228'); dot(0.03 + k*0.1175, 0.97, 1.3, '#5a4228'); }
     for (let k = 1; k < 7; k++) { if (k*0.13 + 0.03 > 0.76 && k*0.13 + 0.03 < 0.88) continue; dot(0.03, 0.03 + k*0.13, 1.3, '#5a4228'); dot(0.97, 0.03 + k*0.13, 1.3, '#5a4228'); }
 
-    // ── Rail across the bottom: sleepers, steel with a highlight ──
-    for (let k = 0; k < 16; k++) R(0.045 + k*0.058, 0.785, 0.022, 0.085, '#3e2e1e');
+    // ── Rail across the bottom: ballast, sleepers, steel with a highlight ──
+    const ballast = photo('ground_coal_scree', 96);
+    if (ballast) {
+      ctx.fillStyle = ballast; ctx.fillRect(X(0.03), Y(0.772), w*0.94, h*0.11);
+      ctx.fillStyle = 'rgba(40,34,28,0.35)'; ctx.fillRect(X(0.03), Y(0.772), w*0.94, h*0.11);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(X(0.03), Y(0.876), w*0.94, h*0.006);   // shoulder in shade
+    }
+    for (let k = 0; k < 16; k++) {
+      R(0.045 + k*0.058, 0.785, 0.022, 0.085, '#3e2e1e');
+      R(0.045 + k*0.058, 0.785, 0.006, 0.085, 'rgba(255,220,170,0.08)');           // sunlit edge
+    }
+    if (detail) grainR('grit', 0.045, 0.785, 0.93, 0.085, 0.5);
     for (const ry of [0.80, 0.855]) { ln(0.03, ry, 0.97, ry, '#4a4a4a', 1.6); ln(0.03, ry - 0.004, 0.97, ry - 0.004, '#b8b0a0', 0.5); }
 
     // ── Coal heap by the rail, sized by what's left in the seam ──
     const hgt = 0.05 + 0.13*pct;
+    // a soft shadow pooled at its foot, then the heap: scanned rubble,
+    // blackened, so it reads as lumps of coal, not a flat black wedge
+    ell(0.79, 0.79, 0.19, 0.022, 'rgba(0,0,0,0.3)');
     poly([[0.58, 0.785], [0.66, 0.785 - hgt*0.55], [0.72, 0.785 - hgt*0.92], [0.78, 0.785 - hgt], [0.86, 0.785 - hgt*0.6], [0.95, 0.785]], '#141110');
-    poly([[0.66, 0.785 - hgt*0.55], [0.72, 0.785 - hgt*0.92], [0.78, 0.785 - hgt], [0.74, 0.785]], '#221d19');   // lit face
-    poly([[0.72, 0.785 - hgt*0.92], [0.78, 0.785 - hgt], [0.76, 0.785 - hgt*0.55]], '#2e2722');
+    const lumps = photo('ground_coal_scree', 48);
+    if (lumps) {
+      ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = lumps; ctx.fill(); ctx.restore();
+      ctx.fillStyle = 'rgba(10,9,9,0.55)'; ctx.fill();
+    }
+    ctx.fillStyle = lumps ? 'rgba(70,64,60,0.28)' : '#221d19';                  // lit face
+    ctx.beginPath(); ctx.moveTo(X(0.66), Y(0.785 - hgt*0.55)); ctx.lineTo(X(0.72), Y(0.785 - hgt*0.92)); ctx.lineTo(X(0.78), Y(0.785 - hgt)); ctx.lineTo(X(0.74), Y(0.785)); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = lumps ? 'rgba(110,104,98,0.22)' : '#2e2722';
+    ctx.beginPath(); ctx.moveTo(X(0.72), Y(0.785 - hgt*0.92)); ctx.lineTo(X(0.78), Y(0.785 - hgt)); ctx.lineTo(X(0.76), Y(0.785 - hgt*0.55)); ctx.closePath(); ctx.fill();
+    if (lumps) {                                                               // the shaded right flank
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath(); ctx.moveTo(X(0.78), Y(0.785 - hgt)); ctx.lineTo(X(0.86), Y(0.785 - hgt*0.6)); ctx.lineTo(X(0.95), Y(0.785)); ctx.lineTo(X(0.76), Y(0.785)); ctx.closePath(); ctx.fill();
+    }
     for (let g = 0; g < 9; g++) {
       const gx = 0.63 + S(g + 30)*0.3, gy = 0.785 - S(g + 40)*hgt*0.7;
       dot(gx, gy, 0.7, `rgba(190,200,215,${(0.35 + 0.4*Math.max(0, Math.sin(t*1.3 + g*2.1))).toFixed(3)})`);   // glints
@@ -4124,9 +4174,13 @@ function renderCoalMine(e, px, py, t) {
     // ── Lamp room (top left): plank walls, pitched roof, stovepipe ──
     shadow(0.06, 0.15, 0.22, 0.15);
     R(0.06, 0.15, 0.22, 0.15, '#7a6248');
+    grainR('mottle', 0.06, 0.15, 0.22, 0.15, 0.7);
     for (let k = 1; k < 7; k++) ln(0.06 + k*0.0314, 0.15, 0.06 + k*0.0314, 0.30, 'rgba(40,26,14,0.35)', 0.4);
+    R(0.06, 0.15, 0.22, 0.012, 'rgba(0,0,0,0.25)');                            // eaves shadow on the planks
     poly([[0.045, 0.155], [0.17, 0.075], [0.295, 0.155]], '#4a423c');
+    grain('grit', 0.8);
     poly([[0.17, 0.075], [0.295, 0.155], [0.17, 0.155]], '#38312c');
+    grain('grit', 0.8);
     ln(0.045, 0.155, 0.295, 0.155, '#2a2420', 0.8);
     R(0.15, 0.22, 0.045, 0.08, '#3a2a1c');
     dot(0.188, 0.262, 0.5, '#c8a050');
@@ -4145,10 +4199,23 @@ function renderCoalMine(e, px, py, t) {
     // ── Winding house (top right): brick, arched windows, slate roof ──
     shadow(0.64, 0.17, 0.26, 0.20);
     R(0.64, 0.17, 0.26, 0.20, '#8a4630');
+    grainR('mottle', 0.64, 0.17, 0.26, 0.20, 0.8);
     for (let k = 1; k < 9; k++) ln(0.64, 0.17 + k*0.022, 0.90, 0.17 + k*0.022, 'rgba(40,16,10,0.22)', 0.35);
+    if (detail) for (let k = 0; k < 9; k++) for (let j = 0; j < 7; j++) {     // brick joints, alternate courses offset
+      const bx = 0.64 + j*0.04 + (k % 2 ? 0.02 : 0), by = 0.17 + k*0.022;
+      if (bx < 0.895) ln(bx, by, bx, by + 0.022, 'rgba(40,16,10,0.16)', 0.3);
+    }
+    { const sh = ctx.createLinearGradient(X(0.64), 0, X(0.90), 0);           // lit from the left
+      sh.addColorStop(0, 'rgba(255,230,200,0.08)'); sh.addColorStop(1, 'rgba(0,0,0,0.14)');
+      ctx.fillStyle = sh; ctx.fillRect(X(0.64), Y(0.17), w*0.26, h*0.20); }
     R(0.64, 0.17, 0.26, 0.012, '#b8a888');                                    // stone string course
     poly([[0.625, 0.175], [0.77, 0.085], [0.915, 0.175]], '#4a4648');
+    grain('grit', 0.8);
     poly([[0.77, 0.085], [0.915, 0.175], [0.77, 0.175]], '#36333a');
+    grain('grit', 0.8);
+    if (detail) for (let k = 1; k < 4; k++) {                                   // slate courses
+      const f = k/4; ln(0.625 + 0.145*f, 0.175 - 0.09*f, 0.915 - 0.145*f, 0.175 - 0.09*f, 'rgba(0,0,0,0.18)', 0.35);
+    }
     ln(0.625, 0.175, 0.915, 0.175, '#26242a', 0.9);
     for (let k = 0; k < 3; k++) {
       const wx = 0.665 + k*0.075;
@@ -4161,6 +4228,7 @@ function renderCoalMine(e, px, py, t) {
     if (lamps) glow(0.74, 0.26, 30, '255,190,100', 0.18);
     // banded stack
     R(0.905, 0.02, 0.05, 0.35, '#6a3a2a');
+    grainR('mottle', 0.905, 0.02, 0.05, 0.35, 0.8);
     R(0.905, 0.02, 0.016, 0.35, 'rgba(255,255,255,0.08)');
     for (let k = 1; k < 4; k++) R(0.905, 0.02 + k*0.085, 0.05, 0.01, '#3e2418');
     R(0.9, 0.015, 0.06, 0.016, '#3a2418');
@@ -4173,6 +4241,7 @@ function renderCoalMine(e, px, py, t) {
     poly([[0.38, 0.63], [0.62, 0.63], [0.80, 0.52], [0.66, 0.50]], 'rgba(0,0,0,0.16)');
 
     // ── Shaft collar: timber-lined, depth shading, safety rail ──
+    shadow(0.33, 0.40, 0.34, 0.25);
     RR(0.33, 0.40, 0.34, 0.25, 2, '#5a4430');
     for (let k = 0; k < 6; k++) ln(0.33, 0.41 + k*0.04, 0.67, 0.41 + k*0.04, 'rgba(30,20,12,0.35)', 0.4);   // planking
     const sg = ctx.createLinearGradient(0, Y(0.47), 0, Y(0.60));
@@ -4193,6 +4262,7 @@ function renderCoalMine(e, px, py, t) {
     for (const lx of [0.15, 0.27]) { ln(lx, 0.66, lx, 0.75, '#5a4226', 1.6); ln(lx + 0.004, 0.66, lx + 0.004, 0.75, 'rgba(255,220,160,0.15)', 0.4); }
     ln(0.15, 0.70, 0.27, 0.74, '#4a3620', 0.8); ln(0.27, 0.70, 0.15, 0.74, '#4a3620', 0.8);
     R(0.135, 0.58, 0.15, 0.08, '#6a5038');
+    grainR('mottle', 0.135, 0.58, 0.15, 0.08, 0.7);
     for (let k = 1; k < 4; k++) ln(0.135, 0.58 + k*0.02, 0.285, 0.58 + k*0.02, 'rgba(30,20,10,0.35)', 0.4);
     R(0.135, 0.58, 0.15, 0.01, '#8a6c4a');
     poly([[0.135, 0.66], [0.285, 0.66], [0.235, 0.705], [0.185, 0.705]], '#4a3826');

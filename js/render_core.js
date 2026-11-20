@@ -5659,8 +5659,34 @@ function bgMemCapture() {
     mx0, my0, mx1 - mx0, my1 - my0);
 }
 
+// A thumbnail of the ground bitmap on screen (sky baked in, as the memory
+// has it), remade when another bitmap is swapped in: its edge pixels are
+// what bgMemFillGap carries out past the bitmap's edge. Shrunk in two
+// steps so each pixel is an average, not one sampled roof or road.
+let _bgThumb = null, _bgThumbMid = null, _bgThumbKey = '';
+function _bgThumbFor() {
+  if (!_bgValid || !bgCache.width) return null;
+  const key = _bgZoom + ':' + _bgWorldLeft + ':' + _bgWorldTop + ':' + _bgDark + ':' + _bgZoneVer;
+  if (key === _bgThumbKey && _bgThumb) return _bgThumb;
+  if (!_bgThumb) {
+    _bgThumb = document.createElement('canvas'); _bgThumb.width = 24; _bgThumb.height = 16;
+    _bgThumbMid = document.createElement('canvas'); _bgThumbMid.width = 192; _bgThumbMid.height = 128;
+  }
+  const m = _bgThumbMid.getContext('2d');
+  m.globalCompositeOperation = 'source-over';
+  m.fillStyle = DayNight.skyColor(); m.fillRect(0, 0, 192, 128);
+  m.imageSmoothingEnabled = true; m.imageSmoothingQuality = 'high';
+  m.drawImage(bgCache, 0, 0, 192, 128);
+  const t = _bgThumb.getContext('2d');
+  t.imageSmoothingEnabled = true; t.imageSmoothingQuality = 'high';
+  t.clearRect(0, 0, 24, 16);
+  t.drawImage(_bgThumbMid, 0, 0, 24, 16);
+  _bgThumbKey = key;
+  return _bgThumb;
+}
+
 // Fill the part of the screen the stretched ground bitmap leaves bare: the
-// flat green, then the memory over it. (cx0, cy0)-(cx1, cy1) is where the
+// flat green, the bitmap's own edges carried on out, then the memory over it. (cx0, cy0)-(cx1, cy1) is where the
 // bitmap lands, device px. Only on the map: past its edge is the country
 // round it (WorldBackdrop), which this must not cover.
 function bgMemFillGap(g, zoom, rs, DW, DH, cx0, cy0, cx1, cy1) {
@@ -5680,6 +5706,26 @@ function bgMemFillGap(g, zoom, rs, DW, DH, cx0, cy0, cx1, cy1) {
   g.clip('evenodd');
   g.fillStyle = '#2e501a';
   g.fillRect(mL, mT, mR - mL, mB - mT);
+  // Ground nobody has seen from out here: the flat green made the old
+  // bitmap read as a dark rectangle popping out to full ground a moment
+  // later. Instead its own edges are carried on out to the screen's edge
+  // (clamp-to-edge, from a thumbnail of it), so the tones run on across
+  // the seam. Drawn from a canvas, never read back: safe under file://.
+  const th = _bgThumbFor();
+  if (th) {
+    const tw = th.width, tH = th.height;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'low';
+    const strip = (sx, sy, sw, sh, dx0, dy0, dx1, dy1) => { if (dx1 > dx0 && dy1 > dy0) g.drawImage(th, sx, sy, sw, sh, dx0, dy0, dx1 - dx0, dy1 - dy0); };
+    strip(0, 0, 0.5, tH, mL, cy0, cx0, cy1);                 // left
+    strip(tw - 0.5, 0, 0.5, tH, cx1, cy0, mR, cy1);          // right
+    strip(0, 0, tw, 0.5, cx0, mT, cx1, cy0);                 // top
+    strip(0, tH - 0.5, tw, 0.5, cx0, cy1, cx1, mB);          // bottom
+    strip(0, 0, 0.5, 0.5, mL, mT, cx0, cy0);                 // corners
+    strip(tw - 0.5, 0, 0.5, 0.5, cx1, mT, mR, cy0);
+    strip(0, tH - 0.5, 0.5, 0.5, mL, cy1, cx0, mB);
+    strip(tw - 0.5, tH - 0.5, 0.5, 0.5, cx1, cy1, mR, mB);
+  }
   if (_bgMem) {
     const ms = TILE * BG_MEM_TILES * s;   // device px per memory px
     g.imageSmoothingEnabled = true;

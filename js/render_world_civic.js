@@ -1595,7 +1595,66 @@ const PARK_TREE_PALETTES = [
   { dk: '#1c4e22', md: '#2e7430', lt: '#6ab050' },
   { dk: '#6a3a52', md: '#b0608a', lt: '#f0a8cc', blossom: true },
 ];
+// The same Blender trees as the wild ones (_treePhotoSprites, with their
+// autumn, bare and blossom looks and the same cast shadow), sized so the
+// crown spans about what the drawn one did. A park tree has no tile of its
+// own, so `speck` stands in for one: it picks the variant and when in the
+// year this tree turns. pal 2 is the ornamental cherry: in blossom whenever
+// it is in leaf. Falls back to the drawn tree while the images load, and
+// whenever image fills are off (a park drawn into a canvas that is read
+// back must not be tainted under file://).
+const _parkTreeSeasonVis = new Map();
+// The tree renders are 900x1200 and a park tree is drawn ~35 px tall, so
+// each is resized once (high quality, off the main thread) to a small
+// bitmap and drawn from that: cheaper every frame and no shimmer from the
+// 30x shrink. The full image is used until the bitmap is ready. Nothing is
+// read back, so it's fine under file://.
+const _parkTreeSmall = new Map();
+function _parkTreeImg(img) {
+  let en = _parkTreeSmall.get(img);
+  if (en) return en.bm || img;
+  en = { bm: null };
+  _parkTreeSmall.set(img, en);
+  if (typeof createImageBitmap === 'function') {
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    if (w && h) createImageBitmap(img, { resizeWidth: Math.round(160 * w / h), resizeHeight: 160, resizeQuality: 'high' })
+      .then(bm => { en.bm = bm; }).catch(() => {});
+  }
+  return img;
+}
 function _drawParkTree(bx, by, r, s, pal, sway, speck = 0) {
+  const vi = Math.abs(Math.floor(speck * 7.31 + pal * 3)) % 4;
+  const base = _treePhotoSprites[vi];
+  if (base && base.loaded && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) {
+    const sc = 50000 + Math.floor(speck), sr = 70000 + pal;
+    let st = _seasonState(sc, sr, false);
+    if (pal % 3 === 2 && st.state === 0) st = { state: 3, tint: 0 };
+    let vis = _parkTreeSeasonVis.get(speck + ':' + pal);
+    if (!vis) { if (_parkTreeSeasonVis.size > 600) _parkTreeSeasonVis.clear(); vis = {}; _parkTreeSeasonVis.set(speck + ':' + pal, vis); }
+    const looks = _seasonLayers(vis, st);
+    const dispH = r * 3.1, dispW = dispH * _TREE_PHOTO_ASPECT, k = dispH / 42;
+    // cast shadow down-right, flat on the ground, thinner when bare
+    let leaf = 0;
+    for (const [ls, w] of looks) leaf += w * (ls.state === 2 ? 0.4 : 1);
+    const dk = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+    const a0 = ctx.globalAlpha;
+    ctx.globalAlpha = a0 * _TREE_SHADOW_ALPHA * leaf * (1 - dk * 0.68);
+    ctx.drawImage(_treeShadowSprites[0], bx - _TREE_SHADOW_AX * k, by - _TREE_SHADOW_AY * k, _TREE_SHADOW_W * k, _TREE_SHADOW_H * k);
+    ctx.globalAlpha = a0;
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.rotate(sway / (40 * Math.max(0.5, s)));
+    for (const [ls, w] of looks) {
+      const sp = ls.state === 2 ? _treeWinterSprites[vi] : ls.state === 1 ? _treeAutumnSprites[vi][ls.tint]
+               : ls.state === 3 ? _blossomSprite(vi, ls.tint) : null;
+      const img = _parkTreeImg(sp && sp.loaded ? sp : base);
+      ctx.globalAlpha = a0 * w;
+      ctx.drawImage(img, -_TREE_PHOTO_ANCHOR_X * dispW, -_TREE_PHOTO_ANCHOR_Y * dispH, dispW, dispH);
+    }
+    ctx.restore();
+    ctx.globalAlpha = a0;
+    return;
+  }
   const P = PARK_TREE_PALETTES[pal % PARK_TREE_PALETTES.length];
   const dot = (x, y, rr) => { ctx.beginPath(); ctx.arc(x, y, rr, 0, Math.PI*2); ctx.fill(); };
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -3909,40 +3968,90 @@ function renderPark(e, px, py, t) {
       const treeY  = vergeB + rowH*0.6;
       const lampAt = i => i % 2 === 0;   // gaps between trees alternate lamp / bench
 
-      // ── Verge: grass with darker tufts ──────────────────────────────
-      ctx.fillStyle = '#23461a'; ctx.fillRect(1, 1, L-2, vergeB-1);
-      for (let i=0;i<count*4;i++) {
-        ctx.fillStyle = i%2 ? 'rgba(90,160,50,0.22)' : 'rgba(12,30,8,0.3)';
-        ctx.beginPath();
-        ctx.ellipse(4*s + hsh(i)*(L - 8*s), 3*s + hsh(i+50)*(vergeB - 6*s), 4*s, 1.8*s, 0, 0, Math.PI*2);
-        ctx.fill();
+      // Photo surfaces (the zone ground's scans and the Blender grass and
+      // bushes) unless image fills are off (a read-back canvas, file://).
+      const imgOK = !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && typeof GroundTextures !== 'undefined';
+      const zt = n => imgOK && GroundTextures.zoneTex ? GroundTextures.zoneTex[n] : null;
+
+      // ── Verge: a mown lawn (the Blender grass), mulched beds round the
+      //    trees, a soft line of shade along the back ──────────────────
+      ctx.fillStyle = '#2f5a1e'; ctx.fillRect(1, 1, L-2, vergeB-1);
+      const GD = imgOK && GroundTextures.grassDetail ? GroundTextures.grassDetail : null;
+      if (GD && GD.lush) {
+        ctx.save(); ctx.globalAlpha = 0.6; ctx.fillStyle = GD.lush; ctx.fillRect(1, 1, L-2, vergeB-1); ctx.restore();
+        // mowing stripes, very faint
+        for (let x = 1, k = 0; x < L-1; x += 6*s, k++) if (k % 2) { ctx.fillStyle = 'rgba(255,255,220,0.035)'; ctx.fillRect(x, 1, 6*s, vergeB-1); }
+      } else {
+        for (let i=0;i<count*4;i++) {
+          ctx.fillStyle = i%2 ? 'rgba(90,160,50,0.22)' : 'rgba(12,30,8,0.3)';
+          ctx.beginPath();
+          ctx.ellipse(4*s + hsh(i)*(L - 8*s), 3*s + hsh(i+50)*(vergeB - 6*s), 4*s, 1.8*s, 0, 0, Math.PI*2);
+          ctx.fill();
+        }
       }
+      { const gs = ctx.createLinearGradient(0, 1, 0, 5*s); gs.addColorStop(0, 'rgba(0,0,0,0.22)'); gs.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = gs; ctx.fillRect(1, 1, L-2, 5*s); }
 
       // ── Sidewalk: two courses of staggered slabs, then the kerb ─────
-      ctx.fillStyle = '#5c574c'; ctx.fillRect(1, vergeB, L-2, kerbT - vergeB);
-      ctx.strokeStyle = 'rgba(0,0,0,0.28)'; ctx.lineWidth = 0.6;
-      line(1, vergeB + rowH, L-1, vergeB + rowH);
+      const swTex = zt('sidewalk');
+      ctx.fillStyle = swTex || '#5c574c'; ctx.fillRect(1, vergeB, L-2, kerbT - vergeB);
+      if (swTex) { ctx.fillStyle = 'rgba(70,64,52,0.28)'; ctx.fillRect(1, vergeB, L-2, kerbT - vergeB); }
+      // slabs a touch apart in tone, then the joints with a lit lower lip
       const slab = 8*s;
+      for (let r=0;r<2;r++) {
+        for (let x = (r ? -slab/2 : 0), k = 0; x < L-1; x += slab, k++) {
+          const v = hsh(500 + r*97 + k);
+          if (v < 0.35 || v > 0.8) { ctx.fillStyle = v < 0.35 ? 'rgba(0,0,0,0.07)' : 'rgba(255,250,235,0.06)'; ctx.fillRect(Math.max(1, x), vergeB + r*rowH, Math.min(slab, L-1-Math.max(1, x)), rowH); }
+        }
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.6;
+      line(1, vergeB + rowH, L-1, vergeB + rowH);
       for (let r=0;r<2;r++) {
         for (let x = slab + (r ? slab/2 : 0); x < L-1; x += slab) line(x, vergeB + r*rowH, x, vergeB + (r+1)*rowH);
       }
-      ctx.fillStyle = '#8a857a';                ctx.fillRect(1, kerbT, L-2, D - 1 - kerbT);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(1, kerbT, L-2, 0.8*s);
-      ctx.fillStyle = 'rgba(160,200,120,0.35)'; ctx.fillRect(1, vergeB - 0.8*s, L-2, 0.8*s);
+      ctx.strokeStyle = 'rgba(255,250,235,0.1)'; ctx.lineWidth = 0.4;
+      line(1, vergeB + rowH + 0.5, L-1, vergeB + rowH + 0.5);
+      const kbTex = zt('limestone');
+      ctx.fillStyle = kbTex || '#8a857a'; ctx.fillRect(1, kerbT, L-2, D - 1 - kerbT);
+      if (kbTex) { ctx.fillStyle = 'rgba(138,133,122,0.35)'; ctx.fillRect(1, kerbT, L-2, D - 1 - kerbT); }
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';  ctx.fillRect(1, kerbT, L-2, 0.8*s);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';       ctx.fillRect(1, D - 1 - 0.7*s, L-2, 0.7*s);
+      for (let x = 10*s; x < L-1; x += 10*s) { ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(x, kerbT, 0.5, D - 1 - kerbT); }
+      // the verge's edge: a little shade where the lawn meets the slabs
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(1, vergeB, L-2, 0.7*s);
 
       // ── Shrubs and flower clumps on the verge between trees ─────────
+      const plantsOK = imgOK && typeof GroundPlants !== 'undefined' && GroundPlants.summerReady();
+      const fol = plantsOK && typeof Seasons !== 'undefined' ? Seasons.foliage() : null;
       for (let i=0;i<count-1;i++) {
         const gx = seg*(i+1);
-        ctx.fillStyle = '#2c6a22'; dot(gx - 3*s, vergeB - 3*s, 2.6*s); dot(gx + 2*s, vergeB - 2.6*s, 2.2*s);
-        ctx.fillStyle = '#4a9a34'; dot(gx - 3.6*s, vergeB - 3.8*s, 1.4*s);
-        ctx.fillStyle = ['#f0c030', '#e05a8a', '#b070e0'][i % 3];
-        for (let k=0;k<4;k++) dot(gx - 5*s + k*3*s, vergeB - 1.6*s - (k%2)*1.2*s, 0.8*s);
+        const FL = ['#f0c030', '#e05a8a', '#b070e0', '#f4f0f0', '#e8703a'];
+        if (plantsOK) {
+          // two low bushes (the Blender ones), a drift of flowers in front
+          for (const [ox, oy, rr, hk] of [[-3.2, -3.4, 2.9, 0], [2.4, -2.8, 2.4, 1]]) {
+            const hv = hsh(600 + i*7 + hk);
+            const [look, tint] = _groundPlantLook(hv, fol, true);
+            ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(gx + ox*s + 1.2*s, vergeB + oy*s + 1.6*s, rr*s, rr*s*0.7, 0, 0, Math.PI*2); ctx.fill();
+            GroundPlants.draw(ctx, gx + ox*s, vergeB + oy*s, rr*s*1.15, 3 + Math.floor(hv*3) % 3, look, tint, 1);
+          }
+          for (let k=0;k<9;k++) {
+            const fx = gx - 6*s + hsh(700 + i*13 + k)*12*s, fy = vergeB - 0.9*s - hsh(720 + i*13 + k)*2.2*s;
+            ctx.fillStyle = 'rgba(40,80,20,0.9)'; dot(fx, fy + 0.4*s, 0.55*s);
+            ctx.fillStyle = FL[(i + (k % 2)) % FL.length]; dot(fx, fy, 0.5*s);
+          }
+        } else {
+          ctx.fillStyle = '#2c6a22'; dot(gx - 3*s, vergeB - 3*s, 2.6*s); dot(gx + 2*s, vergeB - 2.6*s, 2.2*s);
+          ctx.fillStyle = '#4a9a34'; dot(gx - 3.6*s, vergeB - 3.8*s, 1.4*s);
+          ctx.fillStyle = FL[i % 3];
+          for (let k=0;k<4;k++) dot(gx - 5*s + k*3*s, vergeB - 1.6*s - (k%2)*1.2*s, 0.8*s);
+        }
       }
 
       // ── Tree grates ─────────────────────────────────────────────────
       for (let i=0;i<count;i++) {
         const tx = seg*(i+0.5);
-        ctx.fillStyle = '#2a2824'; ctx.fillRect(tx - 4*s, treeY - 2.6*s, 8*s, 5.2*s);
+        ctx.fillStyle = '#3a2c20'; ctx.fillRect(tx - 4*s, treeY - 2.6*s, 8*s, 5.2*s);       // bark mulch
+        for (let k=0;k<10;k++) { ctx.fillStyle = k % 2 ? 'rgba(120,84,50,0.55)' : 'rgba(20,14,8,0.5)'; ctx.fillRect(tx - 3.6*s + hsh(800 + i*17 + k)*7*s, treeY - 2.2*s + hsh(830 + i*17 + k)*4.4*s, 0.9*s, 0.5*s); }
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(tx - 4*s, treeY - 2.6*s, 8*s, 0.7*s);   // the pit's shaded back edge
         ctx.strokeStyle = 'rgba(120,115,100,0.6)'; ctx.lineWidth = 0.5;
         ctx.strokeRect(tx - 4*s, treeY - 2.6*s, 8*s, 5.2*s);
         for (let k=1;k<4;k++) line(tx - 4*s + k*2*s, treeY - 2.6*s, tx - 4*s + k*2*s, treeY + 2.6*s);
@@ -3968,11 +4077,16 @@ function renderPark(e, px, py, t) {
       }
 
       // ── Trees — mostly greens, the odd flowering one ────────────────
+      // (kept to the street's own length: the end tree's shadow used to
+      // fall off the end onto whatever is next door)
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, -D, L, D*2); ctx.clip();
       for (let i=0;i<count;i++) {
         const pal  = hsh(i+300) < 0.2 ? 2 : i % 2;
         const sway = Math.sin(t*1.1 + seed*0.1 + i*1.3) * 1.2*s;
         _drawParkTree(seg*(i+0.5), treeY, (10.5 + hsh(i+310)*1.5)*s, s, pal, sway, seed + i);
       }
+      ctx.restore();
 
       // ── Pedestrians strolling the front course (daytime) ────────────
       if (day) {
@@ -8247,6 +8361,9 @@ function _drawTreeTrunk(targetCtx, cx, cy, py, scale, sway, isConifer) {
 }
 
 function renderBush(e, px, py, t) {
+    // off the tile's centre, as the trees are, so a thicket isn't a grid
+    px += (_vegHash(e.col + 29, e.row + 11) - 0.5) * TILE * 0.4;
+    py += (_vegHash(e.col + 7, e.row + 37) - 0.5) * TILE * 0.3;
     const cx = px + TILE/2, cy = py + TILE/2;
     const prog = e._chopProgress || 0;
     const sway = Math.sin(t * 1.4 + e.col * 0.8 + e.row * 0.5) * 1.5;
@@ -8306,7 +8423,7 @@ function renderBush(e, px, py, t) {
       ctx.globalAlpha *= 0.25;
       ctx.fillStyle = '#000';
       ctx.beginPath();
-      ctx.ellipse(cx + 1, cy + 9 * scale, 9 * scale, 3 * scale, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + 2, cy + 9 * scale, 10.5 * scale, 3.5 * scale, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
@@ -8325,7 +8442,7 @@ function renderBush(e, px, py, t) {
         for (const [_bushSeason, w] of _looks) {
           const _bSeason = _bushSeason.state === 2 ? _bushWinterSprites[_bi] : _bushSeason.state === 1 ? _bushAutumnSprites[_bi] : null;
           const photo = _bSeason && _bSeason.loaded ? _bSeason : _bushPhotoSprites[_bi];
-          const dispW = 20 * scale, dispH = dispW;
+          const dispW = 24 * scale, dispH = dispW;
           ctx.globalAlpha = a0 * w;
           ctx.drawImage(photo, bx0 - _BUSH_PHOTO_ANCHOR_X * dispW, by0 - _BUSH_PHOTO_ANCHOR_Y * dispH, dispW, dispH);
         }
@@ -8794,6 +8911,14 @@ function _getTreeSprite(isConifer, scale, shapeSeed) {
 }
 
 function renderTree(e, px, py, t) {
+    // Each tree stands a little off its tile's centre (stable per tile),
+    // so a wood reads as grown, not planted on the grid like an orchard.
+    // Both LODs and the shadow, mound and chop bar move with it.
+    {
+      const jx = (_vegHash(e.col + 17, e.row + 3) - 0.5) * TILE * 0.44;
+      const jy = (_vegHash(e.col + 5, e.row + 19) - 0.5) * TILE * 0.28;
+      px += jx; py += jy;
+    }
     const cx = px + TILE/2, cy = py + TILE/2;
     const prog = e._chopProgress || 0;
     const sway = Math.sin(t * 1.1 + e.col * 0.7 + e.row * 0.4) * 2;
@@ -8805,7 +8930,7 @@ function renderTree(e, px, py, t) {
     // Species from the land it stands on (_treeKind): fir, broadleaf or willow.
     const _kind = _treeKind(e);
     const isConifer = _kind === 1, isWillow = _kind === 2;
-    const scale = 0.88 + h2 * 0.28;
+    const scale = 0.82 + h2 * 0.4;
     const shapeSeed = Math.floor(h3 * 8) % 8;
 
     const baseAlpha = prog > 0 ? 0.65 : 1;
