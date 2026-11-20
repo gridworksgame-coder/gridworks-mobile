@@ -3427,6 +3427,24 @@
   .cmp-stat { display: flex; flex-direction: column; padding: 6px 9px; background: rgba(255,255,255,0.035); border-radius: 5px; }
   .cmp-stat-k { font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
   .cmp-stat-v { font-size: 14.5px; color: var(--text); font-weight: 600; margin-top: 1px; }
+  /* Takes in / Puts out (buildings), Made by / Used by (materials). */
+  .cmp-flows { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 14px; margin-top: 12px; }
+  .cmp-flow { min-width: 0; }
+  .cmp-flow-row {
+    display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0 10px;
+    padding: 6px 9px; margin-top: 4px; border-radius: 5px; text-decoration: none;
+    background: rgba(255,255,255,0.035); border: 1px solid transparent; transition: border-color 0.15s, background 0.15s;
+  }
+  .cmp-flow-row[data-goto] { cursor: pointer; }
+  .cmp-flow-row[data-goto]:hover, .cmp-flow-row[data-goto]:focus-visible { border-color: #60d0e0; background: rgba(96,208,224,0.1); outline: none; }
+  .cmp-flow-name { font-size: 15px; font-weight: 600; color: var(--text); min-width: 0; }
+  .cmp-flow-row[data-goto] .cmp-flow-name { color: #8ee4f2; text-decoration: underline; text-decoration-color: rgba(142,228,242,0.4); text-underline-offset: 3px; }
+  .cmp-flow-ico { margin-right: 6px; text-decoration: none; display: inline-block; }
+  .cmp-flow-rate { font: 600 13.5px 'JetBrains Mono', monospace; color: var(--text); white-space: nowrap; }
+  .cmp-flow-port { grid-column: 1 / -1; font-size: 12.5px; color: var(--text-dim); margin-top: 1px; }
+  /* A name of another entry inside the text. */
+  .cmp-inlink { color: #8ee4f2; text-decoration: underline; text-decoration-color: rgba(142,228,242,0.45); text-underline-offset: 3px; cursor: pointer; }
+  .cmp-inlink:hover, .cmp-inlink:focus-visible { color: #c8f6ff; text-decoration-color: currentColor; outline: none; }
   /* Entry opened from a tutorial card: a brief glow. */
   .cmp-card.cmp-focus { animation: cmpFocus 2.2s ease-out; }
   @keyframes cmpFocus {

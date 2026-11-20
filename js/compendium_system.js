@@ -64,7 +64,7 @@ const CompendiumSystem = (() => {
     [T.COKEOVEN]:     { desc: 'A battery of tall, narrow slot ovens, brick-lined and side by side, that bake coal for hours with no air until everything volatile has been driven off. A pusher ram shoves each glowing charge out into a quench car, which runs it under the quench tower for a cloud of steam; the gas collected off the top of the ovens is about half hydrogen.', use: 'Belt coal into COAL IN from a Coal Mine or a coal Storage Container: generators on the same line eat first, then ovens, then bins. 1.5 coal/s makes 1.1 coke/s, which leaves on COKE OUT; bank it in Storage Containers. Pipe GAS OUT to a Gas Holder, a Haber-Bosch Complex or a Superconductor Mill as hydrogen (24/s, no water needed); whatever it can\'t send is flared. A full coke store stops it. Unlocks with the MK4 Research Station, once an Advanced Nuclear Reactor has run and 250,000 total coal has been mined.' },
     [T.GRAPHITEFURNACE]: { desc: 'An Acheson furnace: a long trough of coke packed round carbon electrodes, under a cover of sand and coke breeze, and cooked white-hot by a current measured in tens of thousands of amps until its carbon reorders into graphite. Real ones run for days a batch and are some of the hungriest loads on any grid.', use: 'Belt coke into COKE IN from a Coke Oven Battery or a Storage Container banking coke, and belt GRAPHITE OUT to an Advanced Nuclear Reactor\'s GRAPHITE IN or a Storage Container. 0.6 coke/s makes 0.3 graphite/s, enough for three Advanced Reactors. Draws 120 kW the whole time it runs. A full graphite store stops it. Unlocks once the Coke Oven Battery is unlocked and 1,500 coke has been made.' },
     [T.CHEMICALPLANT]:{ desc: 'Processes sulfur and water into sulfuric acid.', use: 'Feeds acid to the Fuel Processing Plant for nuclear fuel rod production.' },
-    [T.FUELPLANT]:    { desc: 'Manufactures nuclear fuel rods.', use: 'Consumes sulfuric acid and uranium to produce fuel rods for the Nuclear Reactor.' },
+    [T.FUELPLANT]:    { desc: 'Turns uranium ore and sulfuric acid into nuclear fuel rods.', use: 'Belt uranium ore into U IN and pipe sulfuric acid from a Chemical Plant into ACID IN; fuel rods leave on ROD OUT for your Nuclear Reactors. 0.13 rods/s keeps two reactors running with headroom.' },
     [T.NUCLEARREACTOR]:{ desc: 'A large-scale reactor that produces thermal steam output.', use: 'Consumes fuel rods and feeds steam to connected Steam Turbines; produces nuclear waste. MUST be cooled: it needs 20 u/s of cooled water at its COOL IN (two Cooling Towers). Run it short of that and the core overheats within a minute, then goes critical, and after 30 more seconds it detonates, levelling everything within 72 tiles. Taking it off the grid (by cutting its fuel) slows the heating, but decay heat keeps climbing for a while, so leave it late and it goes up anyway. The blast leaves the ground contaminated for days: nothing can be built near ground zero for 2 days, then only lines for the next 10 days, and building costs +50% until it recovers after 17.' },
     [T.COOLINGTOWER]: { desc: 'Cools a nuclear reactor to keep it running at full output.', use: 'Pipe water from a Water Extractor (or a water Storage Tank) into its H₂O IN; it draws 15 u/s, then pipe its COOL OUT into a Nuclear Reactor\'s COOL IN to keep the core from overheating. Each tower puts out 15 u/s and a reactor needs 20, so it takes two towers per reactor. Needs power, and a sudden outage has a 40% chance of tripping its pumps, which then need 45s of steady power to restart while the reactor heats. Cuts caused by the weather (storm-tripped lines, geomagnetic storms) never trip them. Its basin holds 60s of water, so if the water supply is cut (a tripped line taking the Water Extractors down) it keeps cooling while you repair it. Keep the grid stable.' },
     [T.COOLINGTOWER2]: { desc: 'A refrigerated chiller train that turns cooled water into Cryogenic Coolant for a MOX core.', use: 'Pipe cooled water from Cooling Towers into COOL IN; it draws 70 u/s, and run CRYO OUT into an Advanced Nuclear Reactor\'s CRYO IN. It pours 48 u/s of Cryogenic Coolant (periwinkle in the pipes) against that reactor\'s 44, so ONE of these cools a MOX core. Ordinary cooled water will not. Where the MK1 is a concrete shell that cools by letting air fall through it, this one refrigerates, which is why it draws 110 kW rather than 15. Its variable-speed drives ride through a flicker better too: a 20% chance of tripping on an outage against the MK1\'s 40%, and 25s to restart rather than 45. Not immunity; an uncooled MOX core goes critical in 35 seconds, so 25s of restart can still lose you the reactor.' },
@@ -437,7 +437,7 @@ const CompendiumSystem = (() => {
       desc: 'Refined oil, ready to burn.', made: 'Oil Refinery', used: 'Fuel Power Generator' },
     { key: 'lpg',        label: 'LPG',               icon: '🔥', by: 'Pipe', from: () => [T.REFINERY],
       desc: 'Light gas given off while refining. Nothing uses it yet, so refineries flare it off.', made: 'Oil Refinery', used: 'Nothing yet' },
-    { key: 'acid',       label: 'Acid',              icon: '🧪', by: 'Pipe', from: () => [T.CHEMICALPLANT],
+    { key: 'acid',       label: 'Sulfuric Acid',     icon: '🧪', by: 'Pipe', from: () => [T.CHEMICALPLANT],
       desc: 'Sulfuric acid, used to leach uranium out of its ore.', made: 'Chemical Plant (sulfur + water)', used: 'Fuel Processing Plant, Leach Plant' },
     { key: 'liquidhe',   label: 'Liquid Helium (LHe)', icon: '❄️', by: 'Pipe', from: () => [T.CRYOPLANT],
       desc: 'Helium at 4 K. It keeps a fusion reactor\'s superconducting magnets cold; lose it and they quench.', made: 'Cryo Plant (from helium gas)', used: 'Fusion reactor magnets' },
@@ -471,14 +471,136 @@ const CompendiumSystem = (() => {
       desc: 'The residue left when monazite is leached. Only mildly radioactive, but it still goes where the reactors\' waste goes, and Storage Containers refuse it.', made: 'Leach Plant', used: 'Nuclear Waste Processing Facility' },
   ];
 
+  // ── What each building takes in and puts out ───────────────────────
+  // [material key (MATERIAL_DEFS), units/s or a note, port label]. Rates are
+  // read from EntityDefs where the def carries them, so they follow balance
+  // changes. Drives the "Takes in / Puts out" rows on a building's entry and
+  // the "Made by / Used by" rows on a material's entry, each a link.
+  function _buildingIO() {
+    const D = t => (t != null && EntityDefs[t]) || {};
+    const io = {};
+    const add = (t, ins, outs) => { if (t != null && EntityDefs[t]) io[t] = { in: ins || [], out: outs || [] }; };
+    const ORE = typeof ORE_MINE_RATE !== 'undefined' ? ORE_MINE_RATE : 0.8;
+    const LI  = typeof LITHIUM_MINE_RATE !== 'undefined' ? LITHIUM_MINE_RATE : 15;
+    add(T.BIOFUELGEN,     [['biofuel', 'burned as it runs', '']]);
+    add(T.COALMINE,       [], [['coal', 'depends on the deposit', 'belt']]);
+    add(T.COALMINE2,      [], [['coal', 'depends on the deposit', 'belt']]);
+    add(T.COALGENERATOR,  [['coal', D(T.COALGENERATOR).coalPerSecond, 'COAL IN'], ['water', D(T.COALGENERATOR).waterPerSecond, 'WATER IN']],
+                          [['ash', 'fills as it burns', 'collected by Waste Truck']]);
+    add(T.WATEREXTRACTOR, [], [['water', D(T.WATEREXTRACTOR).waterPerSecond, 'pipe']]);
+    add(T.PUMPJACK,       [], [['oil', 'until the deposit runs dry', 'pipe']]);
+    add(T.PUMPJACK2,      [], [['oil', '30% more than the MK1', 'pipe']]);
+    add(T.REFINERY,       [['oil', D(T.REFINERY).crudePerSec, 'CRUDE IN']],
+                          [['fueloil', D(T.REFINERY).fuelPerSec, 'FUEL OUT'], ['lpg', D(T.REFINERY).lpgPerSec, 'LPG OUT'], ['sludge', 'fills as it runs', 'collected by Waste Truck']]);
+    add(T.FUELGEN,        [['fueloil', D(T.FUELGEN).fuelPerSecond, 'FUEL IN']]);
+    add(T.GASSTATION,     [['fueloil', 'tops up its tank', 'pipe']]);
+    add(T.GEOWELL,        [], [['steam', 'depends on the world', 'steam port']]);
+    add(T.GEOTURBINE,     [['steam', D(T.GEOTURBINE).steamDraw, 'over the well\'s steam port']]);
+    add(T.URANIUMMINE,    [], [['uranium', ORE, 'belt']]);
+    add(T.SULFURMINE,     [], [['sulfur', ORE, 'belt']]);
+    add(T.SULFURMINE2,    [], [['sulfur', D(T.SULFURMINE2).sulfurPerSec, 'belt']]);
+    add(T.LITHIUMMINE,    [], [['lithium', LI, 'belt']]);
+    add(T.RAREEARTHMINE,  [], [['rareearth', ORE, 'OUT']]);
+    add(T.CHEMICALPLANT,  [['sulfur', D(T.CHEMICALPLANT).sulfurPerSec, 'SULFUR IN'], ['water', D(T.CHEMICALPLANT).waterPerSec, 'H₂O IN']],
+                          [['acid', D(T.CHEMICALPLANT).acidPerSec, 'ACID OUT']]);
+    add(T.FUELPLANT,      [['uranium', D(T.FUELPLANT).uraniumPerSec, 'U IN'], ['acid', D(T.FUELPLANT).acidPerSec, 'ACID IN']],
+                          [['rods', D(T.FUELPLANT).rodPerSec, 'ROD OUT']]);
+    add(T.NUCLEARREACTOR, [['rods', D(T.NUCLEARREACTOR).rodPerSec, 'ROD IN'], ['cool', D(T.NUCLEARREACTOR).coolWaterPerSec, 'COOL IN']],
+                          [['steam', D(T.NUCLEARREACTOR).steamOutput, 'STEAM OUT'], ['spent', D(T.NUCLEARREACTOR).spentFuelPerSec, 'SPENT FUEL OUT']]);
+    add(T.COOLINGTOWER,   [['water', D(T.COOLINGTOWER).waterPerSecond, 'H₂O IN']], [['cool', D(T.COOLINGTOWER).coldOutput, 'COOL OUT']]);
+    add(T.COOLINGTOWER2,  [['cool', D(T.COOLINGTOWER2).coolWaterPerSec, 'COOL IN']], [['cryocool', D(T.COOLINGTOWER2).coldOutput, 'CRYO OUT']]);
+    add(T.STEAMTURBINE,   [['steam', D(T.STEAMTURBINE).steamDraw, 'STEAM IN']]);
+    add(T.STEAMTURBINE2,  [['steam', D(T.STEAMTURBINE2).steamDraw, 'STEAM IN']]);
+    add(T.SPENTFUELPOOL,  [['spent', D(T.SPENTFUELPOOL).intakeRate, 'SPENT FUEL IN']], [['spent', D(T.SPENTFUELPOOL).outRate, 'COOLED FUEL OUT (cooled)']]);
+    const rp = D(T.REPROCESSOR);
+    add(T.REPROCESSOR,    [['spent', rp.spentFuelPerSec, 'SPENT FUEL IN (cooled in a pool)'], ['water', rp.waterPerSec, 'WATER IN']],
+                          [['recovered', rp.spentFuelPerSec * rp.recoveredPerUnit, 'RECOVERED U OUT'], ['plutonium', rp.spentFuelPerSec * rp.plutoniumPerUnit, 'PLUTONIUM OUT'],
+                           ['hlw', rp.spentFuelPerSec * rp.hlwPerUnit, 'collected by Waste Truck']]);
+    const mx = D(T.MOXPLANT);
+    add(T.MOXPLANT,       [['plutonium', mx.moxPerSec * mx.plutoniumPerUnit, 'PuO₂ IN'], ['recovered', mx.moxPerSec * mx.uraniumPerUnit, 'UO₂ IN (or uranium ore)'],
+                           ['uranium', mx.moxPerSec * mx.uraniumPerUnit, 'UO₂ IN (or recovered uranium)']],
+                          [['mox', mx.moxPerSec, 'MOX OUT']]);
+    add(T.ADVREACTOR,     [['mox', D(T.ADVREACTOR).rodPerSec, 'MOX IN'], ['cryocool', D(T.ADVREACTOR).coolWaterPerSec, 'CRYO IN'], ['graphite', D(T.ADVREACTOR).graphitePerSec, 'GRAPHITE IN (optional)']],
+                          [['steam', D(T.ADVREACTOR).steamOutput, 'STEAM OUT'], ['spent', D(T.ADVREACTOR).spentFuelPerSec, 'SPENT FUEL OUT']]);
+    add(T.LITHIUMPROCESSPLANT, [['lithium', D(T.LITHIUMPROCESSPLANT).orePerSec, 'ORE IN'], ['water', D(T.LITHIUMPROCESSPLANT).waterPerSec, 'H₂O IN']],
+                          [['compound', D(T.LITHIUMPROCESSPLANT).compoundPerSec, 'CPD OUT']]);
+    add(T.ELECTROLYZER,   [['water', D(T.ELECTROLYZER).waterPerSec, 'WATER IN']], [['hydrogen', D(T.ELECTROLYZER).hydrogenPerSec, 'H₂ OUT']]);
+    add(T.ATMOSCOLLECTOR, [], [['nitrogen', D(T.ATMOSCOLLECTOR).nitrogenPerSec, 'N₂ OUT']]);
+    add(T.HABERBOSCH,     [['nitrogen', D(T.HABERBOSCH).nitrogenPerSec, 'N₂ IN'], ['hydrogen', D(T.HABERBOSCH).hydrogenPerSec, 'H₂ IN']],
+                          [['ammonia', D(T.HABERBOSCH).ammoniaPerSec, 'NH₃ OUT']]);
+    add(T.WASHTOWER,      [['water', D(T.WASHTOWER).waterPerSec, 'H₂O IN'], ['ammonia', 'a catalyst: not used up', 'NH₃ CAT']],
+                          [['deuterium', D(T.WASHTOWER).deuteriumPerSec, 'D₂ OUT']]);
+    add(T.TRITIUMBREEDER, [['compound', D(T.TRITIUMBREEDER).compoundPerSec, 'LITHIUM IN']], [['tritium', D(T.TRITIUMBREEDER).tritiumPerSec, 'TRITIUM OUT']]);
+    const ff = D(T.FUSIONFUELPLANT);
+    add(T.FUSIONFUELPLANT,[['deuterium', ff.deuteriumPerSec, 'D₂ IN'], ['tritium', ff.tritiumPerSec, 'TRITIUM IN'], ['helium3', ff.he3PerSec, 'HE-3 IN (once the He-3 Separator is unlocked)']],
+                          [['pellets', ff.plasmaPerSec, 'D-T PELLETS OUT'], ['he3pellets', 'one for every three D-T pellets', 'D-He3 OUT']]);
+    const hf = D(T.HULKINGFUSIONREACTOR);
+    add(T.HULKINGFUSIONREACTOR, [['pellets', hf.plasmaPerSec, 'PELLETS IN'], ['liquidhe', hf.heliumFillPerSec, 'LHe IN'], ['compound', hf.blanketPerSec, 'Li COMPOUND IN'], ['fieldcore', 'up to 3, optional', 'carried by Drone or Hauler']],
+                          [['steam', hf.steamOutput, 'steam ports'], ['tritium', hf.tritiumBredPerSec, 'TRITIUM OUT'], ['helium', hf.heliumAshPerSec, 'HE ASH OUT (helium ash)']]);
+    const af = D(T.ADVFUSIONREACTOR);
+    add(T.ADVFUSIONREACTOR, [['he3pellets', af.plasmaPerSec, 'D-He3 PELLETS IN'], ['liquidhe', af.heliumFillPerSec, 'LHe IN'], ['cryocool', af.coolantPerSec, 'CRYO IN'], ['fieldcore', 'up to 3, optional', 'carried by Drone or Hauler']],
+                          [['highbeta', af.highBetaPerSec, 'ION OUT'], ['helium', af.heliumAshPerSec, 'HE ASH OUT (helium ash)']]);
+    add(T.MHDRING,        [['highbeta', 'from one reactor\'s ION OUT', 'ION IN']]);
+    add(T.HE3SEPARATOR,   [['helium', D(T.HE3SEPARATOR).heliumPerSec, 'HE IN']], [['helium3', D(T.HE3SEPARATOR).he3PerSec, 'HE-3 OUT']]);
+    add(T.HELIUMWELL,     [], [['helium', D(T.HELIUMWELL).heliumPerSec, 'HE OUT']]);
+    add(T.HELIUMWELL2,    [], [['helium', D(T.HELIUMWELL2).heliumPerSec, 'HE OUT']]);
+    add(T.CRYOPLANT,      [['helium', D(T.CRYOPLANT).heliumPerSec, 'HE IN']], [['liquidhe', 'what the magnets need', 'LHe OUT']]);
+    const lp = D(T.LEACHPLANT);
+    add(T.LEACHPLANT,     [['rareearth', lp.orePerSec, 'ORE IN'], ['acid', lp.acidPerSec, 'ACID IN']],
+                          [['oxide', lp.oxidePerSec, 'OXIDE OUT'], ['tailings', lp.tailingsPerSec, 'collected by Waste Truck or drone']]);
+    const sm = D(T.SCMILL);
+    add(T.SCMILL,         [['oxide', sm.oxidePerSec, 'OXIDE IN'], ['hydrogen', sm.hydrogenPerSec, 'H₂ IN'], ['nitrogen', sm.nitrogenPerSec, 'N₂ IN']],
+                          [['tape', sm.tapePerSec, 'TAPE OUT']]);
+    add(T.COREWORKS,      [['tape', `up to ${D(T.COREWORKS).tapeIntakePerSec}`, 'TAPE IN']], [['fieldcore', '120 tape each (28 to recharge)', 'carried by Drone or Hauler']]);
+    const co = D(T.COKEOVEN);
+    add(T.COKEOVEN,       [['coal', co.coalPerSec, 'COAL IN']], [['coke', co.cokePerSec, 'COKE OUT'], ['hydrogen', co.hydrogenPerSec, 'GAS OUT']]);
+    add(T.GRAPHITEFURNACE,[['coke', D(T.GRAPHITEFURNACE).cokePerSec, 'COKE IN']], [['graphite', D(T.GRAPHITEFURNACE).graphitePerSec, 'GRAPHITE OUT']]);
+    add(T.COALWASTE,      [['ash', D(T.COALWASTE).processRate, 'delivered by Waste Truck']]);
+    add(T.OILWASTE,       [['sludge', D(T.OILWASTE).processRate, 'delivered by Waste Truck']]);
+    add(T.NUCLEARWASTE,   [['hlw', D(T.NUCLEARWASTE).processRate, 'delivered by Waste Truck'], ['tailings', D(T.NUCLEARWASTE).processRate, 'delivered by Waste Truck']]);
+    return io;
+  }
+  let _ioCache = null;
+  function _io() { return _ioCache || (_ioCache = _buildingIO()); }
+  const _matByKey = k => MATERIAL_DEFS.find(m => m.key === k);
+  function _fmtRate(r) {
+    if (typeof r !== 'number') return r || '';
+    const n = r >= 10 ? Math.round(r).toLocaleString() : r >= 1 ? +r.toFixed(2) : +r.toPrecision(2);
+    return `${n}/s`;
+  }
+  // Rows for a building's entry: [{ key, label, icon, rate, port }]
+  function _ioRows(type, dir) {
+    const io = _io()[type];
+    if (!io) return [];
+    return io[dir].map(([k, rate, port]) => {
+      const m = _matByKey(k);
+      return m ? { key: 'mat:' + k, label: m.label, icon: m.icon, rate: _fmtRate(rate), port } : null;
+    }).filter(Boolean);
+  }
+  // Rows for a material's entry: the buildings that make (`out`) or use (`in`) it.
+  function _matRows(matKey, dir) {
+    const rows = [];
+    for (const [t, io] of Object.entries(_io())) {
+      for (const [k, rate, port] of io[dir]) {
+        if (k !== matKey) continue;
+        rows.push({ key: 'tool:' + t, type: t, label: (EntityDefs[t] || {}).label || t, rate: _fmtRate(rate), port });
+      }
+    }
+    return rows;
+  }
+
   function _materialsSection() {
     return {
       label: 'Materials',
       items: MATERIAL_DEFS.map(m => {
-        const stats = [['Carried by', m.by], ['Made by', m.made], ['Used by', m.used]];
+        const stats = [['Carried by', m.by]];
         if (m.store) stats.push(['Stored in', m.store]);
+        const madeBy = _matRows(m.key, 'out'), usedBy = _matRows(m.key, 'in');
+        if (!madeBy.length && m.made) stats.push(['Made by', m.made]);
+        if (!usedBy.length && m.used) stats.push(['Used by', m.used]);
         return {
           key: 'mat:' + m.key, label: m.label, desc: m.desc, use: '', stats,
+          flows: [['Made by', madeBy], ['Used by', usedBy]],
           iconKind: 'emoji', icon: m.icon,
           unlocked: m.from().some(t => t && Progression.isUnlocked(t)),
         };
@@ -521,6 +643,7 @@ const CompendiumSystem = (() => {
         return {
           key: 'tool:' + t, type: t, label: def.label,
           desc: d.desc || '', use: d.use || '', tips: TUT_TIPS[t] || '', stats: _statsFor(def, t),
+          flows: [['Takes in', _ioRows(t, 'in')], ['Puts out', _ioRows(t, 'out')]],
           iconKind: 'tool', unlocked: Progression.isUnlocked(t),
         };
       }),
@@ -723,13 +846,99 @@ const CompendiumSystem = (() => {
   function _sentences(txt) {
     return String(txt || '').split(/(?<=[.!?])\s+(?=[A-Z0-9(⚠☢])/).map(x => x.trim()).filter(Boolean);
   }
-  function _section(label, txt) {
-    const parts = _sentences(txt);
+  function _section(label, txt, selfKey, used) {
+    const parts = _sentences(txt).map(x => used ? _linkify(x, selfKey, used) : x);
     if (!parts.length) return '';
     const body = parts.length > 1
       ? `<ul class="cmp-list">${parts.map(x => `<li>${x}</li>`).join('')}</ul>`
       : `<div class="cmp-para">${parts[0]}</div>`;
     return `<div class="cmp-sec"><div class="cmp-sec-label">${label}</div>${body}</div>`;
+  }
+
+  // ── Links inside the text ──────────────────────────────────────────
+  // Every entry's name (plus a few everyday ways the text refers to one)
+  // becomes a link the first time it appears in another entry's text.
+  // Only entries the player has unlocked or discovered are linked.
+  // Rebuilt each time the panel draws (renderPanel sets _linkIndex).
+  const NAME_ALIASES = [
+    ['Coal Generator', 'tool:' + T.COALGENERATOR], ['Fuel Generator', 'tool:' + T.FUELGEN],
+    ['Refinery', 'tool:' + T.REFINERY], ['Research Station', 'tool:' + T.RESEARCH],
+    ['Conveyor', 'tool:' + T.CONVEYOR], ['belt', 'tool:' + T.CONVEYOR], ['pipe', 'tool:' + T.PIPE],
+    ['Storage Tank', 'tool:' + T.OILSTORAGE], ['City Hall', 'tool:' + T.GOVBUILDING],
+    ['liquid helium', 'mat:liquidhe'], ['LHe', 'mat:liquidhe'], ['cooled water', 'mat:cool'],
+    ['MOX rods', 'mat:mox'], ['MOX fuel', 'mat:mox'], ['MOX', 'mat:mox'], ['D-T pellets', 'mat:pellets'], ['D-He3 pellets', 'mat:he3pellets'],
+    ['crude', 'mat:oil'], ['fuel oil', 'mat:fueloil'], ['Ash Waste', 'mat:ash'], ['ash', 'mat:ash'], ['sludge', 'mat:sludge'],
+    ['sulfuric acid', 'mat:acid'], ['acid', 'mat:acid'], ['hydrogen', 'mat:hydrogen'], ['nitrogen', 'mat:nitrogen'],
+    ['ammonia', 'mat:ammonia'], ['deuterium', 'mat:deuterium'], ['helium-3', 'mat:helium3'], ['helium', 'mat:helium'],
+    ['uranium ore', 'mat:uranium'], ['uranium', 'mat:uranium'], ['rare earth oxide', 'mat:oxide'], ['oxide', 'mat:oxide'],
+    ['rare earth ore', 'mat:rareearth'], ['rare earths', 'mat:rareearth'], ['HTS tape', 'mat:tape'], ['tape', 'mat:tape'],
+    ['Field Core', 'mat:fieldcore'], ['spent fuel', 'mat:spent'], ['high-level waste', 'mat:hlw'], ['thorium tailings', 'mat:tailings'],
+    ['Cryogenic Coolant', 'mat:cryocool'], ['lithium compound', 'mat:compound'], ['lithium ore', 'mat:lithium'],
+    ['trees', 'veg:tree'], ['bushes', 'veg:bush'],
+  ];
+  let _linkIndex = null;   // [{ re, key }] longest name first
+  function _buildLinkIndex(sections) {
+    const keys = new Set();
+    const names = [];
+    for (const sec of sections) for (const it of sec.items) {
+      if (!it.key || it.iconKind === 'note' || it.iconKind === 'fish' || !it.label || it.label === '???') continue;
+      if (!it.unlocked && !_revealed.has(it.key)) continue;   // no links that spoil what's still to come
+      keys.add(it.key);
+      names.push([it.label.replace(/\s*\(.*\)$/, ''), it.key]);
+    }
+    for (const [n, k] of NAME_ALIASES) if (keys.has(k)) names.push([n, k]);
+    names.sort((a, b) => b[0].length - a[0].length);
+    const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    _knownKeys = keys;
+    _linkIndex = names.filter(([n]) => n.length >= 3).map(([n, key]) => ({
+      key, upper: n === n.toUpperCase(),
+      re: new RegExp(`(^|[^\\w-])(${esc(/[^s]s$/.test(n) ? n.slice(0, -1) : n)}(?:e?s)?)(?![\\w-])`, 'i'),
+    }));
+  }
+  let _knownKeys = new Set();
+  // `used` (shared across one entry's sections) keeps each link to its first
+  // mention. Port labels (ACID IN, H₂O IN) are all capitals and are left
+  // alone unless the name itself is.
+  function _linkify(text, selfKey, used) {
+    if (!text || !_linkIndex) return text || '';
+    const parts = String(text).split(/(<[^>]+>)/);
+    const tokens = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      let seg = parts[i];
+      for (const n of _linkIndex) {
+        if (n.key === selfKey || used.has(n.key)) continue;
+        let m, from = 0, hit = -1, word = '';
+        const sub = () => seg.slice(from);
+        while ((m = n.re.exec(sub()))) {
+          const w = m[2], at = from + m.index + m[1].length;
+          if (n.upper || w !== w.toUpperCase() || w.length < 2) { hit = at; word = w; break; }
+          from = at + w.length;
+        }
+        if (hit < 0) continue;
+        used.add(n.key);
+        tokens.push(`<a class="cmp-inlink" href="#" data-goto="${n.key}">${word}</a>`);
+        seg = seg.slice(0, hit) + `\u0000${tokens.length - 1}\u0000` + seg.slice(hit + word.length);
+      }
+      parts[i] = seg;
+    }
+    return parts.join('').replace(/\u0000(\d+)\u0000/g, (_, i) => tokens[+i]);
+  }
+
+  // "Takes in / Puts out" (buildings) or "Made by / Used by" (materials):
+  // one row per link, each opening that entry in the compendium.
+  function _flowsHtml(flows) {
+    if (!flows) return '';
+    const cols = flows.filter(([, rows]) => rows && rows.length);
+    if (!cols.length) return '';
+    return `<div class="cmp-flows">${cols.map(([label, rows]) => `
+      <div class="cmp-flow">
+        <div class="cmp-sec-label">${label}</div>
+        ${rows.map(r => `<a class="cmp-flow-row${_knownKeys.has(r.key) ? '' : ' nolink'}" href="#" ${_knownKeys.has(r.key) ? `data-goto="${r.key}" title="Open ${r.label} in the Compendium"` : ''}>
+          <span class="cmp-flow-name">${r.icon ? `<span class="cmp-flow-ico">${r.icon}</span>` : ''}${r.label}</span>
+          ${r.rate ? `<span class="cmp-flow-rate">${r.rate}</span>` : ''}
+          ${r.port ? `<span class="cmp-flow-port">${r.port}</span>` : ''}
+        </a>`).join('')}
+      </div>`).join('')}</div>`;
   }
 
   // Entries start collapsed to their picture and name (plus the first line
@@ -753,14 +962,22 @@ const CompendiumSystem = (() => {
     if (!open) {
       info.innerHTML = head + (it.desc ? `<div class="cmp-card-desc cmp-oneline">${it.desc}</div>` : '');
     } else {
+      // Names already linked in the flow rows aren't linked again in the text.
+      const used = new Set((it.flows || []).flatMap(([, rows]) => rows.map(r => r.key)));
       info.innerHTML = head
-        + (it.desc ? `<div class="cmp-card-desc">${it.desc}</div>` : '')
-        + _section('How to use', it.use)
-        + _section('Tips', it.tips)
+        + (it.desc ? `<div class="cmp-card-desc">${_linkify(it.desc, it.key, used)}</div>` : '')
+        + _flowsHtml(it.flows)
+        + _section('How to use', it.use, it.key, used)
+        + _section('Tips', it.tips, it.key, used)
         + (it.stats.length ? `<div class="cmp-card-stats">${it.stats.map(([k, v]) => `<div class="cmp-stat"><span class="cmp-stat-k">${k}</span><span class="cmp-stat-v">${v}</span></div>`).join('')}</div>` : '');
     }
     card.appendChild(info);
 
+    info.querySelectorAll('[data-goto]').forEach(a => a.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      try { SFX.click?.(); } catch (_e) {}
+      openTo(a.dataset.goto);
+    }));
     const toggle = (e) => {
       e.stopPropagation();
       if (_openItems.has(it.key)) _openItems.delete(it.key); else _openItems.add(it.key);
@@ -784,7 +1001,8 @@ const CompendiumSystem = (() => {
 
   function _matchesQuery(it, q) {
     if (!q) return true;
-    const hay = `${it.label} ${it.desc || ''} ${it.use || ''} ${it.tips || ''}`.toLowerCase();
+    const flowText = (it.flows || []).flatMap(([, rows]) => rows.map(r => r.label)).join(' ');
+    const hay = `${it.label} ${it.desc || ''} ${it.use || ''} ${it.tips || ''} ${flowText}`.toLowerCase();
     return hay.includes(q);
   }
 
@@ -795,6 +1013,7 @@ const CompendiumSystem = (() => {
     if (!body) return;
     body.innerHTML = '';
     const sections = _buildSections();
+    _buildLinkIndex(sections);
     let totalUnlocked = 0, totalItems = 0, shown = 0;
     let lastGroup = null;
     // How many sections of each group have something to show, for the
