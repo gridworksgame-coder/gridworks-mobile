@@ -383,6 +383,68 @@ const SplitPhase = {
   },
 };
 
+/* ── Shade that follows the sprite's own shape ────────────────────────
+   A building without power sits dark: its renderer lays a translucent dark
+   fill over itself. Laid as a plain rectangle, that fill also darkens
+   whatever the sprite leaves open inside it (the sky beside a clock
+   tower, the lawn round a terrace), so the building reads as boxed in a
+   dark square, and ContactShadow, tracing whatever was painted, casts
+   that square as its shadow. dimPainted(color, x, y, w, h) — or (color,
+   [[x, y, w, h], ...]) for several areas, their union shaded once — puts
+   the same fill only on what the sprite itself painted there: it redraws
+   the sprite (renderEntityAt names the redraw, _spriteRedraw) into a
+   scratch layer, keeps the part inside the area as a mask, colours it
+   and lays it over. Same darkness as before on the building, none on the
+   open ground. Drawn outside renderEntityAt (no redraw known), it falls
+   back to the plain fill. ContactShadow and SiteYard redraw sprites the
+   same way, so renderers already stand being drawn twice. */
+let _spriteRedraw = null;
+let _dimMasking = false, _dimCv = null, _dimCx = null;
+function dimPainted(color, x, y, w, h) {
+  if (_dimMasking) return;                       // the mask pass itself draws no shade
+  const rects = Array.isArray(x) ? x : [[x, y, w, h]];
+  const path = () => { ctx.beginPath(); for (const [rx, ry, rw, rh] of rects) ctx.rect(rx, ry, rw, rh); };
+  const plain = () => { ctx.fillStyle = color; path(); ctx.fill('nonzero'); };
+  const redraw = _spriteRedraw;
+  if (!redraw || typeof ctx.getTransform !== 'function') { plain(); return; }
+  // The area's box in device pixels.
+  const m = ctx.getTransform();
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [rx, ry, rw, rh] of rects) for (const [cx, cy] of [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]]) {
+    const dx = m.a*cx + m.c*cy + m.e, dy = m.b*cx + m.d*cy + m.f;
+    if (dx < x0) x0 = dx; if (dx > x1) x1 = dx; if (dy < y0) y0 = dy; if (dy > y1) y1 = dy;
+  }
+  x0 = Math.floor(x0); y0 = Math.floor(y0); x1 = Math.ceil(x1); y1 = Math.ceil(y1);
+  const bw = x1 - x0, bh = y1 - y0;
+  if (!(bw > 0 && bh > 0) || bw*bh > 16e6) { plain(); return; }
+  if (!_dimCv) { _dimCv = document.createElement('canvas'); _dimCx = _dimCv.getContext('2d'); }
+  if (_dimCv.width < bw || _dimCv.height < bh) { _dimCv.width = Math.max(_dimCv.width, bw); _dimCv.height = Math.max(_dimCv.height, bh); }
+  const g = _dimCx;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.filter = 'none';
+  g.clearRect(0, 0, bw, bh);
+  g.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
+  // The redraw picks the same people as the drawing did (PropPeople counts
+  // them from the sprite's start), and leaves the count where it was.
+  const main = ctx, ppN = PropPeople._n;
+  _dimMasking = true; ctx = g; PropPeople._n = 0;
+  let failed = false;
+  try { redraw(); }
+  catch (_) { failed = true; }
+  finally { ctx = main; _dimMasking = false; PropPeople._n = ppN; }
+  if (failed) { plain(); return; }
+  // Keep what the sprite painted inside the area, in the shade's colour
+  // (its alpha times the paint's), and nothing outside it.
+  g.setTransform(m.a, m.b, m.c, m.d, m.e - x0, m.f - y0);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-in'; g.fillStyle = color;
+  g.beginPath(); for (const [rx, ry, rw, rh] of rects) g.rect(rx, ry, rw, rh); g.fill('nonzero');
+  g.globalCompositeOperation = 'source-over';
+  main.save();
+  main.setTransform(1, 0, 0, 1, 0, 0);
+  main.drawImage(_dimCv, 0, 0, bw, bh, x0, y0, bw, bh);
+  main.restore();
+}
+
 // People drawn into a property's art (shoppers on a plaza, diners on a
 // terrace, residents in a garden) follow their zone's street crowd through
 // the day: at 3am a commercial block's pavements are nearly empty, so are

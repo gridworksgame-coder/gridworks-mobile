@@ -1413,7 +1413,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
     if (Sp) e._hsTv = tvLive;
 
     // Without power the house sits dark
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(X(1), Y(1), 38*s, 38*s); }
+    if (!on) dimPainted('rgba(8,6,4,0.42)', X(1), Y(1), 38*s, 38*s);
     ctx.restore();
 
     // Garden path continues off the lot to the sidewalk outside the door
@@ -1758,11 +1758,8 @@ function renderTownhouse(e, px, py, t) {
       });
     }
 
-    // Without power the whole terrace sits dark
-    if (!on) {
-      ctx.fillStyle = 'rgba(8,6,4,0.45)';
-      ctx.fillRect(px + 1, py + 1, W - 2, GND - py - 1);
-    }
+    // Without power the whole terrace sits dark (only what it paints: dimPainted)
+    if (!on) dimPainted('rgba(8,6,4,0.45)', px + 1, py + 1, W - 2, GND - py - 1);
     ctx.strokeStyle = bord; ctx.lineWidth = 1.2;
     ctx.strokeRect(bX, eaveY, bW, faceBot - eaveY);
   }
@@ -3409,7 +3406,7 @@ function renderDuplex(e, px, py, t) {
     duplexDoors.forEach(d => d.walkers());
 
     // Without power the pair sits dark
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.45)'; ctx.fillRect(X(1), Y(1), 78*u, 78*u); }
+    if (!on) dimPainted('rgba(8,6,4,0.45)', X(1), Y(1), 78*u, 78*u);
     ctx.restore();
     _drawHouseStatusDots(e, px+W-TILE, py);
   }
@@ -3583,7 +3580,7 @@ function renderRetirementVillage(e, px, py, t) {
     villageDoors.forEach(d => d.walkers());
 
     // Without power the village sits dark
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.45)'; ctx.fillRect(X(2), Y(2), 156*s, 76*s); }
+    if (!on) dimPainted('rgba(8,6,4,0.45)', X(2), Y(2), 156*s, 76*s);
     _drawHouseStatusDots(e, px+W-TILE, py);
   }
 
@@ -4009,7 +4006,7 @@ function renderMansion(e, px, py, t) {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
 
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.4)'; ctx.fillRect(X(1), Y(1), 278 * S, 198 * S); }
+    if (!on) dimPainted('rgba(8,6,4,0.4)', X(1), Y(1), 278 * S, 198 * S);
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
   }
@@ -4332,7 +4329,7 @@ function renderVictorianManor(e, px, py, t) {
       ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     }
 
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(X(1), Y(1), 238 * S, 198 * S); }
+    if (!on) dimPainted('rgba(8,6,4,0.42)', X(1), Y(1), 238 * S, 198 * S);
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
 
@@ -4586,7 +4583,7 @@ function renderGlasswaterPavilion(e, px, py, t) {
     if (on && night) glow(313, 104, 14, '255,210,140', 0.35);
 
     pavDoor.walkers();
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(px, py, 320 * S, 200 * S); }
+    if (!on) dimPainted('rgba(8,6,4,0.42)', px, py, 320 * S, 200 * S);
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
   }
@@ -5139,7 +5136,7 @@ function renderAshmereVineyard(e, px, py, t) {
     if (on && night) glow(226, 116, 60, '255,200,120', 0.16);
     estateDoor.walkers();
 
-    if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.42)'; ctx.fillRect(px, py, 320 * S, 200 * S); }
+    if (!on) dimPainted('rgba(8,6,4,0.42)', px, py, 320 * S, 200 * S);
     ctx.restore();
     _drawHouseStatusDots(e, px + W - TILE, py);
   }
@@ -17321,7 +17318,7 @@ function _renderKakery(e, px, py, W, H, t) {
     }
   }
 
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.fillRect(K.X(0), K.Y(0), 80 * K.S, 80 * K.S); }
+  if (!on) dimPainted('rgba(0,0,0,0.18)', K.X(0), K.Y(0), 80 * K.S, 80 * K.S);
   ctx.restore();
 }
 
@@ -17498,7 +17495,7 @@ function _renderAICenter(e, px, py, W, H, t) {
       if (night && blink) glow(lx, ly, 10, '255,48,32', 0.5);
     }
   }
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(X(0), Y(0), 560 * S, 400 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.2)', X(0), Y(0), 560 * S, 400 * S);
   ctx.restore();
 }
 
@@ -20783,7 +20780,7 @@ function _renderTechOffice(e, px, py, W, H, t) {
     R(dx - 1, dy + 1, 2, 2, '#f0a020');
   }
 
-  if (!on) R(0, 0, 120, 120, 'rgba(0,0,0,0.18)');
+  if (!on) dimPainted('rgba(0,0,0,0.18)', X(0), Y(0), 120 * S, 120 * S);
   ctx.restore();
 }
 
@@ -21098,7 +21095,7 @@ function _renderCarDealership(e, px, py, W, H, t) {
   }
 
   ctx.textBaseline = 'alphabetic';
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(px, py, W, H); }
+  if (!on) dimPainted('rgba(0,0,0,0.2)', px, py, W, H);
   ctx.restore();
 }
 
@@ -21359,7 +21356,7 @@ function _renderGrandSalon(e, px, py, W, H, t) {
     ctx.fillStyle = g; ctx.fillRect(px, py, W, H);
     ctx.globalCompositeOperation = 'source-over';
   }
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(px, py, W, H); }
+  if (!on) dimPainted('rgba(0,0,0,0.2)', px, py, W, H);
   ctx.restore();
 }
 
@@ -21674,7 +21671,7 @@ function _renderGoldRoom(e, px, py, W, H, t) {
     ctx.restore();
   }
 
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py, 200 * S, 120 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.38)', px, py, 200 * S, 120 * S);
   ctx.restore();
 }
 
@@ -21859,7 +21856,7 @@ function _renderJazzBar(e, px, py, W, H, t) {
     }
     ctx.restore();
   }
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py, 120 * S, 80 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.38)', px, py, 120 * S, 80 * S);
   ctx.restore();
 }
 
@@ -22008,7 +22005,7 @@ function _renderDisco(e, px, py, W, H, t) {
   } else if (on && hr >= 9 && hr < 11) {
     const u = (Math.sin(t * 0.5) * 0.5 + 0.5); person(72 + u * 16, 131, '#3a6a9a', _CLUB_SKINS[1]); ln(73.5 + u * 16, 129, 76 + u * 16, 133, '#2a2a2a', 0.6); R(75 + u * 16, 132.6, 3, 1.2, '#c03030');   // the hoover
   }
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py, 160 * S, 160 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.38)', px, py, 160 * S, 160 * S);
   ctx.restore();
 }
 
@@ -22174,7 +22171,7 @@ function _renderSuperclub(e, px, py, W, H, t) {
     for (let i = 0; i < 3; i++) { R(46 + i * 8, 166 - (i === 1 ? 2.6 : 0), 6, 4.4, '#1a1a1e'); R(46 + i * 8, 166 - (i === 1 ? 2.6 : 0), 6, 0.6, '#c8c8cc'); }      // flight cases
     person(72 + Math.sin(t * 0.6) * 6, 168, '#18181c', _CLUB_SKINS[1]);
   }
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py, 280 * S, 200 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.38)', px, py, 280 * S, 200 * S);
   ctx.restore();
 }
 
@@ -22585,7 +22582,7 @@ function _renderNightclub(e, px, py, W, H, t) {
     if (w < 0.5) RR(wxp + 1.6, 130.4, 3.4, 4.2, 0.8, L('#b0b4ba', '#50545a', '#26282c'));               // one on the sack truck
   }
 
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.fillRect(px, py, 200 * S, 160 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.4)', px, py, 200 * S, 160 * S);
   ctx.restore();
 }
 
@@ -28070,7 +28067,7 @@ function _renderLibrary(e, px, py, W, H, t) {
     }
   }
 
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.38)'; ctx.fillRect(px, py, 200 * S, 160 * S); }
+  if (!on) dimPainted('rgba(0,0,0,0.38)', px, py, 200 * S, 160 * S);
   ctx.restore();
 }
 
@@ -29880,7 +29877,7 @@ function _renderAquarium(e, px, py, W, H, t) {
   }
 
   ctx.textBaseline = 'alphabetic';
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(px, py, W, H); }
+  if (!on) dimPainted('rgba(0,0,0,0.2)', px, py, W, H);
   ctx.restore();
 }
 
@@ -30186,7 +30183,7 @@ function _renderConventionCentre(e, px, py, W, H, t) {
   }
 
   ctx.textBaseline = 'alphabetic';
-  if (!on) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(px, py, W, H); }
+  if (!on) dimPainted('rgba(0,0,0,0.2)', px, py, W, H);
   ctx.restore();
 }
 

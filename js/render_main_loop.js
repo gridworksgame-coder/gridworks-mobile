@@ -1267,6 +1267,9 @@ function renderEntityAt(e, x, y, t) {
   _metalDrawType = et;
   try { _renderEntityAtInner(e, x, y, t, et); } finally { _metalDrawType = _prevDrawType; }
 }
+// The sprite renderEntityAt is drawing, for dimPainted's redraw (above).
+let _redrawE = null, _redrawX = 0, _redrawY = 0, _redrawT = 0;
+function _redrawSprite() { _renderEntitySprite(_redrawE, _redrawX, _redrawY, _redrawT); }
 function _renderEntityAtInner(e, x, y, t, et) {
   // Grounding pool first, under everything the type dispatch draws. Baked:
   // it is one drawImage, but one drawImage per building per frame measured
@@ -1285,14 +1288,23 @@ function _renderEntityAtInner(e, x, y, t, et) {
   // The sprite sees its old width/height for the duration of the draw.
   // The people drawn on it follow the zone's street crowd (PropPeople).
   const pp = PropPeople.begin(e);
+  // How to draw this sprite again, for dimPainted (render_core.js): a shade
+  // laid only on what the sprite paints redraws it as a mask. Kept as the
+  // arguments plus one shared function, so drawing allocates nothing.
+  const prevRedraw = _spriteRedraw, pe = _redrawE, px = _redrawX, py = _redrawY, pt = _redrawT;
+  _redrawE = e; _redrawX = x; _redrawY = y; _redrawT = t; _spriteRedraw = _redrawSprite;
   const art = artScaleFor(e);
-  if (!art) { try { _renderEntitySprite(e, x, y, t); } finally { PropPeople.end(pp); } return; }
+  if (!art) {
+    try { _renderEntitySprite(e, x, y, t); }
+    finally { _spriteRedraw = prevRedraw; _redrawE = pe; _redrawX = px; _redrawY = py; _redrawT = pt; PropPeople.end(pp); }
+    return;
+  }
   const w0 = e.width, h0 = e.height;
   e.width = art.w; e.height = art.h;
   ctx.save();
   ctx.translate(x, y); ctx.scale(art.kx, art.ky); ctx.translate(-x, -y);
   try { _renderEntitySprite(e, x, y, t); }
-  finally { ctx.restore(); e.width = w0; e.height = h0; PropPeople.end(pp); }
+  finally { ctx.restore(); e.width = w0; e.height = h0; _spriteRedraw = prevRedraw; _redrawE = pe; _redrawX = px; _redrawY = py; _redrawT = pt; PropPeople.end(pp); }
 }
 
 function _renderEntitySprite(e, x, y, t) {

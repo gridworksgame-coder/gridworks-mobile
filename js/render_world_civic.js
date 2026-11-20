@@ -7265,17 +7265,14 @@ function renderGovBuilding(e, px, py, t) {
     }
 
     // Without power the building sits dark — shaded over the building's own
-    // masses only, so the open ground around it isn't boxed in by a dark rect
+    // masses only, so the open ground around it isn't boxed in by a dark rect,
+    // and within them only what the hall paints (dimPainted): the boxes are
+    // rough, and the sky beside the tower and above the wings is not building
     if (!on) {
-      ctx.fillStyle = 'rgba(8,6,4,0.45)';
-      ctx.beginPath();
       const masses = hallStyle === 'modern'
         ? [[2, 82, 80, 124], [158, 82, 80, 124], [50, 52, 140, 154], [104, -52, 32, 104]]
         : [[4, 79, 78, 127], [158, 79, 78, 127], [70, 62, 100, 134], [58, 196, 124, 18], [98, -6, 44, 70]];
-      for (const [x, y, w, h] of masses) {
-        ctx.rect(X(x), Y(y), w*u, h*u);
-      }
-      ctx.fill('nonzero');
+      dimPainted('rgba(8,6,4,0.45)', masses.map(([x, y, w, h]) => [X(x), Y(y), w*u, h*u]));
       ctx.fillStyle = 'rgba(255,90,70,0.85)';
       ctx.font = `bold ${Math.max(6, Math.round(8*u))}px Courier New`;
       ctx.textAlign = 'center';
@@ -9318,7 +9315,7 @@ function renderGasStation(e, px, py, t) {
   }
 
   // Without power the whole stop sits dark
-  if (!on) { ctx.fillStyle = 'rgba(8,6,4,0.4)'; ctx.beginPath(); ctx.roundRect(X(2), Y(2), 236*u, 196*u, 6*u); ctx.fill(); }
+  if (!on) dimPainted('rgba(8,6,4,0.4)', X(2), Y(2), 236*u, 196*u);
 
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   ctx.restore();
