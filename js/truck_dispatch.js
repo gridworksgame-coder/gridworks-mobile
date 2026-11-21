@@ -78,7 +78,7 @@ const TruckDispatchSystem = (() => {
   const ROUTE_FACTOR   = 1.4;
   const FUEL_MARGIN    = 1.25;
   const LOW_FUEL_FRAC  = 0.3;     // always refuel below this, whatever's next
-  const PATROL_SPEED_PX = 352;    // TruckSystem's SPEED
+  const PATROL_SPEED_PX = 299;    // TruckSystem's SPEED
 
   const _fuelCap = (trk) => truckSpec(trk).fuelCapacity || 100;
   const _fuelNow = (trk) => trk._fuel !== undefined ? trk._fuel : _fuelCap(trk);

@@ -1977,7 +1977,7 @@ const EntityDefs = {
     // what bounds how far one port's drones reach -- the nearest port with a
     // free drone takes the job (see nearerPortFree in drone_system.js).
     radius:      110,
-    // Flight. Trucks cruise at 352 px/s on patrol and have to follow roads;
+    // Flight. Trucks cruise at 299 px/s on patrol and have to follow roads;
     // drones fly straight lines at more than twice that, which is most of
     // what makes them worth the price.
     speed:       825,    // px/s, cruise (was 620; +33%)

@@ -6,7 +6,7 @@
    the world position each frame so the entity stays grid-aware.
    ═══════════════════════════════════════════════════════════════════ */
 const TruckSystem = (() => {
-  const SPEED        = 352;   // patrol-only top speed (was 282; +25%). truck_dispatch.js PATROL_SPEED_PX mirrors it
+  const SPEED        = 299;   // patrol-only top speed (was 352; -15%). truck_dispatch.js PATROL_SPEED_PX mirrors it
   const ACCEL        = 2400;
   const FRICTION     = 0.82;
   const TURN_SPEED   = 6;
@@ -17,7 +17,7 @@ const TruckSystem = (() => {
   // gets there. Speeds are px/s, accelerations px/s².
   const PATROL_CREEP      = 30;          // floor while working round a tight spot
   const PATROL_GRIP       = 10;          // s⁻¹ — how fast sideways slide bleeds off
-  const PATROL_ACCEL      = 312;         // pulling away empty (fades toward SPEED); was 250, +25% with SPEED so cruise takes as long to reach
+  const PATROL_ACCEL      = 265;         // pulling away empty (fades toward SPEED); was 312, -15% with SPEED so cruise takes as long to reach
   const PATROL_LOAD_DRAG  = 0.35;        // share of that pull a full bed takes away
   const PATROL_BRAKE      = 340;         // service braking the whole track is planned around
   const PATROL_BRAKE_HARD = 720;         // for a truck in the way
