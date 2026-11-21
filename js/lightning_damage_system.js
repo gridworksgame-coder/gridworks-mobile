@@ -210,10 +210,12 @@ const LightningDamageSystem = (() => {
     return Math.sqrt(dx * dx + dy * dy);
   }
 
-  // Every rod covering this entity, nearest first.
+  // Every rod covering this entity, nearest first. A rod knocked down by a
+  // blast covers nothing until it is repaired.
   function rodsCovering(e) {
     const out = [];
     for (const rod of allRods()) {
+      if (rod._lightningDamaged) continue;
       const d = _edgeDist(rod, e);
       if (d <= (rod.def?.protectRange ?? 7)) out.push({ rod, d });
     }
@@ -1311,9 +1313,35 @@ const LightningDamageSystem = (() => {
       const p = rTiles > 0 ? Math.max(0, 1 - d / rTiles) : 0;
       if (Math.random() < 0.2 + 0.6 * p && _damage(v, { silent: true, cause: 'blast', origin: 'meltdown' })) wrecked++;
     }
+    for (const { rod, d } of _rodsInBlast(src, rTiles)) {
+      if (rod._lightningDamaged) continue;
+      const p = rTiles > 0 ? Math.max(0, 1 - d / rTiles) : 0;
+      if (Math.random() < 0.2 + 0.6 * p && _wreckRod(rod, 'meltdown')) wrecked++;
+    }
     const c = _centreWorld(src);
     for (let q = 0; q < 6; q++) _spawnVisual(c.wx + (Math.random() - 0.5) * (src.width || 1) * TILE, c.wy + (Math.random() - 0.5) * (src.height || 1) * TILE, false);
     return wrecked;
+  }
+
+  // Lightning Rods never come through _entitiesInBlast: a bolt never picks
+  // one and a steel mast doesn't burn. A blast still knocks one down, though:
+  // wrecked, protecting nothing and feeding no surge until a crew re-erects
+  // it. It doesn't catch fire, so it can't spread any.
+  function _rodsInBlast(src, rTiles) {
+    const out = [];
+    for (const rod of allRods()) {
+      if (rod === src) continue;
+      const d = _edgeDist(src, rod);
+      if (d <= rTiles) out.push({ rod, d });
+    }
+    return out;
+  }
+  function _wreckRod(rod, origin) {
+    if (!_damage(rod, { silent: true, cause: 'blast', origin })) return false;
+    rod._fireOut = true;        // smoulders briefly, never burns or spreads
+    rod._surgeRemaining = 0;    // a downed mast feeds nothing back
+    rod._rodGlowUntil = 0;
+    return true;
   }
 
   // Everything whose footprint falls inside the blast, nearest first.
@@ -1427,6 +1455,20 @@ const LightningDamageSystem = (() => {
           origin,
           at: _now() + CHAIN_FUSE_MIN + Math.random() * (CHAIN_FUSE_MAX - CHAIN_FUSE_MIN),
         });
+      }
+    }
+
+    // Rods inside the blast proper: a heavy blast flattens them, a storage
+    // burst knocks them down on the same pressure roll as any building.
+    for (const { rod, d } of _rodsInBlast(e, rTiles)) {
+      const p = rTiles > 0 ? Math.max(0, 1 - d / rTiles) : 0;
+      if (heavy) {
+        if (_wreckRod(rod, origin)) wrecked++;
+        _markRebuild(rod, REBUILD_MIN + (REBUILD_MAX - REBUILD_MIN) * p);
+      } else if (!rod._lightningDamaged
+                 && Math.random() < BLAST_HIT_RIM + (BLAST_HIT_CORE - BLAST_HIT_RIM) * p
+                 && _wreckRod(rod, origin)) {
+        wrecked++;
       }
     }
 
@@ -1950,6 +1992,13 @@ const LightningDamageSystem = (() => {
         if (genVictim) chained++;
         _fuses.push({ e: v, depth: 1, held: heldBefore, origin: 'meltdown', at: _now() + 0.5 + Math.random() * 2.5 });
       }
+    }
+    // Rods inside the destruction radius go with everything else.
+    for (const { rod, d } of _rodsInBlast(e, R)) {
+      if (_wreckRod(rod, 'meltdown')) wrecked++;
+      _markRebuild(rod, REBUILD_MIN + (REBUILD_MAX - REBUILD_MIN) * Math.max(0, 1 - d / R));
+      _makeIrreparable(rod);
+      rod._blastDir = _blastAngle(c, rod);
     }
     // Flatten the trees in the blast.
     for (const type of [T.TREE, T.BUSH]) {
