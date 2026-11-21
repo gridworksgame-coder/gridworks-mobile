@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm99';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm100';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -1649,9 +1649,9 @@
   // Contract checklist: 50% of its desktop size on the actual screen
   // (asked for half size), whatever scale the page itself got.
   // Sizes asked for as a share of what's on the actual screen, whatever
-  // scale the page itself got: the contract checklist at half size,
+  // scale the page itself got: the contract checklist 0.55 (half size, then 10% up),
   // achievements panel 0.484 (45% smaller, then 10% back up), pop-ups 0.55.
-  const SCREEN_SIZES = { '--gwm-checklist-zoom': 0.5, '--gwm-ach-zoom': 0.484, '--gwm-achtoast-zoom': 0.55, '--gwm-dossier-zoom': 0.5 };
+  const SCREEN_SIZES = { '--gwm-checklist-zoom': 0.55, '--gwm-ach-zoom': 0.484, '--gwm-achtoast-zoom': 0.55, '--gwm-dossier-zoom': 0.5 };
   function fitChecklist() {
     const honored = _applied && Math.abs(innerWidth - _applied.vw) <= 2;
     const pageScale = honored ? _applied.s : 1;
