@@ -448,6 +448,12 @@ const TruckPatrolPanel = (() => {
     // which is every frame, and that slowed scrolling the lists: an opaque
     // panel there instead (at 0.92 the blur barely showed anyway).
     if (window.GW_MOBILE) { _el.style.backdropFilter = 'none'; _el.style.webkitBackdropFilter = 'none'; _el.style.background = 'rgb(13,18,27)'; }
+    // On a phone the panel keeps itself on screen (_fitMobile) and
+    // PanelOnScreenGuard leaves it alone. The two fought: the guard found it
+    // inside its 10 px margin and slid it by writing `left`, _reposition put
+    // `right` back on the next redraw, and the panel jumped back and forth
+    // for as long as it was open.
+    if (window.GW_MOBILE) _el.dataset.offscreenOk = '';
     document.body.appendChild(_el);
     // Scrolling the panel holds back tick()'s redraws (see tick).
     const _fingerUp = () => { _fingerDown = false; _scrollAt = performance.now(); };
@@ -723,6 +729,7 @@ const TruckPatrolPanel = (() => {
       _el.style.top   = `${(top  + _anchorFix.dy) / z}px`;
       const r = _el.getBoundingClientRect();
       _anchorFix = { dx: _anchorFix.dx + (left - r.left), dy: _anchorFix.dy + (top - r.top) };
+      _fitMobile();
       return;
     }
     // Back on the default anchor — drop the correction so a later drag
@@ -736,6 +743,18 @@ const TruckPatrolPanel = (() => {
     _el.style.left  = '';
     _el.style.right = `calc(16px / ${PANEL_ZOOM})`;
     _el.style.top   = `calc(60px / ${PANEL_ZOOM})`;
+    _fitMobile();
+  }
+  // Phone only: no taller than the room from its top edge down to 10 px
+  // above the bottom of the screen (the rest scrolls). Written only when it
+  // changes, so a redraw that finds it right touches nothing.
+  function _fitMobile() {
+    if (!window.GW_MOBILE || !_el) return;
+    const r = _el.getBoundingClientRect();
+    if (!r.height || !_el.offsetHeight) return;
+    const z = r.height / _el.offsetHeight;
+    const mh = `${Math.max(120, Math.floor((window.innerHeight - Math.max(0, r.top) - 10) / z))}px`;
+    if (_el.style.maxHeight !== mh) { _el.style.maxHeight = mh; _el.style.overflowY = 'auto'; }
   }
 
   const CARGO_LABEL = {
