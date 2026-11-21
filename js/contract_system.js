@@ -2761,6 +2761,13 @@ const ContractSystem = (() => {
     // which survives the innerHTML rebuilds that replace the header.
     const DRAG_SLOP = 4;
     let drag = null;
+    // One press toggles once. On a phone a tap can arrive twice: the
+    // mouse events mobile.js makes from the touch, then the browser's own
+    // after the finger lifts when it does not hold them back. The second
+    // toggle opened the list again the moment it closed. A press within
+    // TOGGLE_GAP of the last toggle is that echo, not a new tap.
+    const TOGGLE_GAP = 450;
+    let lastToggle = -Infinity;
 
     function onMove(ev) {
       if (!drag) return;
@@ -2780,7 +2787,9 @@ const ContractSystem = (() => {
       if (d.moved) {
         savePos({ left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 });
       } else {
-        setCollapsed(!collapsed);   // a press that never moved is a click
+        // A press that never moved is a click.
+        const now = performance.now();
+        if (now - lastToggle > TOGGLE_GAP) { lastToggle = now; setCollapsed(!collapsed); }
       }
     }
 

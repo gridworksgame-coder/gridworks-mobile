@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm97';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm98';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -1229,6 +1229,20 @@
     d.tgt.removeEventListener('touchend', hdrEnd);
     d.tgt.removeEventListener('touchcancel', hdrEnd);
     mouse(window, 'mouseup', d.x, d.y, 0);
+    hdrEndedAt = performance.now();
+  }
+  // The tap has been played to the game already. If the browser still
+  // sends its own mouse events once the finger lifts (it should not,
+  // touchstart was cancelled, but some phones do), they toggled the
+  // list a second time: it closed and opened again at once. Swallow
+  // real mouse events on the header just after a handled tap.
+  let hdrEndedAt = -Infinity;
+  for (const t of ['mousedown', 'mouseup', 'click']) {
+    window.addEventListener(t, (e) => {
+      if (!e.isTrusted || performance.now() - hdrEndedAt > 600) return;
+      if (!(e.target.closest && e.target.closest('#contract-checklist'))) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+    }, true);
   }
   // Listened for on the checklist itself, not the whole document (a
   // blocking listener there held up every scroll on the page, see the reel
