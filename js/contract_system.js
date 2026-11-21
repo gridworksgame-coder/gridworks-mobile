@@ -1912,7 +1912,7 @@ const ContractSystem = (() => {
   const REPEAT_CHANCE    = 0.4;    // how often an eligible site's offer is a repeat order
   const REPEAT_SHARE     = 0.2;    // share of new offers that go straight to an eligible site (see postOffer)
   const CREW_STALL       = 0.25;   // chance a crew gets stuck part-way and calls the player out
-  const CREW_BUILD_SHARE = 0.45;   // share of the time not owed to a hold that the crew builds for
+  const CREW_BUILD_SHARE = 0.18;   // share of the time not owed to a hold that the crew builds for (was 0.45: crews 2.5x faster)
   const CREW_SETTLE_HOURS = 2;     // in-game hours a finished build is given to start up before it is called failing
   const CREW_KINDS = new Set(['place', 'running', 'connect', 'protect', 'store', 'sustain', 'service']);
   let builds = new Map();          // siteId -> { contract, pieces } : the player's last finished build there
