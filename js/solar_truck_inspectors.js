@@ -444,7 +444,18 @@ const TruckPatrolPanel = (() => {
       box-shadow:0 18px 50px rgba(0,0,0,0.50), 0 2px 6px rgba(0,0,0,0.35);
       -webkit-backdrop-filter:blur(18px) saturate(140%); backdrop-filter:blur(18px) saturate(140%);
     `;
+    // A phone redoes a backdrop blur whenever the map under it redraws,
+    // which is every frame, and that slowed scrolling the lists: an opaque
+    // panel there instead (at 0.92 the blur barely showed anyway).
+    if (window.GW_MOBILE) { _el.style.backdropFilter = 'none'; _el.style.webkitBackdropFilter = 'none'; _el.style.background = 'rgb(13,18,27)'; }
     document.body.appendChild(_el);
+    // Scrolling the panel holds back tick()'s redraws (see tick).
+    const _fingerUp = () => { _fingerDown = false; _scrollAt = performance.now(); };
+    _el.addEventListener('pointerdown', (ev) => { if (ev.pointerType !== 'mouse') _fingerDown = true; }, { capture: true, passive: true });
+    _el.addEventListener('pointerup', _fingerUp, { capture: true, passive: true });
+    _el.addEventListener('pointercancel', _fingerUp, { capture: true, passive: true });
+    _el.addEventListener('scroll', () => { _scrollAt = performance.now(); }, { capture: true, passive: true });
+    _el.addEventListener('wheel', () => { _scrollAt = performance.now(); }, { capture: true, passive: true });
     _el.addEventListener('click', (ev) => {
       const btn = ev.target.closest('button');
       if (btn) _handleButton(btn);
@@ -1346,12 +1357,25 @@ const TruckPatrolPanel = (() => {
 
   function isOpen() { return !!_target && _el && _el.style.display !== 'none'; }
 
+  // tick() is called every frame (by the render loop and the logic tick),
+  // and a redraw rewrites every figure in the panel and then measures it
+  // (_reposition): a full layout of the page each frame, which on a phone
+  // left scrolling the destination lists stuttering. The figures (fuel,
+  // cargo, distances, waste) are redrawn a few times a second instead,
+  // and not at all while a finger or the wheel is scrolling the panel.
+  // Clicks still redraw at once (they call _render themselves).
+  const TICK_MS = 200, SCROLL_QUIET_MS = 350;
+  let _lastTickAt = 0, _fingerDown = false, _scrollAt = 0;
   function tick() {
     if (!isOpen()) return;
     // Its truck is gone (deleted, a save loaded, off to a contract site):
     // a panel left driving a truck that is no longer in the game is what the
     // drag bug that deleted trucks left behind.
     if (!EntityRegistry.getByType(T.TRUCK).has(_target)) { close(); return; }
+    const now = performance.now();
+    if (now - _lastTickAt < TICK_MS) return;
+    if (_fingerDown || now - _scrollAt < SCROLL_QUIET_MS) return;
+    _lastTickAt = now;
     _render();
     _reposition();
   }

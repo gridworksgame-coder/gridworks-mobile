@@ -221,7 +221,77 @@ const TruckRouting = (() => {
   // search, so the answers are the same.
   // (_isBlocked inlined: the grid's rows read directly, and the drive-through
   // test asked once per entity type rather than once per tile.)
+  //
+  // Big boxes are cut out of _full, the whole map's grids, which are kept
+  // until something truck-solid comes or goes (the drive version). A long
+  // haul built these afresh for every box it tried, over a million tiles
+  // each time: a third of a cross-map route, and on a phone most of the
+  // freeze when a truck was sent somewhere far.
   function _blockedGrid(box) {
+    const F = _fullFor(box);
+    if (!F) return _blockedGridRaw(box);
+    if (box.minC === 0 && box.maxC === COLS - 1 && box.minR === 0 && box.maxR === ROWS - 1) return F.B;
+    const w = box.maxC - box.minC + 1, a = new Uint8Array(w * (box.maxR - box.minR + 3)), fa = F.B.a;
+    for (let r = box.minR - 1, o = 0; r <= box.maxR + 1; r++, o += w) {
+      const s = (r + 1) * COLS + box.minC;   // F.B's row r is one down (a row either side of the map)
+      a.set(fa.subarray(s, s + w), o);
+    }
+    return { a, w, minC: box.minC, maxC: box.maxC, minR: box.minR, maxR: box.maxR, full: F };
+  }
+
+  // The whole map's search grids, or null. Per tile: B (_blockedGridRaw),
+  // blk (_astarBlocked: the truck doesn't fit, or only into a slot) and bb
+  // (the building buffer with every building seeding it). Built only for a
+  // box that covers a good part of the map (a short leg's small box is
+  // cheaper built on its own than the whole map), then reused by any box
+  // until the drive version moves. Trucks write themselves into the tile
+  // grid as they move, but they are drive-through, as is everything they
+  // can stand on, so the solid tiles only change with the drive version.
+  // Never while wedged tiles are in play (_wedged): they are solid for one
+  // search only.
+  const FULL_MIN_SHARE = 0.25;
+  let _full = null;
+  function _fullFor(box) {
+    if (_wedged) return null;
+    const ver = EntityRegistry.getDriveVersion();
+    if (_full && _full.ver === ver && _full.tiles === GridManager.tiles && _full.cols === COLS && _full.rows === ROWS) return _full;
+    const cells = (box.maxC - box.minC + 1) * (box.maxR - box.minR + 1);
+    if (cells < COLS * ROWS * FULL_MIN_SHARE) return null;
+    const all = { minC: 0, maxC: COLS - 1, minR: 0, maxR: ROWS - 1 }, n = COLS * ROWS;
+    const B = _blockedGridRaw(all);
+    const blk = new Uint8Array(n);
+    _astarBlocked(all, COLS, n, B, blk);
+    // The building buffer: every solid tile, and every tile within
+    // BUILDING_BUFFER steps of one (_buildBuildingBufferTest's flood).
+    const bb = new Uint8Array(n), q = new Int32Array(n), a = B.a;
+    let qn = 0;
+    for (let k = 0; k < n; k++) if (a[k + COLS] === 1) { bb[k] = 1; q[qn++] = k; }
+    for (let depth = 0, head = 0; depth < BUILDING_BUFFER && head < qn; depth++) {
+      for (const end = qn; head < end; head++) {
+        const i = q[head], c = i % COLS;
+        if (c + 1 < COLS && !bb[i + 1]) { bb[i + 1] = 1; q[qn++] = i + 1; }
+        if (c > 0 && !bb[i - 1]) { bb[i - 1] = 1; q[qn++] = i - 1; }
+        if (i + COLS < n && !bb[i + COLS]) { bb[i + COLS] = 1; q[qn++] = i + COLS; }
+        if (i >= COLS && !bb[i - COLS]) { bb[i - COLS] = 1; q[qn++] = i - COLS; }
+      }
+    }
+    // tb: _truckBlocked alone (no slots), for _bfsFallback.
+    const tb = new Uint8Array(n);
+    for (let k = 0, c2 = COLS * 2; k < n; k++) tb[k] = a[k] | a[k + COLS] | a[k + c2];
+    _full = { ver, tiles: GridManager.tiles, cols: COLS, rows: ROWS, B, blk, bb, tb };
+    B.full = _full;
+    return _full;
+  }
+
+  // _full if it is still current (never built here: a caller that only
+  // reads a few tiles is better off asking the grid).
+  function _fullIfCurrent() {
+    if (_wedged || !_full) return null;
+    return _full.ver === EntityRegistry.getDriveVersion() && _full.tiles === GridManager.tiles
+        && _full.cols === COLS && _full.rows === ROWS ? _full : null;
+  }
+
+  function _blockedGridRaw(box) {
     const w = box.maxC - box.minC + 1, h = box.maxR - box.minR + 3;
     const a = new Uint8Array(w * h);
     const tiles = GridManager.tiles, solid = new Map();
@@ -261,6 +331,7 @@ const TruckRouting = (() => {
   // most routes only need a small local window, not the full 1170x700 map.
   let _bbQ = null;
   function _buildBuildingBufferTest(box, destEntity, startC, startR, B) {
+    if (B && B.full) return _bufferTestFromFull(box, destEntity, startC, startR, B.full);
     const w = box.maxC - box.minC + 1;
     const h = box.maxR - box.minR + 1;
     const idx = (c, r) => (r - box.minR) * w + (c - box.minC);
@@ -317,6 +388,38 @@ const TruckRouting = (() => {
       return !!buffered[idx(c, r)];
     };
   }
+  // The same test, read off the whole map's buffer (F.bb) instead of a
+  // flood of the box. The flood reaches every tile within BUILDING_BUFFER
+  // steps of a solid tile, so away from the box's edges and from
+  // destEntity the two agree. Within BUILDING_BUFFER of an edge (a solid
+  // tile just outside the box doesn't count) or of destEntity (its own
+  // tiles don't seed), the tile is worked out on its own, from the solid
+  // tiles in reach. The tiles around the start are forgiven, as above.
+  function _bufferTestFromFull(box, destEntity, startC, startR, F) {
+    const R = BUILDING_BUFFER, bb = F.bb, fa = F.B.a;
+    const dc0 = destEntity ? destEntity.col : 0, dr0 = destEntity ? destEntity.row : 0;
+    const dc1 = destEntity ? dc0 + (destEntity.width || 1) - 1 : -1, dr1 = destEntity ? dr0 + (destEntity.height || 1) - 1 : -1;
+    const forgive = startC != null && startR != null;
+    const exact = (c, r) => {
+      for (let dr = -R; dr <= R; dr++) {
+        const sr = r + dr;
+        if (sr < box.minR || sr > box.maxR) continue;
+        const span = R - Math.abs(dr), row = (sr + 1) * COLS;
+        for (let sc = Math.max(box.minC, c - span); sc <= Math.min(box.maxC, c + span); sc++) {
+          if (destEntity && sc >= dc0 && sc <= dc1 && sr >= dr0 && sr <= dr1) continue;
+          if (fa[row + sc] === 1) return true;
+        }
+      }
+      return false;
+    };
+    return (c, r) => {
+      if (c < box.minC || c > box.maxC || r < box.minR || r > box.maxR) return false;
+      if (forgive && Math.abs(c - startC) <= R && Math.abs(r - startR) <= R) return false;
+      if (c - box.minC < R || box.maxC - c < R || r - box.minR < R || box.maxR - r < R
+          || (destEntity && c >= dc0 - R && c <= dc1 + R && r >= dr0 - R && r <= dr1 + R)) return exact(c, r);
+      return bb[r * COLS + c] === 1;
+    };
+  }
 
   const NEIGHBOURS = [
     { dc: 1,  dr: 0,  cost: 1 },
@@ -360,6 +463,8 @@ const TruckRouting = (() => {
   // good part of each search; the second search reuses them.
   let _asBlkFor = null, _asBlkStart = -1;
   let _astarCapped = false;
+  let _hF = new Float64Array(1 << 16), _hK = new Int32Array(1 << 16);
+  const N_DC = NEIGHBOURS.map(n => n.dc), N_DR = NEIGHBOURS.map(n => n.dr), N_COST = NEIGHBOURS.map(n => n.cost);
   function _astar(startC, startR, goalC, goalR, box, avoid, maxIter, B, hw = 1) {
     _astarCapped = false;
     const w = box.maxC - box.minC + 1, cells = w * (box.maxR - box.minR + 1);
@@ -374,64 +479,76 @@ const TruckRouting = (() => {
     const startKey = idx(startC, startR);
     if (!B || B !== _asBlkFor || startKey !== _asBlkStart) {
       _asBlkFor = B || null; _asBlkStart = startKey;
-      _astarBlocked(box, w, cells, B, blk);
+      // Cut out of the whole map's flags when B was (_blockedGrid): a box's
+      // flags are the map's, since _astarBlocked asks the grid itself for
+      // tiles just past the box.
+      if (B && B.full) {
+        const fb = B.full.blk;
+        if (w === COLS && cells === COLS * ROWS) blk.set(fb);
+        else for (let r = box.minR, o = 0; r <= box.maxR; r++, o += w) blk.set(fb.subarray(r * COLS + box.minC, r * COLS + box.minC + w), o);
+      } else _astarBlocked(box, w, cells, B, blk);
       blk[startKey] = 0;   // the start tile stays open (see _astarBlocked)
     }
 
-    // The heap: hf[i] its f, hc/hr the tile.
-    const hf = [], hc = [], hr = [];
-    const push = (c, r, f) => {
-      hf.push(f); hc.push(c); hr.push(r);
-      let i = hf.length - 1;
+    // The heap: _hF[i] its f, _hK[i] the cell. Typed arrays kept between
+    // searches, and the sifting is the plain arrays' it replaced step for
+    // step (the same comparisons, the same ties), so the route is the same.
+    let hF = _hF, hK = _hK, hn = 0;
+    const push = (k, f) => {
+      if (hn === hF.length) {
+        const nf = new Float64Array(hn * 2), nk = new Int32Array(hn * 2);
+        nf.set(hF); nk.set(hK); _hF = hF = nf; _hK = hK = nk;
+      }
+      let i = hn++;
+      hF[i] = f; hK[i] = k;
       while (i > 0) {
         const p = (i - 1) >> 1;
-        if (hf[p] <= hf[i]) break;
-        let t = hf[p]; hf[p] = hf[i]; hf[i] = t;
-        t = hc[p]; hc[p] = hc[i]; hc[i] = t;
-        t = hr[p]; hr[p] = hr[i]; hr[i] = t;
+        if (hF[p] <= hF[i]) break;
+        const tf = hF[p]; hF[p] = hF[i]; hF[i] = tf;
+        const tk = hK[p]; hK[p] = hK[i]; hK[i] = tk;
         i = p;
       }
     };
-    let popC = 0, popR = 0;
     const pop = () => {
-      popC = hc[0]; popR = hr[0];
-      const lf = hf.pop(), lc = hc.pop(), lr = hr.pop();
-      const n = hf.length;
+      const top = hK[0];
+      const n = --hn;
       if (n) {
-        hf[0] = lf; hc[0] = lc; hr[0] = lr;
+        hF[0] = hF[n]; hK[0] = hK[n];
         let i = 0;
         for (;;) {
           const l = i * 2 + 1, r = i * 2 + 2;
           let s = i;
-          if (l < n && hf[l] < hf[s]) s = l;
-          if (r < n && hf[r] < hf[s]) s = r;
+          if (l < n && hF[l] < hF[s]) s = l;
+          if (r < n && hF[r] < hF[s]) s = r;
           if (s === i) break;
-          let t = hf[i]; hf[i] = hf[s]; hf[s] = t;
-          t = hc[i]; hc[i] = hc[s]; hc[s] = t;
-          t = hr[i]; hr[i] = hr[s]; hr[s] = t;
+          const tf = hF[i]; hF[i] = hF[s]; hF[s] = tf;
+          const tk = hK[i]; hK[i] = hK[s]; hK[s] = tk;
           i = s;
         }
       }
+      return top;
     };
+    // _heuristic, inlined below (the same sum, so the same f values).
+    const D2 = Math.SQRT2 - 2;
+    const minC = box.minC, maxC = box.maxC, minR = box.minR, maxR = box.maxR;
 
-    g[idx(startC, startR)] = 0;
-    push(startC, startR, hw * _heuristic(startC, startR, goalC, goalR));
+    g[startKey] = 0;
+    push(startKey, hw * _heuristic(startC, startR, goalC, goalR));
     let iterations = 0;
 
-    while (hf.length) {
+    while (hn) {
       if (++iterations > maxIter) { _astarCapped = true; return null; }
-      pop();
-      const cc0 = popC, cr0 = popR;
-      const curKey = idx(cc0, cr0);
+      const curKey = pop();
       if (seen[curKey]) continue;
       seen[curKey] = 1;
+      const cc0 = minC + curKey % w, cr0 = minR + ((curKey / w) | 0);
 
       if (cc0 === goalC && cr0 === goalR) {
         // Reconstruct
         const path = [];
         let k = curKey;
         while (k !== -1) {
-          path.push({ col: box.minC + k % w, row: box.minR + ((k / w) | 0) });
+          path.push({ col: minC + k % w, row: minR + ((k / w) | 0) });
           k = from[k];
         }
         path.reverse();
@@ -440,32 +557,35 @@ const TruckRouting = (() => {
 
       const curG = g[curKey];
       for (let ni = 0; ni < 8; ni++) {
-        const n = NEIGHBOURS[ni];
-        const nc = cc0 + n.dc, nr = cr0 + n.dr;
+        const ndc = N_DC[ni], ndr = N_DR[ni];
+        const nc = cc0 + ndc, nr = cr0 + ndr;
         // (The box never reaches past the map's edges, so all of it is in bounds.)
-        if (nc < box.minC || nc > box.maxC || nr < box.minR || nr > box.maxR) continue;
-        const nKey = curKey + n.dr * w + n.dc;
+        if (nc < minC || nc > maxC || nr < minR || nr > maxR) continue;
+        const nKey = curKey + ndr * w + ndc;
+        // Already settled: nothing below could change it (pen is only a
+        // cache of pure tests).
+        if (seen[nKey]) continue;
         const isGoal = nc === goalC && nr === goalR;
         if (blk[nKey] === 1 && !isGoal) continue;
         // Disallow cutting diagonally between two blocked orthogonal cells
-        if (n.dc !== 0 && n.dr !== 0) {
-          if (blk[curKey + n.dc] === 1 || blk[curKey + n.dr * w] === 1) continue;
+        if (ndc !== 0 && ndr !== 0) {
+          if (blk[curKey + ndc] === 1 || blk[curKey + ndr * w] === 1) continue;
         }
         let p = pen[nKey];
         if (p === 0) {
           p = 8 | (avoid.zone(nc, nr) ? 1 : 0) | (avoid.water(nc, nr) ? 2 : 0) | (avoid.building(nc, nr) ? 4 : 0);
           pen[nKey] = p;
         }
-        let stepCost = n.cost;
+        let stepCost = N_COST[ni];
         if (p & 1) stepCost += ZONE_PENALTY;
         if (p & 2) stepCost += WATER_PENALTY;
         if (!isGoal && (p & 4)) stepCost += BUILDING_PENALTY;
         const tentativeG = curG + stepCost;
-        if (seen[nKey]) continue;
         if (tentativeG < g[nKey]) {
           g[nKey] = tentativeG;
           from[nKey] = curKey;
-          push(nc, nr, tentativeG + hw * _heuristic(nc, nr, goalC, goalR));
+          const dc = Math.abs(goalC - nc), dr = Math.abs(goalR - nr);
+          push(nKey, tentativeG + hw * ((dc + dr) + D2 * Math.min(dc, dr)));
         }
       }
     }
@@ -572,11 +692,21 @@ const TruckRouting = (() => {
     const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) * 4));
     const E = 1e-6;
     let lastC = null, lastR = null;
+    // The box covers the same tiles for several samples running: checked
+    // once per change. Its three or four rows are one _truckBlocked (three
+    // rows, from its own memo) and, for the fourth, one _isBlocked.
+    let wc0 = NaN, wc1 = NaN, wr0 = NaN, wr1 = NaN;
     for (let i = 0; i <= n; i++) {
       const x = x0 + dx * i / n, y = y0 + dy * i / n;
-      for (let c = Math.floor(x - 0.5 + E); c <= Math.floor(x + 0.5 - E); c++)
-        for (let r = Math.floor(y - 1.5 + E); r <= Math.floor(y + 1.5 - E); r++)
-          if (_isBlocked(c, r)) return false;
+      const bc0 = Math.floor(x - 0.5 + E), bc1 = Math.floor(x + 0.5 - E);
+      const br0 = Math.floor(y - 1.5 + E), br1 = Math.floor(y + 1.5 - E);
+      if (bc0 !== wc0 || bc1 !== wc1 || br0 !== wr0 || br1 !== wr1) {
+        wc0 = bc0; wc1 = bc1; wr0 = br0; wr1 = br1;
+        for (let c = bc0; c <= bc1; c++) {
+          if (_truckBlocked(c, br0 + 1)) return false;
+          for (let r = br0 + 3; r <= br1; r++) if (_isBlocked(c, r)) return false;
+        }
+      }
       const c = Math.floor(x), r = Math.floor(y);
       if (c === lastC && r === lastR) continue;
       lastC = c; lastR = r;
@@ -782,9 +912,14 @@ const TruckRouting = (() => {
     // With every tile's _isBlocked in the memo already (_memoSeed), the fit
     // test is three reads; rows off the map are open, as _isBlocked has them.
     const m = _memoFull ? _memo : null;
+    // With the whole map's flags at hand (_full), both answers are a read.
+    const F = _fullIfCurrent(), ftb = F && F.tb, fblk = F && F.blk;
     const tile = (i, c, r) => {
       let v = info[i];
-      if (!v) {
+      if (!v && ftb) {
+        v = ftb[i] ? 7 : (strict && fblk[i] ? 5 : 1);
+        info[i] = v;
+      } else if (!v) {
         const b = m ? ((m[i] | (r > 0 ? m[i - COLS] : 0) | (r < ROWS - 1 ? m[i + COLS] : 0)) & 2) !== 0
                     : _truckBlocked(c, r);
         v = 1 | (b ? 6 : 0);
