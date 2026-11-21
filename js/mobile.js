@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm100';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm101';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -2007,7 +2007,26 @@
       return cs.display !== 'none' && cs.visibility !== 'hidden';
     });
     document.documentElement.classList.toggle('gwm-toppanel', open);
+    // Any other panel the player opens (a building's panel, the side
+    // panels, a plant's panel, the contract board) goes over the
+    // notification stack too: they sat under it at z 160. While one is
+    // open the stack drops below the panels (mobile.css gwm-panelopen).
+    const panel = open || OVER_NOTIF.some((id) => {
+      const n = $(id);
+      if (!n || !n.getClientRects().length) return false;
+      const cs = getComputedStyle(n);
+      return cs.display !== 'none' && cs.visibility !== 'hidden';
+    });
+    document.documentElement.classList.toggle('gwm-panelopen', panel);
   }
+  const OVER_NOTIF = ['entity-panel', ...Object.keys(SIDE_PANELS), 'contract-board',
+    'solar-panel', 'refinery-panel', 'fuelgen-panel', 'coalgen-panel', 'turbine-panel', 'shaftgen-panel',
+    'shaft-panel', 'dam-panel', 'waste-panel', 'zone-panel', 'events-panel', 'wire-panel', 'scn-panel'];
+  // Opening a building's panel re-layers at once rather than on the next sync.
+  setInterval(() => {
+    const ep = $('entity-panel');
+    if (ep && !ep._gwmLayer) { ep._gwmLayer = true; new MutationObserver(topPanelLayer).observe(ep, { attributes: true, attributeFilter: ['class', 'style'] }); }
+  }, 1000);
 
   // Starting a new game (and a few other menu actions) reloads the page,
   // and a phone browser always leaves full screen on a reload — and won't
