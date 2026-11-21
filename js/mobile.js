@@ -357,7 +357,7 @@
   const MIN_VW = 1000;   // the HUD's top bar needs about this much width
 
   // ── 1. Viewport ────────────────────────────────────────────────────
-  const BUILD = 'm96';   // shown in the diagnostics readout (?fps=1)
+  const BUILD = 'm97';   // shown in the diagnostics readout (?fps=1)
   let meta = document.querySelector('meta[name="viewport"]');
   if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
 
@@ -1173,12 +1173,24 @@
   // stay buttons, so ✕ still bails out.
   const reelActive = () => { try { return !!gameGlobal('FishingSystem')?.isMinigameActive?.(); } catch (_) { return false; } };
   let reelTouch = false;
-  document.addEventListener('touchstart', (e) => {
+  // Listened for only while the minigame is up. A blocking (passive: false)
+  // touchstart on the whole document made every touch anywhere wait for the
+  // game's frame before the browser could scroll: lists in panels (a truck's
+  // queue) were slow to start scrolling all game long.
+  const reelStart = (e) => {
     if (!reelActive() || e.target.id === 'canvas' || e.target.closest?.('#gwm-root')) return;
     if (e.target.closest?.('button, a, input, select, textarea, label, [onclick], #notif-stack, #tutorial-card, .gw-toast, .panel, [id$="-panel"]')) return;
     e.preventDefault();
     if (!reelTouch) { reelTouch = true; mouse(window, 'mousedown', e.touches[0].clientX, e.touches[0].clientY, 0); }
-  }, { capture: true, passive: false });
+  };
+  let reelListening = false;
+  setInterval(() => {
+    const want = reelActive();
+    if (want === reelListening) return;
+    reelListening = want;
+    if (want) document.addEventListener('touchstart', reelStart, { capture: true, passive: false });
+    else document.removeEventListener('touchstart', reelStart, { capture: true, passive: false });
+  }, 200);
   const reelEnd = (e) => {
     if (!reelTouch || e.touches.length) return;
     reelTouch = false;
@@ -1212,12 +1224,16 @@
     if (!hdrDrag || (e && hdrSeen.has(e))) return;
     if (e) hdrSeen.add(e);
     const d = hdrDrag; hdrDrag = null;
+    document.removeEventListener('touchmove', hdrMove, { capture: true, passive: false });
     d.tgt.removeEventListener('touchmove', hdrMove);
     d.tgt.removeEventListener('touchend', hdrEnd);
     d.tgt.removeEventListener('touchcancel', hdrEnd);
     mouse(window, 'mouseup', d.x, d.y, 0);
   }
-  document.addEventListener('touchstart', (e) => {
+  // Listened for on the checklist itself, not the whole document (a
+  // blocking listener there held up every scroll on the page, see the reel
+  // above), and the document's touchmove only for the length of a drag.
+  const hdrStart = (e) => {
     if (e.touches.length !== 1) return;
     const h = e.target.closest && e.target.closest(DRAG_HEADERS);
     if (!h) return;
@@ -1227,9 +1243,14 @@
     e.target.addEventListener('touchmove', hdrMove, { passive: false });
     e.target.addEventListener('touchend', hdrEnd);
     e.target.addEventListener('touchcancel', hdrEnd);
+    document.addEventListener('touchmove', hdrMove, { capture: true, passive: false });
     mouse(e.target, 'mousedown', t.clientX, t.clientY, 0);
-  }, { capture: true, passive: false });
-  document.addEventListener('touchmove', hdrMove, { capture: true, passive: false });
+  };
+  const hdrHosts = new WeakSet();
+  setInterval(() => {
+    const cl = document.getElementById('contract-checklist');
+    if (cl && !hdrHosts.has(cl)) { hdrHosts.add(cl); cl.addEventListener('touchstart', hdrStart, { capture: true, passive: false }); }
+  }, 500);
   document.addEventListener('touchend', hdrEnd, { capture: true, passive: true });
   document.addEventListener('touchcancel', hdrEnd, { capture: true, passive: true });
 

@@ -567,16 +567,19 @@ const TruckPatrolPanel = (() => {
       d.row.style.cursor = 'grabbing';
       document.body.style.cursor = 'grabbing';
     };
-    // On a phone a finger on the list is scrolling it, so a row only picks
-    // up once it has been held still for a moment; a finger that moves
-    // first is left to scroll (the rows allow vertical panning there, see
-    // _refreshQueueList). With a mouse a row picks up as soon as it moves.
-    const HOLD_MS = 400, HOLD_SLOP = 8;   // ms; screen px the finger may wander while held
-    const touchHold = (ev) => !!window.GW_MOBILE && ev.pointerType !== 'mouse';
+    // On a phone a finger on the list is scrolling it: a row is picked up
+    // by its grip (⠿, made wide there) and nowhere else. The grip takes no
+    // panning (touch-action: none), so the browser hands its moves straight
+    // to the drag, and the rest of the row has no touch listener at all and
+    // scrolls at once. It used to be hold-to-drag anywhere on the row, which
+    // needed a blocking touchmove listener on the panel: every scroll of the
+    // list then waited for the game's frame to finish before it could start,
+    // and a finger resting a moment before a swipe picked a row up instead.
     _el.addEventListener('pointerdown', (ev) => {
       if (ev.button !== 0 || ev.target.closest('button')) return;
       const row = ev.target.closest('[data-queue-index]');
       if (!row || !_target || !_target._destQueue) return;
+      if (window.GW_MOBILE && ev.pointerType !== 'mouse' && !ev.target.closest('[data-queue-grip]')) return;
       const rows = [..._refs.queueList.querySelectorAll('[data-queue-index]')];
       const pitch = rows.length > 1 ? rows[1].offsetTop - rows[0].offsetTop : row.offsetHeight;
       // Screen px per layout px. On a phone the UI-size setting zooms the
@@ -584,33 +587,14 @@ const TruckPatrolPanel = (() => {
       // a dragged row trail the finger by half: measure it there instead.
       const zoom = (window.GW_MOBILE && row.offsetHeight) ? row.getBoundingClientRect().height / row.offsetHeight : PANEL_ZOOM;
       _qDrag = { row, rows, pitch, zoom, src: Number(row.dataset.queueIndex), dest: Number(row.dataset.queueIndex),
-                 startX: ev.clientX, startY: ev.clientY, lastY: ev.clientY, startScroll: _refs.queueList.scrollTop,
-                 lifted: false, pointerId: ev.pointerId, raf: 0, hold: 0, waiting: false };
+                 startY: ev.clientY, lastY: ev.clientY, startScroll: _refs.queueList.scrollTop,
+                 lifted: false, pointerId: ev.pointerId, raf: 0 };
       ev.stopPropagation();     // no map pan / outside-click close
-      if (touchHold(ev)) {
-        const d = _qDrag;
-        d.waiting = true;
-        d.hold = setTimeout(() => {
-          if (_qDrag !== d) return;
-          d.waiting = false;
-          // Measured afresh: the list may have scrolled a little under the finger.
-          d.startY = d.lastY; d.startScroll = _refs.queueList.scrollTop;
-          try { _refs.queueList.setPointerCapture(d.pointerId); } catch (_) {}
-          liftRow(d);
-          placeQueueRows(d);
-          if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
-        }, HOLD_MS);
-        return;                 // no preventDefault: the list can still scroll
-      }
       // Capture keeps moves coming if the pointer leaves the list; a drag
       // still works without it, so a refused capture mustn't abort it.
       try { _refs.queueList.setPointerCapture(ev.pointerId); } catch (_) {}
       ev.preventDefault();      // no text selection
     });
-    // Once a row is held, the finger drags it rather than scrolling the list.
-    _el.addEventListener('touchmove', (ev) => {
-      if (_qDrag && _qDrag.lifted) ev.preventDefault();
-    }, { passive: false });
     // A long press must not bring up the browser's own menu on the row.
     _el.addEventListener('contextmenu', (ev) => {
       if (window.GW_MOBILE && ev.target.closest('[data-queue-index]')) ev.preventDefault();
@@ -657,14 +641,6 @@ const TruckPatrolPanel = (() => {
       if (!_qDrag || ev.pointerId !== _qDrag.pointerId) return;
       const d = _qDrag;
       d.lastY = ev.clientY;
-      if (d.waiting) {
-        // Moved before the hold was up: a scroll, not a drag. Let it go.
-        if (Math.hypot(ev.clientX - d.startX, ev.clientY - d.startY) > HOLD_SLOP) {
-          clearTimeout(d.hold);
-          _qDrag = null;
-        }
-        return;
-      }
       if (!d.lifted) {
         if (Math.abs((ev.clientY - d.startY) / d.zoom) < 4) return;   // a plain click on a row stays a click
         liftRow(d);
@@ -677,7 +653,6 @@ const TruckPatrolPanel = (() => {
     const endQueueDrag = (ev, commit) => {
       if (!_qDrag || ev.pointerId !== _qDrag.pointerId) return;
       const d = _qDrag;
-      clearTimeout(d.hold);
       if (d.raf) cancelAnimationFrame(d.raf);
       if (_refs.queueList.hasPointerCapture(ev.pointerId)) _refs.queueList.releasePointerCapture(ev.pointerId);
       clearRowStyles();
@@ -1122,8 +1097,8 @@ const TruckPatrolPanel = (() => {
         : _numberedLabel('Gas Station', GridManager.getEntity(d.col, d.row));
       const active = _target._autoDispatch && i === _target._queueIdx;
       return `
-      <div data-queue-index="${i}" title="${window.GW_MOBILE ? 'Hold, then drag to reorder' : 'Drag to reorder'}" style="display:flex;align-items:center;gap:4px;background:${active ? '#1a2536' : '#141b26'};border:1px solid ${active ? '#6cb8ff' : '#263244'};border-radius:4px;padding:3px 4px;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:${window.GW_MOBILE ? 'pan-y' : 'none'}">
-        <span style="color:#3a4658;font-size:10px">⠿</span>
+      <div data-queue-index="${i}" title="${window.GW_MOBILE ? 'Drag the grip to reorder' : 'Drag to reorder'}" style="display:flex;align-items:center;gap:4px;background:${active ? '#1a2536' : '#141b26'};border:1px solid ${active ? '#6cb8ff' : '#263244'};border-radius:4px;padding:3px 4px;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:${window.GW_MOBILE ? 'pan-y' : 'none'}">
+        <span data-queue-grip style="color:#3a4658;font-size:10px${window.GW_MOBILE ? ';touch-action:none;font-size:16px;padding:7px 14px 7px 8px;margin:-6px 0 -6px -6px;color:#5d6c7e' : ''}">⠿</span>
         <span style="color:#6cb8ff;font-weight:bold;min-width:14px;font-size:11px">${i + 1}.</span>
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${label}${active ? ' (en route)' : ''}</span>
         ${d.kind === 'source' ? `<span data-queue-waste="${d.col},${d.row}" title="${_target._hauler ? 'Surplus to collect, or what this storage wants' : 'Waste buildup'}" style="${_WASTE_SPAN_STYLE}"></span>` : ''}
