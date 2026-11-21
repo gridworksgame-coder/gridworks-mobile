@@ -580,7 +580,11 @@ function updateStats() {
   const _net = Economy.income - Economy.upkeep;
   const _incEl = document.getElementById('stat-income');
   _incEl.textContent = `${_net >= 0 ? '+' : '-'}${formatRate(Math.abs(_net))}`;
-  _incEl.style.color = _net >= 0 ? '' : '#ff6040';
+  // Toggle the classes, not an inline colour: theme-dashboard.css sets
+  // `.value.good` with !important, which beat the inline red, so a losing
+  // city still read green.
+  _incEl.classList.toggle('good', _net >= 0);
+  _incEl.classList.toggle('bad', _net < 0);
   const _grossEl = document.getElementById('stat-net-hud');
   if (_grossEl) _grossEl.textContent = `gross ${formatRate(Economy.income)}`;
   // Cloud + wind stats
