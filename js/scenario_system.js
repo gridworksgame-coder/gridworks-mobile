@@ -522,6 +522,17 @@ const ScenarioSystem = (() => {
     try { return JSON.parse(localStorage.getItem(BEST_KEY) || '{}') || {}; } catch (_e) { return {}; }
   }
   const MEDAL_RANK = { bronze: 1, silver: 2, gold: 3 };
+
+  // Scenarios unlock in order: the first is open, each later one opens when
+  // the one before it is completed (has a medal). One already completed, or
+  // with a save to resume, stays open, so nobody loses a run they started
+  // before scenarios were locked.
+  function isUnlocked(id, best = _best()) {
+    const i = SCENARIOS.findIndex(s => s.id === id);
+    if (i < 0) return false;
+    if (i === 0 || best[id] || best[SCENARIOS[i - 1].id]) return true;
+    return slotsFor(id).length > 0;
+  }
   // A medal from before medals went by money (old.spent unset) is replaced by
   // the first money result, whatever it is: the two do not compare.
   function _recordBest(id, medal, spent) {
@@ -734,6 +745,7 @@ const ScenarioSystem = (() => {
   // Started from inside another scenario (NEXT on the result screen), that
   // one is saved on the way out.
   async function launch(id) {
+    if (!isUnlocked(id)) return;
     if (!byId(id)) return;
     if (!(await _folderAccess())) return;
     if (run) { try { SaveSystem.save(); } catch (_e) {} }
@@ -1601,6 +1613,9 @@ const ScenarioSystem = (() => {
         color: inherit; font: inherit; transition: border-color .15s, background .15s, transform .15s, box-shadow .15s; }
       .scn-card:hover, .scn-card:focus-visible { outline: none; border-color: rgba(95,216,255,0.65); background: rgba(95,216,255,0.06);
         transform: translateY(-2px); box-shadow: 0 10px 28px rgba(0,0,0,0.45), 0 0 22px rgba(95,216,255,0.12); }
+      .scn-card.scn-locked { cursor: default; opacity: 0.45; filter: grayscale(0.7); }
+      .scn-card.scn-locked:hover { border-color: rgba(150,180,215,0.14); background: rgba(255,255,255,0.025); transform: none; box-shadow: none; }
+      .scn-lock { color: #9fb2c6; }
       .scn-modes { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
       .scn-modes .scn-card { padding: 22px 20px 16px; gap: 12px; }
       .scn-modes .scn-card-t { font-size: 22px; }
@@ -1786,6 +1801,16 @@ const ScenarioSystem = (() => {
     const cards = SCENARIOS.map(s => {
       const b = best[s.id];
       const saved = slotsFor(s.id).length > 0;
+      if (!isUnlocked(s.id, best)) {
+        const prev = SCENARIOS[SCENARIOS.indexOf(s) - 1];
+        return `
+        <div class="scn-card scn-locked" aria-disabled="true">
+          <div class="scn-card-k">${esc(s.kicker)}</div>
+          <div class="scn-card-t">${esc(s.title)}</div>
+          <div class="scn-card-p">${esc(s.tagline)}</div>
+          <div class="scn-card-foot"><span class="scn-lock">🔒 Complete ${esc(prev.title)} to unlock</span></div>
+        </div>`;
+      }
       // A card is one big button: RESUME when there is a save to go back to
       // (with a small START OVER beside it), PLAY otherwise.
       return `
