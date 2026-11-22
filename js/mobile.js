@@ -2023,6 +2023,15 @@
       return cs.display !== 'none' && cs.visibility !== 'hidden';
     });
     document.documentElement.classList.toggle('gwm-panelopen', panel);
+    // A building's or side panel open (not the scenario checklist, which is
+    // up all scenario long): the tutorial card goes under it (mobile.css).
+    document.documentElement.classList.toggle('gwm-bldpanel', OVER_NOTIF.some((id) => {
+      if (id === 'scn-panel') return false;
+      const n = $(id);
+      if (!n || !n.getClientRects().length) return false;
+      const cs = getComputedStyle(n);
+      return cs.display !== 'none' && cs.visibility !== 'hidden';
+    }));
   }
   const OVER_NOTIF = ['entity-panel', ...Object.keys(SIDE_PANELS), 'contract-board',
     'solar-panel', 'refinery-panel', 'fuelgen-panel', 'coalgen-panel', 'turbine-panel', 'shaftgen-panel',
