@@ -1731,6 +1731,23 @@ const MusicSystem = (() => {
   let _currentFade = 0;   // the playing track's end fade length (s), 0 = none
   let _currentIn = 1;     // 0→1 while a track joined part-way (play) fades in
 
+  // Start a song. A browser that hasn't had a tap/click/key on this page yet
+  // (phones, mostly: New Game reloads the page) refuses play(), and a refused
+  // song never ends, so the rotation used to go quiet for the whole session.
+  // Retry on the next input, if that song is still the current one. Touch
+  // only counts once the finger lifts (touchend), not on pointerdown.
+  const GESTURES = ['pointerup', 'touchend', 'click', 'keydown'];
+  function _startTrack(a) {
+    a.play().catch(err => {
+      if (!err || err.name !== 'NotAllowedError') return;
+      const retry = () => {
+        GESTURES.forEach(ev => window.removeEventListener(ev, retry, true));
+        if (_currentTrack === a && a.paused) a.play().catch(() => {});
+      };
+      GESTURES.forEach(ev => window.addEventListener(ev, retry, true));
+    });
+  }
+
   const TRACKS = [
     { src: 'audio/music/ost1.mp3', vol: 0.2875 },
     { src: 'audio/music/ost2.mp3', vol: 0.2875 },
@@ -1857,7 +1874,7 @@ const MusicSystem = (() => {
       _currentBase = TRACKS[idx].vol * 2;
       _currentFade = TRACKS[idx].fadeOut || 0;
       applyVolume();
-      _currentTrack.play().catch(() => {});
+      _startTrack(_currentTrack);
       _currentTrack.addEventListener('ended', scheduleNext);
       // A file that is missing or won't decode never ends: without this the
       // music stopped for the rest of the session the first time one came up.
@@ -1936,7 +1953,7 @@ const MusicSystem = (() => {
         if (_currentTrack !== a) return;                      // stopped, or replaced, while it loaded
         if (at > 0) a.addEventListener('loadedmetadata', () => { try { a.currentTime = at; } catch (_e) {} }, { once: true });
         a.src = url;
-        a.play().catch(() => {});
+        _startTrack(a);
         if (at > 0) a.addEventListener('playing', () => {
           const t0 = performance.now(), iv = setInterval(() => {
             if (_currentTrack !== a) { clearInterval(iv); return; }

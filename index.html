@@ -5784,6 +5784,9 @@ const MenuTheme = (() => {
     audio.play().then(() => {
       pending = false;
       if (stopped) { audio.pause(); return; }
+      // Streamed, the seek above can land before the file is ready: re-seek
+      const want = now();
+      if (Math.abs(audio.currentTime - want) > 0.5) { try { audio.currentTime = want; } catch (_e) {} }
       playing = true;
       fadeTo(1, 1);
       unhookInput();
@@ -5823,6 +5826,8 @@ const MenuTheme = (() => {
     if (!force && !(playing && released)) return;
     window.removeEventListener('pointerdown', onInput, true);
     window.removeEventListener('keydown', onInput, true);
+    window.removeEventListener('pointerup', tryPlay, true);
+    window.removeEventListener('touchend', tryPlay, true);
   }
   function watch() {
     if (released) return;
@@ -5838,12 +5843,19 @@ const MenuTheme = (() => {
       if (started) return;
       started = true;
       clockBase = performance.now() / 1000 - from;
-      fetch(SRC)
+      // Over https (GitHub Pages, itch) the server handles Range requests, so
+      // the track streams and starts at once instead of waiting for all
+      // 13.8 MB; elsewhere it is loaded as a blob first (see above).
+      if (location.protocol === 'https:') { audio.src = SRC; ready = true; }
+      else fetch(SRC)
         .then(r => r.ok ? r.blob() : Promise.reject())
         .then(b => URL.createObjectURL(b), () => SRC)
         .then(url => { audio.src = url; ready = true; tryPlay(); });
       window.addEventListener('pointerdown', onInput, true);
       window.addEventListener('keydown', onInput, true);
+      // On a touchscreen only the finger lifting lets sound start
+      window.addEventListener('pointerup', tryPlay, true);
+      window.addEventListener('touchend', tryPlay, true);
       tryPlay();
       watch();
       // Backstop in case the audio clock stalls
