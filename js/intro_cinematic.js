@@ -253,6 +253,15 @@ const IntroCinematic = (() => {
 
     $('.gi-accept').addEventListener('click', () => { if (letterReady) _accept(); });
     $('.gi-letter').addEventListener('wheel', e => { e.stopPropagation(); e.currentTarget._userScrolled = true; }, { passive: true });
+    // A finger drag stops it following the typing too (it only listened for
+    // the wheel, so on a phone the letter snapped back to the bottom every
+    // frame and could not be scrolled). Dragged back to the bottom, it
+    // follows again.
+    $('.gi-letter').addEventListener('touchmove', e => { e.stopPropagation(); e.currentTarget._userScrolled = true; }, { passive: true });
+    $('.gi-letter').addEventListener('scroll', e => {
+      const L = e.currentTarget;
+      if (L._userScrolled && L.scrollTop + L.clientHeight >= L.scrollHeight - 2) L._userScrolled = false;
+    }, { passive: true });
     fx = $('.gi-fx');
     fxCtx = fx.getContext('2d');
     _resize();

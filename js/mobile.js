@@ -1850,9 +1850,14 @@
     k = Math.min(k, (side ? 0.56 : 0.92) * innerWidth / w0);
     k = Math.max(0.3, k);
     const ks = k.toFixed(3);
-    if (L.style.scale !== ks) {
+    // Origin at the top edge (and, centred, the left edge): `scale` applies
+    // after the letter's own translate(-50%), so scaling about its middle
+    // multiplied that offset too and pushed the letter's top off the screen.
+    // Scaled from here it stays centred where the CSS puts it.
+    const origin = side ? '100% 0' : '0 0';
+    if (L.style.scale !== ks || L.style.transformOrigin !== origin) {
       L.style.scale = ks;
-      L.style.transformOrigin = side ? '100% 50%' : '50% 50%';
+      L.style.transformOrigin = origin;
     }
     const mh = Math.floor(innerHeight * 0.9 / k) + 'px';
     if (L.style.maxHeight !== mh) L.style.maxHeight = mh;
