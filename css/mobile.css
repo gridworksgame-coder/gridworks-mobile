@@ -163,6 +163,8 @@ html.gw-mobile :is(#tutorial-card, #msg-log-panel, #advisor-panel,
   zoom: var(--gwm-panel-zoom);
 }
 html.gw-mobile #tutorial-card { zoom: calc(var(--gwm-panel-zoom) * 0.88); }
+/* The scenario checklist runs 10% smaller: it sat over too much of the map. */
+html.gw-mobile #scn-panel { zoom: calc(var(--gwm-panel-zoom) * 0.9); }
 /* The property panel (tap a building) runs a size smaller still: it
    opens over the map beside what was tapped. */
 html.gw-mobile #entity-panel { zoom: calc(var(--gwm-panel-zoom) * 0.8); }
