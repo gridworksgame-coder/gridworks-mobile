@@ -2031,9 +2031,14 @@ const TutorialSystem = (() => {
       const count = document.createElement('span');
       count.className = 'tut-fold-n';
       count.textContent = `${n} / ${seq.steps.length}`;
-      const chev = document.createElement('span');
-      chev.className = 'tut-fold-chev';
-      chev.textContent = '⌄';
+      // A real, labelled button: a bare chevron on the title bar was easy
+      // to miss. The whole title still toggles it as well.
+      const chev = document.createElement('button');
+      chev.type = 'button';
+      chev.className = 'tut-fold-btn';
+      chev.innerHTML = _folded ? '<i>▴</i> Show' : '<i>▾</i> Hide';
+      chev.setAttribute('aria-expanded', _folded ? 'false' : 'true');
+      chev.title = _folded ? 'Show this step' : 'Fold this card down to its title bar';
       title.appendChild(count);
       title.appendChild(chev);
       title.addEventListener('click', (e) => {
