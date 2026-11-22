@@ -2269,7 +2269,7 @@
     watchAnchored(); setInterval(watchAnchored, 2000);   // some are built later
     // Cutscenes: switch to the desktop-height screen the moment one's root
     // is added, and back when it goes.
-    const CINE_IDS = ['gw-intro', 'gi-titles', 'gw-hq', 'gw-fusion', 'np-draw', 'np-victory'];
+    const CINE_IDS = ['gw-intro', 'gi-titles', 'gw-hq', 'gw-fusion', 'np-draw', 'np-victory', 'gw-rmile'];
     const cineCheck = () => setCineMode(CINE_IDS.some(id => { const n = $(id); return n && !n.classList.contains('out'); }));
     new MutationObserver(cineCheck).observe(document.body, { childList: true });
     // Toasts: the game places each one just under the top bar in screen px,
