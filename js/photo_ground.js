@@ -20,12 +20,24 @@ const PhotoGround = (() => {
   const _imgs = new Map();
   let _loaded = 0;
 
+  // Load an image, retrying if it fails: on a patchy phone connection one
+  // dropped download left that deposit on its plain painted stand-in for the
+  // rest of the session. Tries again after 2, 4, 8 ... s (8 tries in all).
+  function _load(im, src, onload) {
+    let tries = 0;
+    im.onload = onload;
+    im.onerror = () => {
+      if (++tries >= 8) return;
+      setTimeout(() => { im.src = src + (src.includes('?') ? '&' : '?') + 'r=' + tries; }, 1000 * 2 ** tries);
+    };
+    im.src = src;
+  }
+
   function img(name) {
     let im = _imgs.get(name);
     if (!im) {
       im = new Image();
-      im.onload = () => { _loaded++; };
-      im.src = `img/${name}.jpg`;
+      _load(im, `img/${name}.jpg`, () => { _loaded++; });
       _imgs.set(name, im);
     }
     return im.complete && im.naturalWidth ? im : null;
@@ -57,7 +69,7 @@ const PhotoGround = (() => {
   function sprite(prefix, u) {
     let set = _sets.get(prefix);
     if (!set) {
-      set = [1, 2, 3, 4].map(n => { const im = new Image(); im.onload = () => { _spritesLoaded++; }; im.src = `img/${prefix}_${n}.png`; return im; });
+      set = [1, 2, 3, 4].map(n => { const im = new Image(); _load(im, `img/${prefix}_${n}.png`, () => { _spritesLoaded++; }); return im; });
       _sets.set(prefix, set);
     }
     const im = set[Math.min(set.length - 1, Math.floor(u * set.length))];
