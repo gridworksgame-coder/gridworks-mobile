@@ -898,10 +898,10 @@ const HouseRequestSystem = (() => {
       const candidates = [];
       for (let r = anchor.row - 10; r <= anchor.row + 10; r++)
         for (let c = anchor.col - 10; c <= anchor.col + 10; c++) {
-          if (!GridManager.inBounds(c, r)) continue;
-          if (GridManager.getEntity(c, r)) continue;
-          if (WaterSystem.isWater(c, r)) continue;
-          { const _d = ZoneSystem.distToGovZone(c, r); if (ZoneSystem.isInGovZone(c, r) || _d < ZoneSystem.GOV_RING_MIN || _d > ZoneSystem.GOV_RING_MAX) continue; }
+          // Mae's Cabin is a 2×2 house like the rest (it was 1×1)
+          if (!GridManager.inBounds(c, r) || !GridManager.canPlaceFootprint(c, r, 2, 2)) continue;
+          if (WaterSystem.isWater(c, r) || WaterSystem.isWater(c + 1, r) || WaterSystem.isWater(c, r + 1) || WaterSystem.isWater(c + 1, r + 1)) continue;
+          { const _d = ZoneSystem.distToGovZone(c, r); if (ZoneSystem.isInGovZone(c, r) || ZoneSystem.isInGovZone(c + 1, r + 1) || _d < ZoneSystem.GOV_RING_MIN || _d > ZoneSystem.GOV_RING_MAX) continue; }
           if (c < 15 || c >= COLS-15 || r < 15 || r >= ROWS-15) continue;
           candidates.push({ col: c, row: r });
         }
@@ -918,7 +918,7 @@ const HouseRequestSystem = (() => {
     // little or no room inside a ±10 tile search box, regularly yielding
     // just 1-2 candidates instead of the intended OPTION_COUNT.
     if (locs.length < OPTION_COUNT) {
-      const extra = pickCandidateLocations(false, OPTION_COUNT - locs.length, { width: 1, height: 1 }, T.CABIN, 14);
+      const extra = pickCandidateLocations(false, OPTION_COUNT - locs.length, { width: 2, height: 2 }, T.CABIN, 14);
       for (const loc of extra) {
         if (locs.length >= OPTION_COUNT) break;
         if (!locs.some(l => l.col === loc.col && l.row === loc.row)) locs.push(loc);
@@ -1795,7 +1795,7 @@ const HouseRequestSystem = (() => {
     const claimedSlots = new Set();
 
     // Commercial and industrial requests must stay within reach of the grid.
-    // Commercial: 30 tiles ≈ "modest wire run". Industrial: 40 tiles ≈ same
+    // Commercial: 30 tiles ≈ "modest cable run". Industrial: 40 tiles ≈ same
     // idea but a bit looser since factories often sit on the outskirts.
     // Residential is unconstrained (cabins/test connections seed outward).
     const MAX_FROM_INFRA = (zoneKey === 'commercial') ? 30
@@ -2625,7 +2625,7 @@ const HouseRequestSystem = (() => {
       return false;
     }
     // Commercial and industrial: hard cap on distance from grid infra.
-    // 30/40 tiles ≈ "reachable with a modest/longer wire run" — anything
+    // 30/40 tiles ≈ "reachable with a modest/longer cable run" — anything
     // further is too disconnected to belong on the grid yet.
     const MAX_FROM_INFRA = (neighbourType === T.COMMERCIAL) ? 30
                         : (neighbourType === T.INDUSTRIAL) ? 40 : null;
@@ -2785,7 +2785,7 @@ const HouseRequestSystem = (() => {
   // (game seconds), and the construction load the site draws meanwhile.
   // A suburb's lots are ordinary houses going up one after another.
   function _buildFootprint(req) {
-    if (req.isCabin) return { width: 1, height: 1, isCabin: true };
+    if (req.isCabin) return { width: 2, height: 2, isCabin: true };
     if (CLUSTER_LOTS[req.subtype]) return entityFootprint(T.HOUSE);
     return entityFootprint(req.isIndustrial ? T.INDUSTRIAL : req.isCommercial ? T.COMMERCIAL : T.HOUSE, req.subtype);
   }
@@ -2804,13 +2804,12 @@ const HouseRequestSystem = (() => {
     const needsSub = req.isCommercial || req.isIndustrial;
 
     const entityType = req.isIndustrial ? T.INDUSTRIAL : req.isCommercial ? T.COMMERCIAL : T.HOUSE;
-    // Mae's Cabin keeps the old 1×1 house footprint (its slots are found at 1×1).
-    // Otherwise the size it is about to be built at (below): the request's own
+    // Mae's Cabin is a 2×2 house (its slots are found at 2×2). Otherwise the size it is about to be built at (below): the request's own
     // where it carries one, as the map pins draw it. Checked at the subtype's
     // size instead, a request carrying a different one had a spot that fit
     // refused as "occupied" and was moved to another option.
     const _subFp = entityFootprint(entityType, req.subtype);
-    const fp = req.isCabin ? { width: 1, height: 1 }
+    const fp = req.isCabin ? { width: 2, height: 2 }
       : { width: req._width > 1 ? req._width : _subFp.width, height: req._height > 1 ? req._height : _subFp.height };
 
     // Use the pre-chosen location; fall back to random if somehow missing
@@ -2886,7 +2885,7 @@ const HouseRequestSystem = (() => {
       entity.commercialSubtype = req.subtype || 'commercial_default';
       applySubtypeFootprint(entity);
     }
-    if (req.isCabin) { entity.width = 1; entity.height = 1; }
+    if (req.isCabin) { entity.width = 2; entity.height = 2; entity.houseWealthTier = 'budget'; }   // Mae's trailer
     // Clear any trees in the footprint
     for (let _dr=0; _dr<(entity.height||1); _dr++) for (let _dc=0; _dc<(entity.width||1); _dc++) {
       const _t = GridManager.getEntity(lotPos.col+_dc, lotPos.row+_dr);
@@ -2948,7 +2947,7 @@ const HouseRequestSystem = (() => {
     if (wasCabin) {
       cabinCleared = true;
       cabinDeal = true;
-      showToast("⚡ Hookup deal: wires are FREE and Power Poles are 50% off until Mae's Cabin is online", '#50e890', '#081408', '#206030');
+      showToast("⚡ Hookup deal: cables are FREE and Power Poles are 50% off until Mae's Cabin is online", '#50e890', '#081408', '#206030');
       if (typeof refreshHotbar === 'function') refreshHotbar();
     }
     cooldownTimer = gridHealthCooldown();
@@ -3256,7 +3255,7 @@ const HouseRequestSystem = (() => {
         for (const h of EntityRegistry.getByType(T.HOUSE)) {
           if (!h.powered) continue;
           cabinDeal = false;
-          showToast("Mae's Cabin is online; wires and Power Poles are back to full price", '#a0c0d0', '#080c10', '#1e3040');
+          showToast("Mae's Cabin is online; cables and Power Poles are back to full price", '#a0c0d0', '#080c10', '#1e3040');
           if (typeof refreshHotbar === 'function') refreshHotbar();
           break;
         }

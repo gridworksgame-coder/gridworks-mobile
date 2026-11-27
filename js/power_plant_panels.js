@@ -152,8 +152,8 @@ function _governorWarning(gen, throttleKey) {
   const hot = throttleKey === 'overdrive';
   return box(hot ? '#a02010' : '#6a5020', hot ? 'rgba(255,40,20,0.14)' : 'rgba(255,170,40,0.07)', hot ? '#ff7050' : '#e0b060',
     hot
-      ? `<b>⚠ UNPROTECTED IN OVERDRIVE</b>: Overdrive drives it to 100%, and held there too long the generator explodes, destroying nearby buildings, pipes, wires and belts and setting off nearby generators. Place a Throttle Governor touching it${how}.`
-      : `<b>⚠ NOT PROTECTED IN OVERDRIVE</b>: safe at Eco and Normal. In Overdrive it climbs to 100%, and held there too long it explodes, destroying nearby buildings, pipes, wires and belts and setting off nearby generators. Place a Throttle Governor touching it${how} to make Overdrive safe.`);
+      ? `<b>⚠ UNPROTECTED IN OVERDRIVE</b>: Overdrive drives it to 100%, and held there too long the generator explodes, destroying nearby buildings, pipes, cables and belts and setting off nearby generators. Place a Throttle Governor touching it${how}.`
+      : `<b>⚠ NOT PROTECTED IN OVERDRIVE</b>: safe at Eco and Normal. In Overdrive it climbs to 100%, and held there too long it explodes, destroying nearby buildings, pipes, cables and belts and setting off nearby generators. Place a Throttle Governor touching it${how} to make Overdrive safe.`);
 }
 
 const FuelGenPanel = (() => {

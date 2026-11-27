@@ -24,6 +24,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 function renderReprocessingPlant(e, px, py, t) {
+  if (_anOK(e, 'rep', 16, 13)) return _repArt(e, px, py, t);   // rendered (render_oil_nuclear.js, end)
   const def = EntityDefs[T.REPROCESSOR];
   const w   = (e.width  || def.width)  * TILE;
   const h   = (e.height || def.height) * TILE;

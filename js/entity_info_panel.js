@@ -63,8 +63,8 @@ const EntityInfoPanel = (() => {
   // the symptom otherwise is simply that the player's money did nothing.
   function _strandedRow(e) {
     if (e._noConductor) {
-      return [_row('\u26a0 Not on a wire network',
-        'Place it touching a wire or pole \u2014 as placed it raises nothing', 'bad')];
+      return [_row('\u26a0 Not on a cable network',
+        'Place it touching a cable or pole \u2014 as placed it raises nothing', 'bad')];
     }
     if (e._unpoweredBay) {
       return [_row('\u26a0 Bay offline', 'Damaged \u2014 contributes nothing until repaired', 'bad')];
@@ -1151,7 +1151,7 @@ const EntityInfoPanel = (() => {
         const _base = Progression.isUnlocked(T.COALGENERATOR) ? 150 : 75;
         const _cost = _hasMonitor ? Math.round(_base*0.75) : _base;
         _repairBtn.style.display = 'block';
-        _repairBtn.textContent = `⚡ Repair Wire: $${_cost}`;
+        _repairBtn.textContent = `⚡ Repair Cable: $${_cost}`;
         _repairBtn.onclick = () => {
           if (!Economy.canAfford(_cost)) { showToast('Not enough funds to repair', '#ff4040', '#140000', '#600000'); return; }
           Economy.spend(_cost);
@@ -1159,7 +1159,7 @@ const EntityInfoPanel = (() => {
           e.failed = false;
           LightningDamageSystem.clearWireFire?.(e);
           PowerNetwork.recomputeWireHops();
-          showToast('✅ Wire repaired', '#40c060', '#001408', '#0a4020');
+          showToast('✅ Cable repaired', '#40c060', '#001408', '#0a4020');
           buildContent();
         };
       } else {
@@ -1467,7 +1467,7 @@ const EntityInfoPanel = (() => {
         row('',         e.powered ? `(reliability × satisfaction)` : `(${Math.round(houseBlackoutPct)}%: outage pay, falling)`, 'dim'),
       );
       section(
-        row('Connection', e.powered ? 'Wire network' : 'No wire connection', e.powered ? 'good' : 'bad'),
+        row('Connection', e.powered ? 'Cable network' : 'No cable connection', e.powered ? 'good' : 'bad'),
       );
     }
 
@@ -1583,12 +1583,12 @@ const EntityInfoPanel = (() => {
         ..._strandedRow(e),
         row('Network Load',       `${formatPower(netLoad, 1)}`, pct > 0.85 ? 'bad' : pct > 0.5 ? 'warn' : 'good'),
         bar(pct, pct > 0.85 ? '#ff4040' : pct > 0.5 ? '#ffe040' : '#40e0ff'),
-        row('Wire Threshold',     `${formatPower(effThr, 0)} (base ${formatPower(baseThr)}, +${formatPower(info.capPerUnit, 0)} per MK1)`),
+        row('Cable Threshold',     `${formatPower(effThr, 0)} (base ${formatPower(baseThr)}, +${formatPower(info.capPerUnit, 0)} per MK1)`),
         row('Protectors on net',  `${netProtectors}`, netProtectors > 0 ? 'good' : 'dim'),
         ..._marginRows(info),
         row('Storm Fault Risk',   _faultRiskLabel(e.networkId), 'good'),
         row('Power Draw',         `${formatPower(e.def.powerInput)}`),
-        row('Status',             e._noConductor ? 'Isolated \u2014 no wires to raise' : 'Boosting network capacity', e._noConductor ? 'bad' : 'good'),
+        row('Status',             e._noConductor ? 'Isolated \u2014 no cables to raise' : 'Boosting network capacity', e._noConductor ? 'bad' : 'good'),
       );
       section(row('Cost', formatMoney(e.def.cost)), row('Upkeep', `-$${e.def.upkeep}/s`, 'bad'));
     }
@@ -1670,11 +1670,11 @@ const EntityInfoPanel = (() => {
         ..._strandedRow(e),
         row('Network Load',   `${formatPower(netLoad, 1)}`, pct > 0.85 ? 'bad' : pct > 0.5 ? 'warn' : 'good'),
         bar(pct, pct > 0.85 ? '#ff4040' : pct > 0.5 ? '#ffe040' : '#00ffcc'),
-        row('Wire Threshold', `${formatPower(effThr, 0)} (base 85 kW, +${formatPower(info.capPerUnit, 0)} per MK2)`, 'good'),
+        row('Cable Threshold', `${formatPower(effThr, 0)} (base 85 kW, +${formatPower(info.capPerUnit, 0)} per MK2)`, 'good'),
         row('MK2 on network', `${netMK2}`, netMK2 > 0 ? 'good' : 'dim'),
         ..._marginRows(info),
         row('Storm Fault Risk', _faultRiskLabel(e.networkId), 'good'),
-        row('Status',         e._noConductor ? 'Isolated \u2014 no wires to raise' : 'Boosting network wire capacity', e._noConductor ? 'bad' : 'good'),
+        row('Status',         e._noConductor ? 'Isolated \u2014 no cables to raise' : 'Boosting network cable capacity', e._noConductor ? 'bad' : 'good'),
       );
       section(row('Cost', formatMoney(e.def.cost)), row('Upkeep', `-$${e.def.upkeep}/s`, 'bad'));
     }
@@ -1697,12 +1697,12 @@ const EntityInfoPanel = (() => {
         ..._strandedRow(e),
         row('Network Load',   `${formatPower(netLoad, 1)}`, pct > 0.85 ? 'bad' : pct > 0.5 ? 'warn' : 'good'),
         bar(pct, pct > 0.85 ? '#ff4040' : pct > 0.5 ? '#ffe040' : '#b070ff'),
-        row('Wire Threshold', `${formatPower(effThr, 0)} (base 85 kW, +${formatPower(info.capPerUnit, 0)} per MK3)`, 'good'),
+        row('Cable Threshold', `${formatPower(effThr, 0)} (base 85 kW, +${formatPower(info.capPerUnit, 0)} per MK3)`, 'good'),
         row('MK3 on network', `${netMK3}`, netMK3 > 0 ? 'good' : 'dim'),
         ..._marginRows(info),
         row('Storm Fault Risk', _faultRiskLabel(e.networkId), 'good'),
         row('Power Draw',     `${formatPower(e.def.powerInput)}`, e.powered ? 'neutral' : 'bad'),
-        row('Status',         e.networkId < 0 ? 'Not connected' : e.powered ? 'Boosting network wire capacity' : 'No power: arrester bay offline', live ? 'good' : 'dim'),
+        row('Status',         e.networkId < 0 ? 'Not connected' : e.powered ? 'Boosting network cable capacity' : 'No power: arrester bay offline', live ? 'good' : 'dim'),
       );
       section(row('Cost', formatMoney(e.def.cost)), row('Upkeep', `-$${e.def.upkeep}/s`, 'bad'));
     }
@@ -1738,7 +1738,7 @@ const EntityInfoPanel = (() => {
       const load = e.load || 0;
       const pct  = cap > 0 ? Math.min(1, load / cap) : 0;
       const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-      titleEl.textContent  = 'Wire';
+      titleEl.textContent  = 'Cable';
       titleEl.style.color  = '#00d4ff';
       statusEl.textContent = e._weatherFailed ? 'STORM DAMAGE'
                            : e.failed         ? 'BURNED OUT'
@@ -1781,7 +1781,7 @@ const EntityInfoPanel = (() => {
       statusEl.textContent = e.powered ? 'ACTIVE' : 'ISOLATED';
       statusEl.className   = `ep-status ${e.powered ? 'good' : 'neutral'}`;
       section(
-        row('Function',   'Wire range relay'),
+        row('Function',   'Cable range relay'),
         row('Extends By', `${hops} tiles`),
         row('Status',     e.powered ? 'Carrying power' : 'Not connected', e.powered ? 'good' : 'dim'),
       );
@@ -2305,7 +2305,7 @@ const EntityInfoPanel = (() => {
       const _td = EntityDefs[T.POWERTOWER];
       const _paid = e._paid !== undefined ? e._paid : _td.cost;
       section(
-        row('Function',   '8-tile wire relay', 'dim'),
+        row('Function',   '8-tile cable relay', 'dim'),
         row('Upkeep',     `-$${_td.upkeep}/s`, 'bad'),
         row('Footprint',  `${e.width || _td.width}×${e.height || _td.height} tiles`, 'dim'),
         row('Cost',       e._waterFooting ? `${formatMoney(_paid)} (incl. ${formatMoney(WaterBuild.TOWER_FOOTING)} footings)` : formatMoney(_paid), 'dim'),
@@ -2784,7 +2784,7 @@ const EntityInfoPanel = (() => {
         row('Steam Draw',  `${GeothermalSystem.getOutputPerTurbine()} units/s`),
         row('Well',        well ? 'Connected' : 'Not on a well output port', well ? 'good' : 'bad'),
         row('Well Power',  well ? (well.powered ? 'Powered' : 'Unpowered') : '—', well && well.powered ? 'good' : 'bad'),
-        row('Grid Wire',   e._hasPower ? 'Connected' : 'None adjacent', e._hasPower ? 'good' : 'bad'),
+        row('Grid Cable',   e._hasPower ? 'Connected' : 'None adjacent', e._hasPower ? 'good' : 'bad'),
       );
       section(row('Cost', formatMoney(def.cost)), row('Upkeep', `-$${def.upkeep}/s`, 'bad'));
     }
@@ -3909,7 +3909,7 @@ const EntityInfoPanel = (() => {
       section(
         row('Function',       'Decelerates a D-He3 ion stream → electricity; needs both', 'dim'),
         row('Ion Stream',     connected ? 'Piped to a D-He3 reactor' : 'No pipe from an Advanced Fusion Reactor\'s ION OUT (D-T fuel makes steam, not ions)', connected ? 'good' : 'bad'),
-        row('Grid Wiring',    hasPower ? 'Wire connected' : 'Not wired', hasPower ? 'good' : 'bad'),
+        row('Grid Wiring',    hasPower ? 'Cable connected' : 'Not wired', hasPower ? 'good' : 'bad'),
         row('Stream Draw',    `${def.highBetaDraw || 1000} units/s`, 'dim'),
         row('Output',         gen ? `${formatPower(e._currentOutput || 0)}` : '0 kW', gen ? 'good' : 'dim'),
         row('Footprint',      `${e.width || 1}×${e.height || 1} tiles`),
@@ -4345,7 +4345,7 @@ const EntityInfoPanel = (() => {
       section(
         row('Function',     'Converts reactor steam → electricity; needs both', 'dim'),
         row('Steam Pipe',   connected ? 'Piped to a running reactor' : 'No pipe run to a reactor', connected ? 'good' : 'bad'),
-        row('Grid Wiring',  hasPower ? 'Wire connected' : 'Not wired', hasPower ? 'good' : 'bad'),
+        row('Grid Wiring',  hasPower ? 'Cable connected' : 'Not wired', hasPower ? 'good' : 'bad'),
         row('Steam Draw',   `${def.steamDraw || 100} u/s steam (its full draw or none)`, 'dim'),
         row('Output',       gen ? `${formatPower(e._currentOutput || 0)}` : '0 kW', gen ? 'good' : 'dim'),
         row('Footprint',    `${e.width || 1}×${e.height || 1} tiles`),
@@ -4667,7 +4667,7 @@ const EntityInfoPanel = (() => {
       );
       section(
         row('Per Tree',   `${BiofuelSystem.yieldRange(4, 8)} biofuel (hold RMB 1.5s)`),
-        row('To Unlock Wire', BiofuelSystem.getTotalCollected() >= 50 ? 'Unlocked ✓' : `${BiofuelSystem.getTotalCollected()}/50 collected`, BiofuelSystem.getTotalCollected() >= 50 ? 'good' : 'dim'),
+        row('To Unlock Cable', BiofuelSystem.getTotalCollected() >= 50 ? 'Unlocked ✓' : `${BiofuelSystem.getTotalCollected()}/50 collected`, BiofuelSystem.getTotalCollected() >= 50 ? 'good' : 'dim'),
         row('Total Collected', `${BiofuelSystem.getTotalCollected()} biofuel`),
         row('Research Unlock', BiofuelSystem.getTotalCollected() >= 125 ? 'Unlocked ✓' : `${BiofuelSystem.getTotalCollected()}/125`, BiofuelSystem.getTotalCollected() >= 125 ? 'good' : 'dim'),
       );

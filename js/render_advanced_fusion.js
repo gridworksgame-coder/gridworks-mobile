@@ -367,6 +367,7 @@ function _afrColumnTop(cx, cy, r, U) {
 }
 
 function renderAdvancedFusionReactor(e, px, py, t) {
+  if (FusionArt.ok(e, 'afr', 48, 48)) return _afrArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.ADVFUSIONREACTOR];
   const f = _plantFrame(e, px, py, T.ADVFUSIONREACTOR);
   const W = f.bw, H = f.bh;
@@ -1428,4 +1429,328 @@ function renderAdvancedFusionReactor(e, px, py, t) {
   _wfPlate(plate, sx, sy, S, plateCol, on);
   const [lx, ly] = f.toWorld(W / 2 + m * 0.2, H * 0.022);
   _wfLamp(lx, ly, S, t, gen ? accent : (on ? '#ffb030' : '#ff4040'), true);
+}
+
+/* ── Fusion chain, rendered ──────────────────────────────────────────────
+   Fusion Fuel Plant, Fusion Reactor (tokamak), Advanced Fusion Reactor
+   (stellarator), MHD Decelerator Ring, Helium-3 Separator and Tritium
+   Breeding Facility, built in Blender (scripts/render_fusion.py, which
+   shares render_advnuke.py's helpers and colour palette), at their default
+   size and rotation; anything else keeps its painted art. FUSION_LAYOUT is
+   the script's fu_layout.json (re-paste after a re-render). The machines are
+   built with open vessel channels: the plasma, beams, coil chase, cryo
+   frost, lamps, readouts and ports are all drawn live over them, with the
+   shared helpers at the end of render_oil_nuclear.js (_anFrame and co). */
+const FUSION_LAYOUT = {"ffp": {"fans": [[-19.56, 15.18, 4.22, 1.469], [-15.48, 15.18, 4.22, 1.469], [-9.84, -15.84, 3.22, 1.21], [-5.76, -15.84, 3.22, 1.21], [-1.68, -15.84, 3.22, 1.21], [2.4, -15.84, 3.22, 1.21]], "vault": [-17.76, 1.76, 4.8], "chambers": [[-1.517, -1.44, 2.0, 2.0], [5.971, -1.44, 2.0, 2.0]], "hall": [-12.0, 12.96, -11.88, 11.0, 4.2], "belt": [-6.0, 10.96, 2.56, 1.05], "tubes": [[16.08, 10.92, 3.25, 0.5], [18.24, 10.92, 3.25, 0.5], [20.4, 10.92, 3.25, 0.5], [16.08, 8.051, 3.25, 0.5], [18.24, 8.051, 3.25, 0.5], [20.4, 8.051, 3.25, 0.5], [16.08, 5.183, 3.25, 0.5], [18.24, 5.183, 3.25, 0.5], [20.4, 5.183, 3.25, 0.5], [16.08, 2.314, 3.25, 0.5], [18.24, 2.314, 3.25, 0.5], [20.4, 2.314, 3.25, 0.5], [16.08, -0.554, 3.25, 0.5], [18.24, -0.554, 3.25, 0.5], [20.4, -0.554, 3.25, 0.5], [16.08, -3.423, 3.25, 0.5], [18.24, -3.423, 3.25, 0.5], [20.4, -3.423, 3.25, 0.5], [16.08, -6.291, 3.25, 0.5], [18.24, -6.291, 3.25, 0.5], [20.4, -6.291, 3.25, 0.5], [16.08, -9.16, 3.25, 0.5], [18.24, -9.16, 3.25, 0.5], [20.4, -9.16, 3.25, 0.5]], "board": [[-21.2, -17.54, 4.2], [-13.84, -17.54, 4.2], [-21.2, -15.4, 5.6]], "ln2": [18.24, -15.84, 3.1], "frame": [-24, 24, -22, 22], "lamp": [23.4, 21.4, 0.4], "rect": [-24.3, 28.987, -28.103, 29.228]}, "hfr": {"coils": [[15.9, 0.0, 10.0], [14.941, 5.438, 10.0], [12.18, 10.22, 10.0], [7.95, 13.77, 10.0], [2.761, 15.658, 10.0], [-2.761, 15.658, 10.0], [-7.95, 13.77, 10.0], [-12.18, 10.22, 10.0], [-14.941, 5.438, 10.0], [-15.9, 0.0, 10.0], [-14.941, -5.438, 10.0], [-12.18, -10.22, 10.0], [-7.95, -13.77, 10.0], [-2.761, -15.658, 10.0], [2.761, -15.658, 10.0], [7.95, -13.77, 10.0], [12.18, -10.22, 10.0], [14.941, -5.438, 10.0]], "plasma": [0, 0, 3.2, 14.4, 3.2], "R": 21.6, "nbi": [[-15.91, 15.91, 3.0, 2.356], [15.91, -15.91, 3.0, -0.785]], "banks": [[-28.8, -21.2, 21.6, 28.4, 5.52], [21.2, 28.8, 21.6, 28.4, 5.52], [-28.8, -21.2, -28.4, -21.6, 5.52], [21.2, 28.8, -28.4, -21.6, 5.52]], "frame": [-30, 30, -30, 30], "lamp": [29.4, 29.4, 0.6], "rect": [-30.3, 35.847, -37.167, 38.498], "topRect": [-25.1, 25.1, -25.1, 33.298]}, "afr": {"band": [0, 0, 4.0, 19.68, 2.6, 1.4], "coils": [[23.28, 0.0, 10.5], [20.809, 5.343, 11.831], [16.279, 8.949, 11.323], [13.542, 12.717, 9.677], [11.511, 18.139, 9.169], [7.194, 22.141, 10.5], [1.349, 21.441, 11.831], [-3.481, 18.248, 11.323], [-7.91, 16.809, 9.677], [-13.694, 16.553, 9.169], [-18.834, 13.684, 10.5], [-19.975, 7.909, 11.831], [-18.43, 2.328, 11.323], [-18.43, -2.328, 9.677], [-19.975, -7.909, 9.169], [-18.834, -13.684, 10.5], [-13.694, -16.553, 11.831], [-7.91, -16.809, 11.323], [-3.481, -18.248, 9.677], [1.349, -21.441, 9.169], [7.194, -22.141, 10.5], [11.511, -18.139, 11.831], [13.542, -12.717, 11.323], [16.279, -8.949, 9.677], [20.809, -5.343, 9.169]], "tower": [0, 0, 13.5], "cryopumps": [[-13.62, 36.48, 4.8], [-7.772, 36.48, 4.8], [-1.924, 36.48, 4.8], [3.924, 36.48, 4.8], [9.772, 36.48, 4.8], [15.62, 36.48, 4.8]], "injector": [-31.68, -1, 2.4], "dec": [[28.8, 45.12, 19.0, 2.8, 22.838, 15.067], [28.8, 45.12, -21.0, 2.8, 22.107, -16.12]], "waveguides": [[[-24.02, -29.4, 4.5], [-23.868, -13.78, 4.5]], [[-24.02, -32.9, 4.5], [-21.112, -17.715, 4.5]], [[-24.02, -36.4, 4.5], [-17.715, -21.112, 4.5]], [[-24.02, -39.9, 4.5], [-13.78, -23.868, 4.5]]], "smes": [[28.52, -32.52, 2.3, 3.0], [39.02, -32.52, 2.3, 3.0], [28.52, -40.32, 2.3, 3.0], [39.02, -40.32, 2.3, 3.0]], "nbi": [[12.628, -35.076, 6.666, -18.517, 3.0], [-12.628, -35.076, -6.666, -18.517, 3.0]], "board": [[-43.6, 6.5, 5.2], [-30.4, 6.5, 5.2], [-43.6, 9.0, 6.6]], "frame": [-48, 48, -48, 48], "lamp": [47.2, 47.2, 0.6], "R": 27.36, "rack": [5.952, 56.16, 14.88, 4.8], "rect": [-48.3, 53.768, -55.07, 56.383], "topRect": [-31.26, 31.26, -31.26, 39.343]}, "mhd": {"mods": [[-28.617, 1.6, 7.0], [-25.25, 1.6, 7.0], [-21.883, 1.6, 7.0], [-18.517, 1.6, 7.0], [-15.15, 1.6, 7.0], [-11.783, 1.6, 7.0], [-8.417, 1.6, 7.0], [-5.05, 1.6, 7.0], [-1.683, 1.6, 7.0], [1.683, 1.6, 7.0], [5.05, 1.6, 7.0], [8.417, 1.6, 7.0], [11.783, 1.6, 7.0], [15.15, 1.6, 7.0], [18.517, 1.6, 7.0], [21.883, 1.6, 7.0], [25.25, 1.6, 7.0], [28.617, 1.6, 7.0]], "board": [[-7.6, 8.5, 4.8], [7.6, 8.5, 4.8], [-7.6, 11.0, 6.2]], "fans": [[-6.0, -10.6, 3.42, 1.44], [-2.0, -10.6, 3.42, 1.44], [2.0, -10.6, 3.42, 1.44], [6.0, -10.6, 3.42, 1.44], [10.0, -10.6, 3.42, 1.44]], "frame": [-38, 38, -14, 14], "lamp": [37.4, 13.4, 0.6], "duct": [-30.3, 30.3, -1.0, 6.4], "diffuser": [32.9, -1.0, 3.4, 3.75], "rect": [-38.3, 41.425, -18.169, 18.919]}, "he3": {"fans": [[-4.635, 14.94, 3.02, 1.069], [-1.665, 14.94, 3.02, 1.069], [1.305, 14.94, 3.02, 1.069], [4.275, 14.94, 3.02, 1.069]], "cryostat": [-1.08, 0.0, 5.06, 2.97, 4.59], "core": [-1.08, 0.0, 5.7, 1.62], "cols": [[-1.08, 8.46, 11.2, 1.224], [6.247, 4.23, 11.2, 1.224], [6.247, -4.23, 11.2, 1.224], [-1.08, -8.46, 11.2, 1.224], [-8.407, -4.23, 11.2, 1.224], [-8.407, 4.23, 11.2, 1.224]], "vents": [[-14.4, -13.68, 7.5], [-11.16, -13.68, 7.5]], "spheres": [[12.78, 11.88, 4.92, 2.16], [12.78, 6.12, 4.92, 2.16], [9.9, 9.0, 3.84, 1.62]], "rack": [[9.86, -5.04, 1.85], [10.694, -5.04, 1.85], [11.529, -5.04, 1.85], [12.363, -5.04, 1.85], [13.197, -5.04, 1.85], [14.031, -5.04, 1.85], [14.866, -5.04, 1.85], [15.7, -5.04, 1.85]], "board": [[7.6, -13.9, 4.2], [15.8, -13.9, 4.2], [7.6, -11.4, 5.6]], "frame": [-18, 18, -18, 18], "lamp": [17.4, 17.4, 0.5], "rect": [-18.3, 22.753, -23.813, 24.882]}, "tb": {"fans": [[16.333, 17.0, 3.22, 1.68], [21.0, 17.0, 3.22, 1.68], [25.667, 17.0, 3.22, 1.68]], "ring": [-10.0, -1.0, 0.9, 15.4], "target": [20.0, -1.0, 6.0, 4.95], "rack": [[31.1, -7.2, 2.25, 0.45], [32.25, -7.2, 2.25, 0.45], [33.4, -7.2, 2.25, 0.45], [34.55, -7.2, 2.25, 0.45], [35.7, -7.2, 2.25, 0.45]], "board": [[30.4, -20.5, 4.2], [36.6, -20.5, 4.2], [30.4, -18.0, 5.6]], "frame": [-38, 38, -22, 22], "lamp": [37.4, 21.4, 0.5], "rect": [-38.3, 40.839, -25.443, 26.053]}};
+const FusionArt = (() => {
+  const ims = new Map(); let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) { im = new Image(); im.onerror = () => { failed = true; }; im.src = `img/${name}.png`; ims.set(name, im); }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ok(e, kind, w, h) {
+      if (!FUSION_LAYOUT || !FUSION_LAYOUT[kind] || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+      if ((e._rotation || 0) !== 0 || (e.width || w) !== w || (e.height || h) !== h) return false;
+      return !!get(kind + '_base') && !!AdvNukeArt.get('hyp_fan');
+    },
+  };
+})();
+// A glowing ring of plasma round (cx, cy) on screen: radius r(a) px, a halo,
+// a hot core and n helical strands twisting round it.
+function _fuPlasma(cx, cy, rfun, tube, t, k, rgbA, rgbB, strands = 3, S = 1) {
+  if (k <= 0.01) return;
+  const N = 120, TAU = Math.PI * 2;
+  const path = (off, ph, amp) => { ctx.beginPath(); for (let i = 0; i <= N; i++) { const a = i / N * TAU, r = rfun(a) + off + amp * Math.sin(a * 7 + ph); const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } };
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+  path(0, 0, 0); ctx.strokeStyle = `rgba(${rgbA},${(0.22 * k).toFixed(3)})`; ctx.lineWidth = tube * 2.4; ctx.stroke();
+  ctx.strokeStyle = `rgba(${rgbA},${(0.45 * k).toFixed(3)})`; ctx.lineWidth = tube * 1.2; ctx.stroke();
+  for (let s = 0; s < strands; s++) {
+    path(0, t * (1.4 + s * 0.3) + s * 2.1, tube * 0.45);
+    ctx.strokeStyle = `rgba(${s % 2 ? rgbB : rgbA},${(0.75 * k).toFixed(3)})`; ctx.lineWidth = Math.max(1, tube * 0.22); ctx.stroke();
+  }
+  path(0, 0, 0); ctx.strokeStyle = `rgba(255,255,255,${(0.6 * k).toFixed(3)})`; ctx.lineWidth = Math.max(1, tube * 0.18); ctx.stroke();
+  // ions running round it
+  for (let q = 0; q < 6; q++) {
+    const a = (t * 0.9 + q / 6) * TAU, r = rfun(a), x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+    _anGlow(x, y, tube * 1.6, rgbB, 0.5 * k); ctx.fillStyle = `rgba(255,255,255,${(0.9 * k).toFixed(3)})`; ctx.beginPath(); ctx.arc(x, y, Math.max(1, tube * 0.25), 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+function _fuChase(F, pts, t, on, rgb, speed = 2) {
+  if (!on) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  pts.forEach((p, i) => { const [x, y] = F.P(p[0], p[1], p[2]), b = 0.5 + 0.5 * Math.sin(t * speed * 3 - i * 0.7); _anGlow(x, y, 1.2 * F.M, rgb, 0.15 + 0.45 * b); });
+  ctx.restore();
+}
+// The rendered burn: the reactor's top layer, then the same view lit by its
+// plasma (glowing in the vessel, lighting the coils) faded in by k. Returns
+// false when those sprites are missing so the caller draws the vector plasma.
+function _fuLitLayers(F, rect, top, lit, k) {
+  if (!rect || !top || !lit) return false;
+  F.draw(top, rect);
+  if (k > 0.01) { ctx.save(); ctx.globalAlpha = Math.min(1, k); F.draw(lit, rect); ctx.restore(); }
+  return true;
+}
+// The coils glowing amber while the magnets charge, wiped round from 12 o'clock.
+function _fuChargeWipe(F, im, rect, cx, cy, p, t) {
+  if (!im || p <= 0) return false;
+  ctx.save(); ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, F.W * 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, p)); ctx.closePath(); ctx.clip();
+  ctx.globalAlpha = 0.7 + 0.2 * Math.sin(t * 4); F.draw(im, rect); ctx.restore();
+  return true;
+}
+// The Field Core aura inside a rendered reactor: drawn on a scratch canvas,
+// the coils in front cut out of it (the charge sprite is exactly their visible
+// silhouette), clipped to the cryostat's lip, then added over the machine, so
+// the field sits in the vessel under the coils instead of on top of it all.
+let _fuAuraCv = null;
+function _fuAuraInMachine(F, e, cx, cy, R, outline, S, k, t, coil, rect, lip) {
+  if (typeof renderFieldCoreAura !== 'function') return;
+  const live = Array.isArray(e._cores) && e._cores.some(c => (c.charge || 0) > 0);
+  const recent = e._fcFxT !== undefined && performance.now() / 1000 - e._fcFxT < 3;
+  if (!coil || !rect || !(live || recent)) { renderFieldCoreAura(e, cx, cy, R, outline, S, k, t); return; }
+  const main = ctx, cv = main.canvas;
+  if (!_fuAuraCv) _fuAuraCv = document.createElement('canvas');
+  if (_fuAuraCv.width !== cv.width || _fuAuraCv.height !== cv.height) { _fuAuraCv.width = cv.width; _fuAuraCv.height = cv.height; }
+  const oc = _fuAuraCv.getContext('2d');
+  oc.setTransform(1, 0, 0, 1, 0, 0); oc.globalCompositeOperation = 'source-over'; oc.globalAlpha = 1; oc.clearRect(0, 0, cv.width, cv.height);
+  oc.setTransform(main.getTransform());
+  ctx = oc;
+  try {
+    renderFieldCoreAura(e, cx, cy, R, outline, S, k, t);
+    oc.globalCompositeOperation = 'destination-out'; F.draw(coil, rect);
+    const [lx, ly, lr] = lip;
+    oc.globalCompositeOperation = 'destination-in'; oc.beginPath(); oc.arc(lx, ly, lr, 0, Math.PI * 2); oc.fill();
+  } finally { ctx = main; }
+  main.save(); main.setTransform(1, 0, 0, 1, 0, 0); main.globalCompositeOperation = 'lighter'; main.globalAlpha = 0.7; main.drawImage(_fuAuraCv, 0, 0); main.restore();
+}
+function _fuState(e, def) {
+  const on = !!e.powered, gen = !!e._generating;
+  const charging = on && !e._started && !!e._magnetsReady;
+  return { on, gen, charging, chargeP: charging && typeof _fusionChargeFrac === 'function' ? _fusionChargeFrac(e, def) : 0,
+           igniteP: typeof _fusionIgnitePhase === 'function' ? _fusionIgnitePhase(e, performance.now() / 1000) : -1, venting: (e._quenchVent || 0) > 0 };
+}
+
+// ── Fusion Fuel Plant ──
+function _ffpArt(e, px, py, t) {
+  const L = FUSION_LAYOUT.ffp, def = EntityDefs[T.FUSIONFUELPLANT], F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const on = e.powered, active = !!e._generating, accent = '#70f0ff', isDT = (e._fuelMode || 'dt') === 'dt';
+  const fill = Math.min(1, (e._plasma || 0) / (def.plasmaCapacity || 400));
+  ctx.save();
+  F.draw(FusionArt.get('ffp_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], q) => _anFan(F, x, y, z, r, on ? t * 6 + q : q));
+  // The line's beat: the chambers charge and fire in turn, the belt indexes.
+  const CYC = 1.6, ph = (t % CYC) / CYC;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (active) {
+    L.chambers.forEach(([x, y, z, r], i) => {
+      const [cx, cy] = P(x, y, z + r), fire = Math.max(0, 1 - Math.abs(ph - (0.6 + i * 0.18)) / 0.06);
+      for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, [lx, ly] = P(x + Math.cos(a) * 2.8, y + Math.sin(a) * 2.8, z); if (fire > 0) { ctx.strokeStyle = `rgba(255,80,60,${(0.8 * fire).toFixed(3)})`; ctx.lineWidth = 1.4 * S; ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(cx, cy); ctx.stroke(); } }
+      _anGlow(cx, cy, (0.6 + 2.2 * fire) * M, '255,250,230', 0.3 + 0.7 * fire);
+    });
+    const [b0, by, bz] = [L.belt[0], L.belt[2], L.belt[3]], [b1] = [L.belt[1]];
+    for (let q = 0; q < 8; q++) { const u = ((q + Math.min(1, ph / 0.55)) / 8) % 1, [x, y2] = P(b0 + (b1 - b0) * u, by, bz); ctx.fillStyle = 'rgba(180,250,255,0.9)'; ctx.beginPath(); ctx.arc(x, y2, 0.22 * M, 0, Math.PI * 2); ctx.fill(); }
+  }
+  // the pellet store's tubes light as it fills
+  const lit = Math.round(fill * L.tubes.length);
+  L.tubes.forEach(([x, y, z, r], i) => { if (i >= lit) return; const [tx, ty] = P(x, y, z); _anGlow(tx, ty, r * 1.8 * M, isDT ? '112,240,255' : '200,144,255', 0.55); });
+  if (on) { const [vx, vy] = P(...L.vault); _anGlow(vx, vy, 3.5 * M, isDT ? '128,255,192' : '255,208,160', 0.25 + 0.1 * Math.sin(t * 1.7)); }
+  ctx.restore();
+  { const [lx, ly] = P(...L.ln2); _wfSmoke(lx, ly, S * 0.7, t, '226,236,255', on, 0.25); }
+  _anBoard(F, L.board, [[active ? 'PELLETS ' + (isDT ? 'D-T' : 'D-He3') : on ? 'STANDBY' : 'NO POWER', active ? accent : on ? '#ffc040' : '#ff5040'],
+    [`STORE ${Math.round(fill * 100).toString().padStart(3)}%`, '#c8f0ff']], S, on ? '112,240,255' : null);
+  const st = FusionFuelPlantSystem.getStubs(e), W = F.W, H = F.H, A = (s) => _portAnchor(e, px, py, W, H, s);
+  const he3Locked = !isDT && typeof Progression !== 'undefined' && Progression.isUnlocked && !Progression.isUnlocked(T.HE3SEPARATOR);
+  _portPipe(A(st.tritiumIn), S, t, { fluid: '#80ffc0', label: 'TRITIUM IN', on: !!e._tritiumLinked, out: false, flow: active && isDT });
+  _portPipe(A(st.he3In), S, t, { fluid: '#ffd0a0', label: 'HE-3 IN', on: !!e._he3Linked, out: false, flow: active && (!isDT || (e._heRate || 0) > 0.01) });
+  _portPipe(A(st.deuteriumIn), S, t, { fluid: '#ff6eb4', label: 'D₂ IN', on: !!e._hasDeuterium, out: false, flow: active });
+  _portBelt(A(st.plasmaOut), S, t, { belt: '#70f0ff', label: isDT ? 'D-T PELLETS OUT' : 'PELLETS OUT', on: !!e._plasmaConveyorOut, out: true });
+  if (st.he3PelletOut) _portBelt(A(st.he3PelletOut), S, t, { belt: '#c890ff', label: he3Locked ? 'D-He3 OUT · LOCKED' : 'D-He3 OUT', on: !he3Locked && !!e._he3PelletConveyorOut, out: true });
+  _wfPlate('FUSION FUEL PLANT', px + W * 0.54, py + H * 0.955, S, accent, on);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, accent, on); }
+  ctx.restore();
+}
+
+// ── Fusion Reactor (tokamak) ──
+function _hfrArt(e, px, py, t) {
+  const L = FUSION_LAYOUT.hfr, def = EntityDefs[T.HULKINGFUSIONREACTOR], F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const s = _fuState(e, def), accent = '#40c0ff', isDT = (e._fuelMode || 'dt') === 'dt';
+  ctx.save();
+  F.draw(FusionArt.get('hfr_base'), L.rect);
+  const [pcx, pcy, pz, Rp, tube] = L.plasma, [cx, cy] = P(pcx, pcy, pz);
+  // the plasma, then the machine's top layer over it (cut where the plasma is in sight, so coils and walls pass in front), the bloom, the field core aura
+  const pk = s.gen ? 0.85 + 0.15 * Math.sin(t * 3) : s.igniteP >= 0 ? Math.min(1, s.igniteP * 2) : 0;
+  const rendered = _fuLitLayers(F, L.topRect, FusionArt.get('hfr_top'), FusionArt.get(isDT ? 'hfr_lit_dt' : 'hfr_lit_he3'), pk);
+  if (!rendered) {
+    _fuPlasma(cx, cy, () => Rp * M, tube * M * 0.55, t, pk, isDT ? '120,180,255' : '190,130,255', '255,210,140', 3, S);
+    if (s.gen || s.charging) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(cx, cy, L.R * M, s.gen ? '120,160,255' : '255,200,80', (s.gen ? 0.22 : 0.14) + 0.07 * Math.sin(t * 2.3)); ctx.restore(); }
+  }
+  { const outl = (sign, extra) => { ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, Rp * M + sign * (tube * M * 0.55 + extra)), 0, Math.PI * 2); };
+    if (rendered) { const [lx, ly] = P(0, 0, 8.3); _fuAuraInMachine(F, e, cx, cy, L.R * M, outl, S, (F.W / TILE) / 8 * 0.4, t, FusionArt.get('hfr_charge'), L.topRect, [lx, ly, (L.R - 1.4) * M]); }
+    else if (typeof renderFieldCoreAura === 'function') renderFieldCoreAura(e, cx, cy, L.R * M, outl, S, (F.W / TILE) / 8, t); }
+  // coils: a travelling chase while it burns, lighting one by one as the magnets charge
+  if (s.charging) { if (!(rendered && _fuChargeWipe(F, FusionArt.get('hfr_charge'), L.topRect, cx, cy, s.chargeP, t))) { const n = Math.round(s.chargeP * L.coils.length); _fuChase(F, L.coils.slice(0, n), t, true, '255,200,80', 4); } }
+  else if (!rendered) _fuChase(F, L.coils, t, s.gen, '120,190,255', 2);
+  // neutral beams firing into the plasma
+  if (s.gen) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.nbi.forEach(([x, y, z]) => { const [ax, ay] = P(x, y, z), bm = 0.5 + 0.5 * Math.sin(t * 6 + x); ctx.strokeStyle = `rgba(150,220,255,${(0.35 + 0.4 * bm).toFixed(3)})`; ctx.lineWidth = 2.5 * S; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(cx + (ax - cx) * 0.62, cy + (ay - cy) * 0.62); ctx.stroke(); }); ctx.restore(); }
+  // capacitor banks: charge bars fill amber, then flash
+  L.banks.forEach(([x0, x1, y0, y1, z], i) => { const [ax, ay] = P(x0 + 0.4, y1 - 0.4, z), [bx, by] = P(x1 - 0.4, y0 + 0.4, z), v = s.charging ? s.chargeP : s.gen ? 1 : 0; ctx.fillStyle = s.charging ? 'rgba(255,192,48,0.55)' : s.gen ? 'rgba(64,192,255,0.35)' : 'rgba(0,0,0,0)'; ctx.fillRect(ax, ay + (by - ay) * (1 - v), bx - ax, (by - ay) * v); });
+  if (s.venting) for (let q = 0; q < 4; q++) { const a = q * Math.PI / 2 + 0.5, [vx, vy] = P(Math.cos(a) * L.R, Math.sin(a) * L.R, 6.3); _wfSmoke(vx, vy, S * 1.4, t + q, '230,240,255', true, 0.6); }
+  if (typeof renderFieldCoreRack === 'function') { const m = F.W, len = m * 0.3, th = m * 0.05, off = L.R / 60 * m + m * 0.012; ctx.save(); ctx.translate(px, py); renderFieldCoreRack(e, m / 2 - len / 2, m / 2 + off, len, th, false, S, t); ctx.restore(); }
+  const st = HulkingFusionReactorSystem.getStubs(e), W = F.W, H = F.H, A = (x) => _portAnchor(e, px, py, W, H, x);
+  _portBelt(A(st.plasmaIn), S, t, { belt: '#70f0ff', label: 'PELLETS IN', on: !!e._hasPlasma, out: false });
+  _portPipe(A(st.highBetaOut), S, t, { fluid: isDT ? '#d8e0ff' : '#b478ff', label: isDT ? 'STEAM OUT' : 'ION OUT', on: s.gen, out: true, flow: s.gen });
+  if (st.blanketIn) _portBelt(A(st.blanketIn), S, t, { belt: '#c0a0ff', label: 'Li COMPOUND IN', on: !!e._hasBlanket, out: false });
+  if (st.tritiumOut) _portPipe(A(st.tritiumOut), S, t, { fluid: '#80ffc0', label: 'TRITIUM OUT', on: !!e._tritiumPipeOut, out: true, flow: !!e._tritiumPipeOut });
+  if (st.cryoIn) _portPipe(A(st.cryoIn), S, t, { fluid: '#e8fcff', label: 'LHe IN', on: !!e._cryoLinked, out: false, flow: !!e._cryoRunning });
+  if (st.ashOut) _portPipe(A(st.ashOut), S, t, { fluid: '#f0b8ff', label: 'HE ASH OUT', on: !!e._ashPipeOut, out: true, flow: !!e._ashPipeOut });
+  const plate = s.venting ? 'MAGNET QUENCH' : s.charging ? `CHARGING ${Math.round(s.chargeP * 100)}%` : s.gen ? (isDT ? 'D-T BURN' : 'D-He3 BURN') : 'STANDBY';
+  _wfPlate('FUSION REACTOR', px + W / 2, py + H * 0.03, S, accent, s.on);
+  _wfPlate(plate, px + W / 2, py + H * 0.97, S, s.venting ? '#ff5040' : s.charging ? '#ffd040' : accent, s.on);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, s.gen ? accent : (s.on ? '#ffb030' : '#ff4040'), true); }
+  ctx.restore();
+}
+
+// ── Advanced Fusion Reactor (stellarator) ──
+function _afrArt(e, px, py, t) {
+  const L = FUSION_LAYOUT.afr, def = EntityDefs[T.ADVFUSIONREACTOR], F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const s = _fuState(e, def), accent = '#c890ff', ion = '#b478ff';
+  ctx.save();
+  F.draw(FusionArt.get('afr_base'), L.rect);
+  const [bcx, bcy, bz, Rp, amp, zamp] = L.band, [cx, cy] = P(bcx, bcy, bz);
+  const rf = (a) => (Rp + amp * Math.cos(5 * a)) * M, TN = Math.tan(Math.PI / 6);
+  // the twisted band: radius and height swing five times round
+  const rfun = (a) => rf(a);
+  const pk = s.gen ? 0.85 + 0.15 * Math.sin(t * 2.6) : s.igniteP >= 0 ? Math.min(1, s.igniteP * 2) : 0;
+  // the rendered burn (top layer, then the plasma-lit view); the vector plasma only without those sprites
+  const rendered = _fuLitLayers(F, L.topRect, FusionArt.get('afr_top'), FusionArt.get('afr_lit'), pk);
+  if (!rendered) {
+    _fuPlasma(cx, cy, (a) => rfun(a) - zamp * Math.sin(5 * a) * TN * M * Math.sin(a), 2.0 * M, t, pk, '200,144,255', '255,216,144', 4, S);
+    if (s.gen || s.charging) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(cx, cy, L.R * M, s.gen ? '170,120,255' : '255,200,80', s.gen ? 0.2 : 0.12); ctx.restore(); }
+  }
+  { const outl = (sign, extra) => { ctx.beginPath(); for (let i = 0; i <= 90; i++) { const a = i / 90 * Math.PI * 2, r = Math.max(1, rf(a) + sign * (2.0 * M + extra)); i ? ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r) : ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } };
+    if (rendered) { const [lx, ly] = P(0, 0, 9.3); _fuAuraInMachine(F, e, cx, cy, L.R * M, outl, S, (F.W / TILE) / 8 * 0.35, t, FusionArt.get('afr_charge'), L.topRect, [lx, ly, (L.R - 1.6) * M]); }
+    else if (typeof renderFieldCoreAura === 'function') renderFieldCoreAura(e, cx, cy, L.R * M, outl, S, (F.W / TILE) / 8, t); }
+  if (s.charging) { if (!(rendered && _fuChargeWipe(F, FusionArt.get('afr_charge'), L.topRect, cx, cy, s.chargeP, t))) { const n = Math.round(s.chargeP * L.coils.length); _fuChase(F, L.coils.slice(0, n), t, true, '255,200,80', 4); } }
+  else if (!rendered) _fuChase(F, L.coils, t, s.gen, '200,150,255', 2);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (s.gen) {
+    // ion beams out to the direct energy converters, which glow
+    L.dec.forEach(([x0, x1, ey, z, ex, eyy], i) => {
+      const [ax, ay] = P(ex, eyy, 4.0), [bx, by] = P(x0, ey, 4.0), [dx, dy] = P((x0 + x1) / 2, ey, z + 4.6);
+      ctx.strokeStyle = `rgba(180,120,255,${(0.5 + 0.3 * Math.sin(t * 5 + i)).toFixed(3)})`; ctx.lineWidth = 3 * S; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      _anGlow(dx, dy, 6 * M, '180,120,255', 0.25 + 0.1 * Math.sin(t * 3 + i));
+    });
+    // microwave pulses down the waveguides, the neutral beams firing
+    L.waveguides.forEach(([a, b], i) => { const u = (t * 0.8 + i * 0.25) % 1, [ax, ay] = P(...a), [bx, by] = P(...b); _anGlow(ax + (bx - ax) * u, ay + (by - ay) * u, 1.5 * M, '255,170,80', 0.7 * (1 - u)); });
+    L.nbi.forEach(([x0, y0, x1, y1, z]) => { const [ax, ay] = P(x0, y0, z), [bx, by] = P(x1, y1, z); ctx.strokeStyle = `rgba(150,220,255,${(0.35 + 0.3 * Math.sin(t * 6 + x0)).toFixed(3)})`; ctx.lineWidth = 3 * S; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); });
+    L.cryopumps.forEach(p => { const [x, y] = P(...p); _anGlow(x, y, 1.6 * M, '200,236,255', 0.35); });
+  }
+  // SMES rings: amber while charging, steady once lit
+  L.smes.forEach(([x, y, z, r]) => { const [sx, sy] = P(x, y, z), k = s.charging ? s.chargeP : s.gen ? 0.6 : 0; if (k <= 0) return; ctx.strokeStyle = s.charging ? `rgba(255,192,48,${(0.4 + 0.5 * k).toFixed(3)})` : 'rgba(200,150,255,0.5)'; ctx.lineWidth = 2.5 * S; ctx.beginPath(); ctx.arc(sx, sy, r * M, 0, Math.PI * 2); ctx.stroke(); });
+  ctx.restore();
+  { const [tx, ty] = P(...L.tower); if (s.on) _wfSmoke(tx, ty, S * 1.0, t, '220,230,255', s.gen, 0.25); }
+  if (s.venting) for (let q = 0; q < 5; q++) { const a = q * Math.PI * 2 / 5, [vx, vy] = P(Math.cos(a) * L.R, Math.sin(a) * L.R, 7.3); _wfSmoke(vx, vy, S * 1.6, t + q, '230,240,255', true, 0.6); }
+  if (typeof renderFieldCoreRack === 'function') { const [x, y, len, th] = L.rack; ctx.save(); ctx.translate(px, py); renderFieldCoreRack(e, x * F.M, y * F.M, len * F.M, th * F.M, false, S, t); ctx.restore(); }
+  _anBoard(F, L.board, [[s.gen ? 'D-He3 STELLARATOR' : s.charging ? `CHARGING ${Math.round(s.chargeP * 100)}%` : s.on ? 'STANDBY' : 'NO POWER', s.gen ? '#e0c0ff' : s.charging ? '#ffd040' : '#ff8060'],
+    [`OUT ${s.gen ? formatPower(Math.round(e._currentOutput || 0)) : '0 kW'}`, '#c8f0ff']], S, s.on ? '200,144,255' : null);
+  const st = AdvancedFusionReactorSystem.getStubs(e), W = F.W, H = F.H, A = (x) => _portAnchor(e, px, py, W, H, x);
+  _portBelt(A(st.plasmaIn), S, t, { belt: '#c890ff', label: 'D-He3 PELLETS IN', on: !!e._hasPlasma, out: false });
+  _portPipe(A(st.ionOutA), S, t, { fluid: ion, label: 'ION OUT A', on: s.gen, out: true, flow: s.gen });
+  _portPipe(A(st.ionOutB), S, t, { fluid: ion, label: 'ION OUT B', on: s.gen, out: true, flow: s.gen });
+  _portPipe(A(st.cryoIn), S, t, { fluid: '#e8fcff', label: 'LHe IN', on: !!e._cryoLinked, out: false, flow: !!e._cryoRunning });
+  _portPipe(A(st.ashOut), S, t, { fluid: '#f0b8ff', label: 'HE ASH OUT', on: !!e._ashPipeOut, out: true, flow: !!e._ashPipeOut });
+  _portPipe(A(st.coolantIn), S, t, { fluid: '#7af0ff', label: 'CRYO IN', on: !!e._coolantLinked, out: false, flow: !!e._coolantLinked });
+  _wfPlate('ADVANCED FUSION REACTOR · STELLARATOR', px + W / 2, py + H * 0.02, S, accent, s.on);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, s.gen ? accent : (s.on ? '#ffb030' : '#ff4040'), true); }
+  ctx.restore();
+}
+
+// ── MHD Decelerator Ring ──
+function _mhdArt(e, px, py, t) {
+  const L = FUSION_LAYOUT.mhd, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const on = e.powered, gen = !!e._generating, accent = '#60d0ff';
+  ctx.save();
+  F.draw(FusionArt.get('mhd_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], q) => _anFan(F, x, y, z, r, on ? t * 6 + q : q));
+  const [x0, x1, D, z] = L.duct, [ax, ay] = P(x0, D, z), [bx] = P(x1, D, z);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (gen) {
+    // the plasma racing down the viewport strip, slowing (dimming) as it gives up its energy
+    const g = ctx.createLinearGradient(ax, 0, bx, 0); g.addColorStop(0, 'rgba(220,180,255,0.95)'); g.addColorStop(1, 'rgba(120,80,220,0.35)');
+    ctx.fillStyle = g; ctx.fillRect(ax, ay - 0.5 * M, bx - ax, 1.0 * M);
+    for (let q = 0; q < 10; q++) { const u = (t * 0.7 + q / 10) % 1, x = ax + (bx - ax) * Math.pow(u, 0.7); _anGlow(x, ay, 1.4 * M, '200,150,255', 0.6 * (1 - u)); }
+    const [dx, dy, dz, dr] = L.diffuser, [gx, gy] = P(dx, dy, dz); _anGlow(gx, gy, dr * 2.2 * M, '255,150,80', 0.35 + 0.1 * Math.sin(t * 2));
+  }
+  ctx.restore();
+  _fuChase(F, L.mods, t, gen, '255,170,90', 2.5);
+  _anBoard(F, L.board, [[gen ? 'DIRECT CONVERSION' : on ? 'NO ION STREAM' : 'NO POWER', gen ? '#a0e8ff' : '#ffc040'], [`OUT ${gen ? formatPower(Math.round(e._currentOutput || 0)) : '0 kW'}`, gen ? '#60ff90' : '#7090a0']], S, on ? '96,208,255' : null);
+  const a = _portAnchor(e, px, py, F.W, F.H, MHDDeceleratorRingSystem.getStubs(e).highBetaIn);
+  _portPipe(a, S, t, { fluid: '#b478ff', label: 'ION IN', on: !!e._highBetaConnected && gen, out: false, flow: gen });
+  _wfPlate('MHD RING', px + F.W * 0.5, py + 12 * S, S, accent, on);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, accent, gen); }
+  ctx.restore();
+}
+
+// ── Helium-3 Separator ──
+function _he3Art(e, px, py, t) {
+  const L = FUSION_LAYOUT.he3, def = EntityDefs[T.HE3SEPARATOR], F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const on = !!e.powered, run = on && !!e._separating, accent = '#ffd0a0';
+  const fill = Math.min(1, (e._he3 || 0) / (def.he3Capacity || 300));
+  ctx.save();
+  F.draw(FusionArt.get('he3_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], q) => _anFan(F, x, y, z, r, run ? t * 6 + q : q));
+  const [cx0, cy0, cz, r0, r1] = L.cryostat, [cx, cy] = P(cx0, cy0, cz);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // superfluid helium turning in a slow vortex in the viewing ring
+  if (on) for (let q = 0; q < 12; q++) { const a = q / 12 * Math.PI * 2 + t * (run ? 0.6 : 0.15), r = (r0 + (r1 - r0) * (0.5 + 0.3 * Math.sin(q * 1.7))) * M; ctx.strokeStyle = `rgba(190,225,255,${(run ? 0.5 : 0.25).toFixed(3)})`; ctx.lineWidth = 1.6 * S; ctx.beginPath(); ctx.arc(cx, cy, r, a, a + 0.35); ctx.stroke(); }
+  { const [kx, ky, kz, kr] = L.core, [gx, gy] = P(kx, ky, kz); _anGlow(gx, gy, kr * (1.5 + 2 * fill) * M, '255,208,140', on ? 0.25 + 0.55 * fill : 0); }
+  // stage lamps chasing round the columns while it separates
+  L.cols.forEach(([x, y, z], i) => { const [lx, ly] = P(x, y, z), b = run ? 0.5 + 0.5 * Math.sin(t * 4 - i * 1.05) : on ? 0.2 : 0; _anGlow(lx, ly, 1.0 * M, '255,210,150', 0.6 * b); });
+  const lit = Math.round(fill * L.rack.length); L.rack.forEach(([x, y, z], i) => { if (i < lit) { const [rx, ry] = P(x, y, z); _anGlow(rx, ry, 0.6 * M, '255,214,160', 0.6); } });
+  ctx.restore();
+  L.vents.forEach((v, i) => { const [vx, vy] = P(...v); _wfSmoke(vx, vy, S * 0.8, t + i, '236,236,244', run, 0.3); });
+  { _wfSmoke(cx - r1 * M * 0.6, cy - r1 * M * 0.4, S * 0.9, t, '220,236,255', on, 0.22); }
+  _anBoard(F, L.board, [[run ? 'SEPARATING' : on ? 'NO HELIUM' : 'NO POWER', run ? accent : on ? '#ffc040' : '#ff5040'], [`He-3 ${Math.round(fill * 100).toString().padStart(3)}%`, '#ffe0b0']], S, on ? '255,208,160' : null);
+  const st = He3SeparatorSystem.getStubs(e);
+  _portPipe(_portAnchor(e, px, py, F.W, F.H, st.heliumIn), S, t, { fluid: '#f0b8ff', label: 'HE IN', on: !!e._hasHeliumSource, out: false, flow: run });
+  _portPipe(_portAnchor(e, px, py, F.W, F.H, st.he3Out), S, t, { fluid: accent, label: 'HE-3 OUT', on: !!e._he3PipeOut, out: true, flow: !!e._he3PipeOut });
+  _wfPlate('HELIUM-3 SEPARATOR', px + F.W / 2, py + F.H - 10 * S, S * 1.4, accent, on);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, accent, on); }
+  ctx.restore();
+}
+
+// ── Tritium Breeding Facility ──
+function _tbArt(e, px, py, t) {
+  const L = FUSION_LAYOUT.tb, def = EntityDefs[T.TRITIUMBREEDER], F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const on = !!e.powered, run = on && !!e._breeding, accent = '#80ffc0';
+  const fill = Math.min(1, (e._tritium || 0) / (def.tritiumCapacity || 300));
+  ctx.save();
+  F.draw(FusionArt.get('tb_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], q) => _anFan(F, x, y, z, r, on ? t * 6 + q : q));
+  const [rx, ry, rz, rT] = L.ring, [cx, cy] = P(rx, ry, rz);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (run) {
+    // the bore lit along the trench, bunches of beam chasing round
+    ctx.strokeStyle = 'rgba(154,232,255,0.35)'; ctx.lineWidth = 1.6 * M; ctx.beginPath(); ctx.arc(cx, cy, rT * M, 0, Math.PI * 2); ctx.stroke();
+    for (let q = 0; q < 6; q++) { const a = (t * 1.6 + q / 6) * Math.PI * 2, x = cx + Math.cos(a) * rT * M, y = cy + Math.sin(a) * rT * M; _anGlow(x, y, 2.2 * M, '154,232,255', 0.8); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x, y, 0.35 * M, 0, Math.PI * 2); ctx.fill(); }
+    // the extraction line and the target spitting neutrons
+    const [tx, ty, tz, tr] = L.target, [gx, gy] = P(tx, ty, tz), [ex] = P(rx + rT + 1.5, ry, 1.6);
+    ctx.strokeStyle = 'rgba(154,232,255,0.6)'; ctx.lineWidth = 2.2 * S; ctx.beginPath(); ctx.moveTo(ex, P(0, ry, 1.6)[1]); ctx.lineTo(gx - tr * M, P(0, ry, 1.6)[1]); ctx.stroke();
+    _anGlow(gx, gy, tr * 1.4 * M, '168,132,240', 0.5 + 0.15 * Math.sin(t * 3));
+    for (let q = 0; q < 10; q++) { const a = q * 2.4 + t * 2, d = ((t * 1.3 + q * 0.37) % 1) * tr * 1.2 * M; ctx.fillStyle = `rgba(220,255,240,${(0.8 * (1 - d / (tr * 1.2 * M))).toFixed(3)})`; ctx.fillRect(gx + Math.cos(a) * d, gy + Math.sin(a) * d, 1.4 * S, 1.4 * S); }
+  }
+  const lit = Math.round(fill * L.rack.length); L.rack.forEach(([x, y, z, r], i) => { if (i < lit) { const [bx, by] = P(x, y, z); _anGlow(bx, by, r * 2 * M, '128,255,192', 0.6); } });
+  ctx.restore();
+  _anBoard(F, L.board, [[run ? 'BREEDING' : on ? 'NO LITHIUM' : 'NO POWER', run ? accent : on ? '#ffc040' : '#ff5040'], [`T ${Math.round(fill * 100).toString().padStart(3)}%`, '#c0ffe0']], S, on ? '128,255,192' : null);
+  const st = TritiumBreederSystem.getStubs(e);
+  _portBelt(_portAnchor(e, px, py, F.W, F.H, st.compoundIn), S, t, { belt: '#c0a0ff', label: 'LITHIUM IN', on: !!e._hasCompound, out: false });
+  _portPipe(_portAnchor(e, px, py, F.W, F.H, st.tritiumOut), S, t, { fluid: accent, label: 'TRITIUM OUT', on: !!e._tritiumPipeOut, out: true, flow: !!e._tritiumPipeOut });
+  _wfPlate('TRITIUM BREEDING FACILITY', px + F.W / 2, py + F.H - 10 * S, S, accent, on);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, accent, on); }
+  ctx.restore();
 }

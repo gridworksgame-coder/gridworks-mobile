@@ -799,7 +799,7 @@ const InspectionPanel = (() => {
       items: [
         {
           type: T.WIRE,
-          name: 'Wire',
+          name: 'Cable',
           desc: 'Basic power connection between buildings. Unlocks after collecting 50 total biofuel.',
           cost: 0,
           getProgress() { return { current: Math.min(Math.floor(BiofuelSystem.getTotalCollected()), 50), target: 50, unit: 'biofuel collected' }; },
@@ -807,21 +807,21 @@ const InspectionPanel = (() => {
         {
           type: T.POLE,
           name: 'Power Pole',
-          desc: 'Relay node that extends wire range. Unlocks after first customer.',
+          desc: 'Relay node that extends cable range. Unlocks after first customer.',
           cost: 50,
           getProgress() { const n = HouseRequestSystem.getHousesAccepted() + HouseRequestSystem.getCommercialsAccepted() + (HouseRequestSystem.getCabinCleared() ? 1 : 0); return { current: Math.min(n, 1), target: 1, unit: 'customer' }; },
         },
         {
           type: T.PROTECTOR,
           name: 'Surge Protector',
-          desc: 'Attach to wire network. Each one adds 170 kW to the whole network’s wire capacity, with no limit (85 kW → 255 → 425 → 595…), and cuts storm faults toward 35%. Unlocks the first time a wire runs at 90% of its capacity and turns red.',
+          desc: 'Attach to cable network. Each one adds 170 kW to the whole network’s cable capacity, with no limit (85 kW → 255 → 425 → 595…), and cuts storm faults toward 35%. Unlocks the first time a cable runs at 90% of its capacity and turns red.',
           cost: 0,
           getProgress() { return { current: Math.round(PowerNetwork.redlineProgress() * 100), target: 100, unit: '% to redline' }; },
         },
         {
           type: T.PROTECTOR2,
           name: 'Surge Protector MK2',
-          desc: '2×2. Each one adds 2.1 MW to the whole network’s wire capacity, with no limit, and cuts storm faults toward 12%. Stacks with MK1.',
+          desc: '2×2. Each one adds 2.1 MW to the whole network’s cable capacity, with no limit, and cuts storm faults toward 12%. Stacks with MK1.',
           cost: 0,
           // Requirement and progress come from its goals in progression.js.
           getProgress: () => Progression.goalProgress(T.PROTECTOR2),
@@ -829,7 +829,7 @@ const InspectionPanel = (() => {
         {
           type: T.PROTECTOR3,
           name: 'Surge Protector MK3',
-          desc: '3×3 gas-insulated bay, 6 kW draw. Each one adds 9 MW to the whole network’s wire capacity, with no limit, and cuts storm faults toward 3%. Requires the MK4 Research Station + 5 MW consumed.',
+          desc: '3×3 gas-insulated bay, 6 kW draw. Each one adds 9 MW to the whole network’s cable capacity, with no limit, and cuts storm faults toward 3%. Requires the MK4 Research Station + 5 MW consumed.',
           cost: 0,
           getProgress() {
             if (EntityRegistry.getByType(T.MK4RESEARCH).size === 0) return { current: 0, target: 1, unit: 'MK4 Research Station needed' };
@@ -876,7 +876,7 @@ const InspectionPanel = (() => {
         {
           type: T.POWERTOWER,
           name: 'Power Tower',
-          desc: '2×2 tower, $1,000, $0.1/s upkeep. Extends wire runs to 8 tiles. Unlocks after placing a Coal Mine.',
+          desc: '2×2 tower, $1,000, $0.1/s upkeep. Extends cable runs to 8 tiles. Unlocks after placing a Coal Mine.',
           cost: 0,
           getProgress() { return { current: EntityRegistry.getByType(T.COALMINE).size > 0 ? 1 : 0, target: 1, unit: 'Coal Mine placed' }; },
         },

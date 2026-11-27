@@ -4,7 +4,180 @@
    commercial/industrial zone building renderers.
    ═══════════════════════════════════════════════════════════════════ */
 
+/* ── Biofuel Generator, rendered ─────────────────────────────────────────
+   Built and rendered in Blender (scripts/render_biofuel_gen.py, Poly Haven
+   scans; same camera as the geothermal sprites, a tile = 2 m): the pad,
+   chip-bay walls, digester drum, auger, gas line, genset enclosure and
+   stack (img/biofuel_base.png); the chip heap at a quarter, half, three
+   quarters and a full buffer (img/biofuel_heap_1..4.png, cut by the walls in
+   front of it); and the gas-holder membrane (img/biofuel_dome.png), drawn
+   taller as the buffer fills. In code: the engine bay's glow, status light,
+   exhaust puffs and the fuel gauge. BIOFUEL_LAYOUT is the script's LAYOUT
+   (metres from the tile's centre; re-paste after a re-render). Not in the
+   sprite cache (drawn live), and a few drawImage calls. The painted plant
+   (_renderBiofuelGenPainted) stays as the fallback. */
+const BIOFUEL_LAYOUT = {
+  dome: [-0.4, -0.03, 0.48, 0.34], louvre: [0.38, -0.49, 0.32, 0.26, 0.24],
+  led: [0.8, -0.49, 0.44], stack: [0.695, 0.35, 1.19], res: 240, frame: 3.0,
+};
+const BiofuelArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/biofuel_${name}.png`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ready() {
+      if (_imageFillsOff) return false;
+      let ok = true;
+      for (const n of ['base', 'dome', 'heap_1', 'heap_2', 'heap_3', 'heap_4']) if (!get(n)) ok = false;
+      return ok;
+    },
+  };
+})();
+const _BF_TAN = Math.tan(Math.PI / 6);
+
 function renderBiofuelGen(e, px, py, t) {
+  if (!BiofuelArt.ready()) { _renderBiofuelGenPainted(e, px, py, t); return; }
+  const B = BIOFUEL_LAYOUT;
+  const fuel = e._biofuel || 0;
+  const on   = fuel >= 25;
+  const pct  = Math.min(1, fuel / BiofuelSystem.FULL_TANK);
+  const s = TILE / 40, M = 20 * s, k = M / 80;
+  const cx = px + TILE / 2, cy = py + TILE / 2;
+  const proj = (x, y, z) => [cx + x * M, cy - (y + z * _BF_TAN) * M];
+  const detail = Camera.zoom > 0.5;
+  const half = B.res / 2 * k;
+  ctx.save();
+
+  if (on && detail) drawGlowHalo(cx, cy, TILE * 0.7, [[0, '#60e030'], [1, 'transparent']], 0.08 + 0.04 * Math.sin(t * 2));
+  ctx.drawImage(BiofuelArt.get('base'), cx - half, cy - half, half * 2, half * 2);
+  // The chip heap: the buffer, in quarters (none when it is empty).
+  if (fuel > 0) ctx.drawImage(BiofuelArt.get('heap_' + Math.max(1, Math.min(4, Math.ceil(pct * 4)))), cx - half, cy - half, half * 2, half * 2);
+  // The membrane swells as the buffer fills: stretched up from its rim.
+  {
+    const [, by] = proj(B.dome[0], B.dome[1], B.dome[2]);
+    const sy = 0.72 + 0.5 * pct;
+    ctx.save();
+    ctx.translate(0, by); ctx.scale(1, sy); ctx.translate(0, -by);
+    ctx.drawImage(BiofuelArt.get('dome'), cx - half, cy - half, half * 2, half * 2);
+    ctx.restore();
+  }
+  // Engine bay: warm behind the louvres while the engine turns.
+  if (on) {
+    const [lx, ly] = proj(B.louvre[0], B.louvre[1], B.louvre[2]);
+    const lw = B.louvre[3] * M, lh = B.louvre[4] * _BF_TAN * M;
+    ctx.fillStyle = `rgba(255,150,50,${0.22 + 0.08 * Math.sin(t * 9)})`;
+    ctx.fillRect(lx - lw / 2, ly - lh / 2, lw, lh);
+  }
+  // Status light: green running, amber low, red empty.
+  {
+    const [lx, ly] = proj(B.led[0], B.led[1], B.led[2]);
+    ctx.fillStyle = on ? '#60ff60' : (fuel > 0 ? '#ffb020' : '#ff3020');
+    ctx.beginPath(); ctx.arc(lx, ly, 0.9 * s, 0, Math.PI * 2); ctx.fill();
+    if (on && detail) { ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(lx, ly, 2 * s, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+  }
+  // Exhaust puffs off the stack's rain cap.
+  if (on) {
+    const [sx, sy] = proj(B.stack[0], B.stack[1], B.stack[2]);
+    for (let i = 0; i < 3; i++) {
+      const age = (t * 0.6 + i / 3) % 1;
+      ctx.fillStyle = `rgba(214,232,204,${0.4 * (1 - age)})`;
+      ctx.beginPath(); ctx.arc(sx + age * 3 * s, sy - age * 9 * s, (1.1 + age * 2.6) * s, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  _biofuelGauge(px, py, s, t, pct, on, detail);
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+
+// The fuel tag: a steel plate bolted to the pad's front lip, so it sits
+// below the bay and the genset instead of over them, and lit like the
+// rendered plant (bevel bright on the upper left, shadow cast down-right).
+// In its inset screen: a leaf mark, five fuel cells that fill in turn (the
+// last one partly) and the percentage. Screen rim, leaf and cells take the
+// state's colour: green running, amber too low to run, red empty (cells
+// blink red under 10 %). Zoomed out, only the cells. The painted fallback
+// keeps its own old gauge.
+function _biofuelGauge(px, py, s, t, pct, on, detail) {
+    const cx = px + 20 * s, cy = py + 39.6 * s;
+    const empty = pct <= 0;
+    const col = on ? [112, 222, 72] : empty ? [255, 80, 56] : [255, 184, 48];
+    const rgb = (a) => `rgba(${col[0]},${col[1]},${col[2]},${a})`;
+    const cells = 5, cw = 3 * s, cg = 0.7 * s, ch = 3 * s;
+    const barW = cells * cw + (cells - 1) * cg;
+    ctx.font = `bold ${Math.max(5, 4.3 * s)}px Arial, sans-serif`;
+    const label = `${Math.round(pct * 100)}%`;
+    const tw = detail ? Math.max(ctx.measureText('100%').width * 0.82, ctx.measureText(label).width) : 0;
+    const leafW = detail ? 3.6 * s : 0, inX = 1.3 * s, bez = 1.1 * s;
+    const W = bez + inX + leafW + barW + (detail ? 1.3 * s + tw : 0) + inX + bez, H = 7 * s;
+    const x0 = cx - W / 2, y0 = cy - H / 2, r = 1.2 * s;
+    // shadow on the ground, down and to the right like the rendered parts'
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.roundRect(x0 + 1 * s, y0 + 1.3 * s, W, H, r); ctx.fill();
+    // brushed-steel bezel: bright on the upper left, dark lower right
+    const bz = ctx.createLinearGradient(x0, y0, x0 + W * 0.35, y0 + H * 1.4);
+    bz.addColorStop(0, '#c9cdc8'); bz.addColorStop(0.45, '#8e938e'); bz.addColorStop(1, '#4c514d');
+    ctx.fillStyle = bz; ctx.beginPath(); ctx.roundRect(x0, y0, W, H, r); ctx.fill();
+    _bldGrain(ctx, 'brushed', 0.6);
+    ctx.strokeStyle = 'rgba(20,22,20,0.7)'; ctx.lineWidth = 0.35 * s; ctx.stroke();
+    // corner screws
+    for (const [sx, sy] of [[x0 + 0.6 * s, y0 + 0.6 * s], [x0 + W - 0.6 * s, y0 + 0.6 * s], [x0 + 0.6 * s, y0 + H - 0.6 * s], [x0 + W - 0.6 * s, y0 + H - 0.6 * s]]) {
+      ctx.fillStyle = '#3a3e3a'; ctx.beginPath(); ctx.arc(sx, sy, 0.32 * s, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.beginPath(); ctx.arc(sx - 0.1 * s, sy - 0.1 * s, 0.13 * s, 0, Math.PI * 2); ctx.fill();
+    }
+    // inset screen: shadowed on its upper-left edge (it sits below the bezel)
+    const sx0 = x0 + bez, sy0 = y0 + bez, sw = W - bez * 2, sh = H - bez * 2;
+    const sg = ctx.createLinearGradient(0, sy0, 0, sy0 + sh);
+    sg.addColorStop(0, '#050805'); sg.addColorStop(1, '#101810');
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.roundRect(sx0, sy0, sw, sh, 0.7 * s); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 0.5 * s;
+    ctx.beginPath(); ctx.moveTo(sx0 + 0.4 * s, sy0 + sh); ctx.lineTo(sx0 + 0.25 * s, sy0 + 0.25 * s); ctx.lineTo(sx0 + sw, sy0 + 0.25 * s); ctx.stroke();
+    ctx.strokeStyle = rgb(0.45); ctx.lineWidth = 0.3 * s;
+    ctx.beginPath(); ctx.roundRect(sx0, sy0, sw, sh, 0.7 * s); ctx.stroke();
+    let x = sx0 + inX;
+    if (detail) {
+      const lx = x + 1.6 * s, ly = cy;
+      ctx.fillStyle = rgb(on ? 0.95 : 0.7);
+      ctx.beginPath(); ctx.moveTo(lx - 1.2 * s, ly + 1.5 * s);
+      ctx.quadraticCurveTo(lx - 1.6 * s, ly - 1.1 * s, lx + 1.4 * s, ly - 1.7 * s);
+      ctx.quadraticCurveTo(lx + 1.3 * s, ly + 1.1 * s, lx - 1.2 * s, ly + 1.5 * s); ctx.fill();
+      ctx.strokeStyle = 'rgba(5,8,5,0.85)'; ctx.lineWidth = 0.3 * s;
+      ctx.beginPath(); ctx.moveTo(lx - 1 * s, ly + 1.3 * s); ctx.lineTo(lx + 1 * s, ly - 1.3 * s); ctx.stroke();
+      x += leafW;
+    }
+    const fill = pct * cells;
+    for (let i = 0; i < cells; i++) {
+      const cx0 = x + i * (cw + cg), cy0 = cy - ch / 2;
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.beginPath(); ctx.roundRect(cx0, cy0, cw, ch, 0.5 * s); ctx.fill();
+      const f = Math.max(0, Math.min(1, fill - i));
+      if (f <= 0) continue;
+      const blink = pct < 0.1 && Math.sin(t * 6) < 0;
+      const g = ctx.createLinearGradient(0, cy0, 0, cy0 + ch);
+      g.addColorStop(0, blink ? 'rgba(255,90,60,0.95)' : rgb(1)); g.addColorStop(1, blink ? 'rgba(150,30,20,0.95)' : rgb(0.6));
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.roundRect(cx0, cy0, Math.max(0.6 * s, cw * f), ch, 0.5 * s); ctx.fill();
+    }
+    if (detail) {
+      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = empty ? '#ffb4a4' : '#eef6e6';
+      ctx.fillText(label, sx0 + sw - inX, cy + 0.25 * s);
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
+}
+
+function _renderBiofuelGenPainted(e, px, py, t) {
+    // (The hand-drawn plant, kept as the fallback of the rendered one above.)
     // Biofuel Generator (1×1): a small anaerobic-digestion plant on a poured
     // pad, lit from the top left. Three things, each with its own colour so
     // they read apart at a glance: a walled chip bay (tan) whose heap is the
@@ -244,6 +417,7 @@ function renderHouse(e, px, py, t) {
       if (SplitPhase.cur === 'static') SplitPhase.run('all', () => renderHouse(e, px, py, t));
       return;
     }
+    if (typeof _homeArtTry === 'function' && _homeArtTry(e, px, py, t)) return;   // rendered in Blender (render_industrial.py)
     if (sub === 'townhouse') { renderTownhouse(e, px, py, t); return; }
     if (sub === 'apartment') { renderApartment(e, px, py, t); return; }
     if (sub === 'birchwood') { renderBirchwoodApartments(e, px, py, t); return; }
@@ -288,7 +462,8 @@ function renderHouse(e, px, py, t) {
     if (!e.houseWealthTier && e.businessName && typeof HouseRequestSystem !== 'undefined') {
       e.houseWealthTier = HouseRequestSystem.lookupHouseTier(e.businessName) || 'mid';
     }
-    const tier = e.houseWealthTier || 'mid';
+    // Mae's Cabin is always the budget trailer (style forced in _renderFamilyHouse)
+    const tier = (e.isCabin || e.businessName === "Mae's Cabin") ? 'budget' : (e.houseWealthTier || 'mid');
     if (tier === 'budget')  { renderHouseBudget(e, px, py, t);  return; }
     if (tier === 'premium') { renderHousePremium(e, px, py, t); return; }
     if (tier === 'luxury')  { renderHouseLuxury(e, px, py, t);  return; }
@@ -589,6 +764,40 @@ function homeDoor(K, e, t, o, drawOpen) {
 // one sprite stamped down the road.
 //
 // All coordinates are in a 40-unit lot space scaled by s = TILE/40.
+/* ── Family houses, rendered ──────────────────────────────────────────────
+   Built in Blender (scripts/render_houses.py, on the coal/hydro scene, sun and
+   camera), authored at 3x like the research stations (the 2x2 lot = 12 m) and
+   drawn at 1/3: each style in a few colour variants, house_<style>_<v>.png.
+   HOUSE_ART_LAYOUT gives each one's live parts in the old 40-unit lot space:
+   windows (lit at night, a TV flickering), the front door (homeDoor swings it
+   and walks the household from it), chimney smoke and the porch lamp. A house
+   whose sprite hasn't loaded draws the painted version below. */
+const HOUSE_ART_LAYOUT = {"shack":[{"win":[[12.17,21.11,15.17,22.74]],"door":[19.25,20.82,22.08,24.67],"doorCx":20.67,"smoke":[25.33,4.87],"lamp":null},{"win":[[14.17,21.11,17.17,22.74]],"door":[21.25,20.82,24.08,24.67],"doorCx":22.67,"smoke":[27.33,4.87],"lamp":null},{"win":[[12.17,21.11,15.17,22.74]],"door":[19.25,20.82,22.08,24.67],"doorCx":20.67,"smoke":[25.33,4.87],"lamp":null}],"cottage":[{"win":[[13.5,20.96,17.17,23.27]],"door":[22.83,21.15,25.83,25.0],"doorCx":24.33,"smoke":[26.67,3.18],"lamp":[26.83,22.06]},{"win":[[22.83,20.96,26.5,23.27]],"door":[14.17,21.15,17.17,25.0],"doorCx":15.67,"smoke":[26.67,3.18],"lamp":[18.17,22.06]},{"win":[[13.5,20.96,17.17,23.27]],"door":[22.83,21.15,25.83,25.0],"doorCx":24.33,"smoke":[26.67,3.18],"lamp":[26.83,22.06]}],"trailer":[{"win":[[9.08,17.94,11.58,21.31],[28.42,17.94,30.92,21.31]],"door":[20.0,19.28,22.67,23.04],"doorCx":21.33,"smoke":null,"lamp":[23.67,19.91]},{"win":[[9.08,17.94,11.58,21.31],[28.42,17.94,30.92,21.31]],"door":[20.0,19.28,22.67,23.04],"doorCx":21.33,"smoke":null,"lamp":[23.67,19.91]},{"win":[[9.08,17.94,11.58,21.31],[28.42,17.94,30.92,21.31]],"door":[20.0,19.28,22.67,23.04],"doorCx":21.33,"smoke":null,"lamp":[23.67,19.91]}],"gable":[{"win":[[18.67,16.87,21.33,18.79],[11.5,21.1,15.17,23.6],[24.83,21.1,28.5,23.6]],"door":[18.42,21.39,21.58,25.33],"doorCx":20.0,"smoke":[27.33,1.02],"lamp":[22.5,22.3]},{"win":[[18.67,16.87,21.33,18.79],[11.5,21.1,15.17,23.6],[24.83,21.1,28.5,23.6]],"door":[18.42,21.39,21.58,25.33],"doorCx":20.0,"smoke":[27.33,1.02],"lamp":[22.5,22.3]},{"win":[[18.67,16.87,21.33,18.79],[11.5,21.1,15.17,23.6],[24.83,21.1,28.5,23.6]],"door":[18.42,21.39,21.58,25.33],"doorCx":20.0,"smoke":[27.33,1.02],"lamp":[22.5,22.3]}],"bungalow":[{"win":[[11.5,19.52,15.17,22.02],[27.0,19.91,30.33,22.41],[6.33,20.48,9.67,22.99]],"door":[20.42,19.71,23.58,23.56],"doorCx":22.0,"smoke":[30.0,2.37],"lamp":[19.33,21.01]},{"win":[[11.5,19.52,15.17,22.02],[27.0,19.91,30.33,22.41],[6.33,20.48,9.67,22.99]],"door":[20.42,19.71,23.58,23.56],"doorCx":22.0,"smoke":[30.0,2.37],"lamp":[19.33,21.01]},{"win":[[11.5,19.52,15.17,22.02],[27.0,19.91,30.33,22.41],[6.33,20.48,9.67,22.99]],"door":[20.42,19.71,23.58,23.56],"doorCx":22.0,"smoke":[30.0,2.37],"lamp":[19.33,21.01]}],"garage":[{"win":[[10.83,19.8,14.5,22.31]],"door":[17.42,21.05,20.58,25.0],"doorCx":19.0,"smoke":null,"lamp":[21.0,21.97]},{"win":[[25.5,19.8,29.17,22.31]],"door":[19.42,21.05,22.58,25.0],"doorCx":21.0,"smoke":null,"lamp":[19.0,21.97]},{"win":[[10.83,19.8,14.5,22.31]],"door":[17.42,21.05,20.58,25.0],"doorCx":19.0,"smoke":null,"lamp":[21.0,21.97]}],"cape":[{"win":[[12.42,13.69,14.92,15.52],[25.08,13.69,27.58,15.52],[10.17,21.25,13.83,23.56],[14.17,21.25,17.83,23.56],[22.17,21.25,25.83,23.56],[26.17,21.25,29.83,23.56]],"door":[18.42,21.05,21.58,25.0],"doorCx":20.0,"smoke":[9.33,4.61],"lamp":[22.33,21.97]},{"win":[[12.42,13.69,14.92,15.52],[25.08,13.69,27.58,15.52],[10.17,21.25,13.83,23.56],[14.17,21.25,17.83,23.56],[22.17,21.25,25.83,23.56],[26.17,21.25,29.83,23.56]],"door":[18.42,21.05,21.58,25.0],"doorCx":20.0,"smoke":[9.33,4.61],"lamp":[22.33,21.97]},{"win":[[12.42,13.69,14.92,15.52],[25.08,13.69,27.58,15.52],[10.17,21.25,13.83,23.56],[14.17,21.25,17.83,23.56],[22.17,21.25,25.83,23.56],[26.17,21.25,29.83,23.56]],"door":[18.42,21.05,21.58,25.0],"doorCx":20.0,"smoke":[9.33,4.61],"lamp":[22.33,21.97]}],"colonial":[{"win":[[8.0,20.72,12.0,23.13],[13.0,20.72,17.0,23.13],[23.0,20.72,27.0,23.13],[28.0,20.72,32.0,23.13],[8.67,15.53,11.33,17.74],[13.67,15.53,16.33,17.74],[18.67,15.53,21.33,17.74],[23.67,15.53,26.33,17.74],[28.67,15.53,31.33,17.74]],"door":[18.33,19.76,21.67,23.99],"doorCx":20.0,"smoke":[31.67,0.7],"lamp":null},{"win":[[8.0,20.72,12.0,23.13],[13.0,20.72,17.0,23.13],[23.0,20.72,27.0,23.13],[28.0,20.72,32.0,23.13],[8.67,15.53,11.33,17.74],[13.67,15.53,16.33,17.74],[18.67,15.53,21.33,17.74],[23.67,15.53,26.33,17.74],[28.67,15.53,31.33,17.74]],"door":[18.33,19.76,21.67,23.99],"doorCx":20.0,"smoke":[31.67,0.7],"lamp":null},{"win":[[8.0,20.72,12.0,23.13],[13.0,20.72,17.0,23.13],[23.0,20.72,27.0,23.13],[28.0,20.72,32.0,23.13],[8.67,15.53,11.33,17.74],[13.67,15.53,16.33,17.74],[18.67,15.53,21.33,17.74],[23.67,15.53,26.33,17.74],[28.67,15.53,31.33,17.74]],"door":[18.33,19.76,21.67,23.99],"doorCx":20.0,"smoke":[31.67,0.7],"lamp":null}],"tudor":[{"win":[[11.0,19.26,15.67,21.18],[11.0,23.15,15.67,25.27],[23.83,15.92,26.83,17.84],[27.0,20.15,30.33,22.27]],"door":[20.42,19.96,23.58,24.0],"doorCx":22.0,"smoke":[30.67,-2.74],"lamp":[24.17,20.87]},{"win":[[11.0,19.26,15.67,21.18],[11.0,23.15,15.67,25.27],[23.83,15.92,26.83,17.84],[27.0,20.15,30.33,22.27]],"door":[20.42,19.96,23.58,24.0],"doorCx":22.0,"smoke":[30.67,-2.74],"lamp":[24.17,20.87]},{"win":[[11.0,19.26,15.67,21.18],[11.0,23.15,15.67,25.27],[23.83,15.92,26.83,17.84],[27.0,20.15,30.33,22.27]],"door":[20.42,19.96,23.58,24.0],"doorCx":22.0,"smoke":[30.67,-2.74],"lamp":[24.17,20.87]}],"brick":[{"win":[[9.33,23.1,14.67,25.99],[9.75,15.58,12.92,17.98],[18.42,15.58,21.58,17.98],[27.08,15.58,30.25,17.98],[26.0,20.29,30.0,22.79]],"door":[20.33,20.1,23.67,24.33],"doorCx":22.0,"smoke":[8.67,-2.83],"lamp":[24.33,21.01]},{"win":[[9.33,23.1,14.67,25.99],[9.75,15.58,12.92,17.98],[18.42,15.58,21.58,17.98],[27.08,15.58,30.25,17.98],[26.0,20.29,30.0,22.79]],"door":[20.33,20.1,23.67,24.33],"doorCx":22.0,"smoke":[8.67,-2.83],"lamp":[24.33,21.01]},{"win":[[9.33,23.1,14.67,25.99],[9.75,15.58,12.92,17.98],[18.42,15.58,21.58,17.98],[27.08,15.58,30.25,17.98],[26.0,20.29,30.0,22.79]],"door":[20.33,20.1,23.67,24.33],"doorCx":22.0,"smoke":[8.67,-2.83],"lamp":[24.33,21.01]}],"farmhouse":[{"win":[[9.25,14.58,12.08,16.98],[15.58,14.58,18.42,16.98],[21.58,14.58,24.42,16.98],[27.92,14.58,30.75,16.98],[9.75,19.1,12.92,21.79],[26.42,19.1,29.58,21.79]],"door":[18.33,18.52,21.67,22.56],"doorCx":20.0,"smoke":[30.0,-3.97],"lamp":[22.5,19.82]},{"win":[[9.25,14.58,12.08,16.98],[15.58,14.58,18.42,16.98],[21.58,14.58,24.42,16.98],[27.92,14.58,30.75,16.98],[9.75,19.1,12.92,21.79],[26.42,19.1,29.58,21.79]],"door":[18.33,18.52,21.67,22.56],"doorCx":20.0,"smoke":[30.0,-3.97],"lamp":[22.5,19.82]},{"win":[[9.25,14.58,12.08,16.98],[15.58,14.58,18.42,16.98],[21.58,14.58,24.42,16.98],[27.92,14.58,30.75,16.98],[9.75,19.1,12.92,21.79],[26.42,19.1,29.58,21.79]],"door":[18.33,18.52,21.67,22.56],"doorCx":20.0,"smoke":[30.0,-3.97],"lamp":[22.5,19.82]}],"cube":[{"win":[[7.5,18.33,11.17,22.85],[11.5,18.33,15.17,22.85],[15.5,18.33,19.17,22.85],[15.5,9.89,19.5,14.32],[19.83,9.89,23.83,14.32],[24.17,9.89,28.17,14.32],[28.5,9.89,32.5,14.32]],"door":[26.83,18.71,30.5,23.33],"doorCx":28.67,"smoke":null,"lamp":[31.33,19.43]},{"win":[[7.5,18.33,11.17,22.85],[11.5,18.33,15.17,22.85],[15.5,18.33,19.17,22.85],[15.5,9.89,19.5,14.32],[19.83,9.89,23.83,14.32],[24.17,9.89,28.17,14.32],[28.5,9.89,32.5,14.32]],"door":[26.83,18.71,30.5,23.33],"doorCx":28.67,"smoke":null,"lamp":[31.33,19.43]},{"win":[[7.5,18.33,11.17,22.85],[11.5,18.33,15.17,22.85],[15.5,18.33,19.17,22.85],[15.5,9.89,19.5,14.32],[19.83,9.89,23.83,14.32],[24.17,9.89,28.17,14.32],[28.5,9.89,32.5,14.32]],"door":[26.83,18.71,30.5,23.33],"doorCx":28.67,"smoke":null,"lamp":[31.33,19.43]}],"pavilion":[{"win":[[6.17,17.0,9.5,21.62],[9.83,17.0,13.17,21.62],[13.5,17.0,16.83,21.62],[23.17,17.0,26.5,21.62],[26.83,17.0,30.17,21.62],[30.5,17.0,33.83,21.62]],"door":[17.67,17.0,22.33,21.62],"doorCx":20.0,"smoke":null,"lamp":[23.0,18.48]},{"win":[[6.17,17.0,9.5,21.62],[9.83,17.0,13.17,21.62],[13.5,17.0,16.83,21.62],[23.17,17.0,26.5,21.62],[26.83,17.0,30.17,21.62],[30.5,17.0,33.83,21.62]],"door":[17.67,17.0,22.33,21.62],"doorCx":20.0,"smoke":null,"lamp":[23.0,18.48]},{"win":[[6.17,17.0,9.5,21.62],[9.83,17.0,13.17,21.62],[13.5,17.0,16.83,21.62],[23.17,17.0,26.5,21.62],[26.83,17.0,30.17,21.62],[30.5,17.0,33.83,21.62]],"door":[17.67,17.0,22.33,21.62],"doorCx":20.0,"smoke":null,"lamp":[23.0,18.48]}],"butterfly":[{"win":[[7.17,18.19,9.5,22.62],[9.83,18.19,12.17,22.62],[12.5,18.19,14.83,22.62],[25.17,18.19,27.5,22.62],[27.83,18.19,30.17,22.62],[30.5,18.19,32.83,22.62]],"door":[18.17,18.55,21.83,23.17],"doorCx":20.0,"smoke":null,"lamp":[22.67,19.29]},{"win":[[7.17,18.19,9.5,22.62],[9.83,18.19,12.17,22.62],[12.5,18.19,14.83,22.62],[25.17,18.19,27.5,22.62],[27.83,18.19,30.17,22.62],[30.5,18.19,32.83,22.62]],"door":[18.17,18.55,21.83,23.17],"doorCx":20.0,"smoke":null,"lamp":[22.67,19.29]},{"win":[[7.17,18.19,9.5,22.62],[9.83,18.19,12.17,22.62],[12.5,18.19,14.83,22.62],[25.17,18.19,27.5,22.62],[27.83,18.19,30.17,22.62],[30.5,18.19,32.83,22.62]],"door":[18.17,18.55,21.83,23.17],"doorCx":20.0,"smoke":null,"lamp":[22.67,19.29]}],"villa":[{"win":[[9.33,18.05,12.67,21.9],[15.33,18.05,18.67,21.9],[21.33,18.05,24.67,21.9],[27.33,18.05,30.67,21.9],[9.83,13.62,12.83,16.7],[18.5,13.62,21.5,16.7],[27.17,13.62,30.17,16.7]],"door":[21.0,18.63,25.0,22.67],"doorCx":23.0,"smoke":[30.0,-3.3],"lamp":[26.0,19.15]},{"win":[[9.33,18.05,12.67,21.9],[15.33,18.05,18.67,21.9],[21.33,18.05,24.67,21.9],[27.33,18.05,30.67,21.9],[9.83,13.62,12.83,16.7],[18.5,13.62,21.5,16.7],[27.17,13.62,30.17,16.7]],"door":[21.0,18.63,25.0,22.67],"doorCx":23.0,"smoke":[30.0,-3.3],"lamp":[26.0,19.15]},{"win":[[9.33,18.05,12.67,21.9],[15.33,18.05,18.67,21.9],[21.33,18.05,24.67,21.9],[27.33,18.05,30.67,21.9],[9.83,13.62,12.83,16.7],[18.5,13.62,21.5,16.7],[27.17,13.62,30.17,16.7]],"door":[21.0,18.63,25.0,22.67],"doorCx":23.0,"smoke":[30.0,-3.3],"lamp":[26.0,19.15]}],"modernfarm":[{"win":[[8.83,14.15,11.83,22.62],[12.17,14.15,15.17,22.62],[14.5,9.53,17.5,12.61],[27.67,16.43,32.33,19.13]],"door":[17.17,18.38,20.83,23.0],"doorCx":19.0,"smoke":[9.0,-3.58],"lamp":[21.33,19.1]},{"win":[[8.83,14.15,11.83,22.62],[12.17,14.15,15.17,22.62],[14.5,9.53,17.5,12.61],[27.67,16.43,32.33,19.13]],"door":[17.17,18.38,20.83,23.0],"doorCx":19.0,"smoke":[9.0,-3.58],"lamp":[21.33,19.1]},{"win":[[8.83,14.15,11.83,22.62],[12.17,14.15,15.17,22.62],[14.5,9.53,17.5,12.61],[27.67,16.43,32.33,19.13]],"door":[17.17,18.38,20.83,23.0],"doorCx":19.0,"smoke":[9.0,-3.58],"lamp":[21.33,19.1]}],"_frame":{"frame":14.0,"off":1.0}};   // from render_houses.py (house_layout.json)
+const HouseArt = (() => {
+  const ims = new Map();
+  let gen = 0;
+  function get(name) {
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image(); im._bad = false;
+      im.onload = () => { gen++; };
+      im.onerror = () => { im._bad = true; };
+      im.src = `img/${name}.png`; ims.set(name, im);
+    }
+    return !im._bad && im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get gen() { return gen; },
+    // The sprite and live-part layout for this style / variant, or null.
+    pick(style, v) {
+      if (!HOUSE_ART_LAYOUT || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return null;
+      const Ls = HOUSE_ART_LAYOUT[style]; if (!Ls || !Ls.length) return null;
+      const k = ((v % Ls.length) + Ls.length) % Ls.length, im = get(`house_${style}_${k}`);
+      return im ? { im, L: Ls[k] } : null;
+    },
+  };
+})();
+
 const _HOUSE_STYLE = {
   budget: {
     styles: ['shack', 'cottage', 'trailer'],
@@ -652,7 +861,7 @@ function renderHouseFrontWalks(cStart, cEnd, rStart, rEnd) {
 function _renderFamilyHouse(e, px, py, t, tier) {
     const S  = _HOUSE_STYLE[tier];
     // The 40-unit lot spans the whole footprint (2×2 now; 1×1 for older
-    // houses and Mae's Cabin).
+    // houses).
     const s  = TILE * Math.min(e.width || 1, e.height || 1) / 40;
     const on = e.powered;
     const detail = Camera.zoom > 0.45;
@@ -725,6 +934,7 @@ function _renderFamilyHouse(e, px, py, t, tier) {
       door  = deal(S.doors, 4);
       trim  = deal(S.trims, 5);
     }
+    if (e.isCabin || nm === "Mae's Cabin") style = 'trailer';   // Mae's Cabin: her trailer, every time
     const accent = pick(['#c84a3a', '#3a7ac8', '#e0b030', '#4a9a5a', '#8a5ac0'], 6);
 
     // ── Drawing helpers (lot units) ───────────────────────────────────
@@ -948,6 +1158,55 @@ function _renderFamilyHouse(e, px, py, t, tier) {
     const hoop = (x, y) => { R(x - 0.3, y - 9, 0.6, 9, '#3a3a3a'); R(x - 1.8, y - 10.6, 3.6, 2.2, '#f4f4f0'); ln(x - 1, y - 8.4, x + 1, y - 8.4, '#e06020', 0.4); };
     const doghouse = (x, y) => { R(x, y - 3, 4, 3, '#8a5a3a'); poly([[x - 0.5, y - 3], [x + 2, y - 5], [x + 4.5, y - 3]], '#6a3a2a'); ctx.fillStyle = '#1a120c'; ctx.beginPath(); ctx.arc(X(x + 2), Y(y - 0.2), 1*s, Math.PI, 0); ctx.fill(); };
     const pot = (x, y) => { R(x - 0.9, y - 1.6, 1.8, 1.6, '#b0603a'); dot(x, y - 2.8, 1.3, '#2e6a2a'); };
+
+    // ── Rendered house (HouseArt) ─────────────────────────────────────
+    // The variant follows the wall colour the house was dealt, so a block's
+    // neighbours (dealt distinct walls) mostly get distinct variants too.
+    const art = HouseArt.pick(style, Math.max(0, S.walls.indexOf(wall)));
+    if (art) {
+      const { im, L } = art;
+      e._haArt = true;
+      ctx.save();
+      // the lot's sides and front; roofs and trees may rise into the lot behind
+      ctx.beginPath(); ctx.rect(X(1), Y(-10), 38*s, 49*s); ctx.clip();
+      _cwFrame(HOUSE_ART_LAYOUT._frame, X(20), Y(20), 1/3, 1/3).draw(im);
+      // windows: lit from inside by the household's evening (rendered glass otherwise)
+      (L.win || []).forEach(([u0, v0, u1, v1], k) => {
+        const hv = rnd(100 + k), w = u1 - u0, h = v1 - v0;
+        const lit = on && ((evening && hv > 0.3) || (night && hv > 0.86));
+        if (!lit) return;
+        const tv = evening && hv > 0.84;
+        if (tv && Sp) { tvLive.push(u0, v0, w, h, hv); return; }
+        ctx.fillStyle = tv ? `rgba(130,175,255,${0.6 + 0.25*Math.sin(t*9 + hv*20)*Math.sin(t*3.1)})`
+                           : `rgba(255,208,130,${0.78 + 0.08*Math.sin(t*1.3 + hv*9)})`;
+        ctx.fillRect(X(u0), Y(v0), w*s, h*s);
+        if (Camera.zoom > 0.5) {
+          const g = ctx.createRadialGradient(X(u0 + w/2), Y(v0 + h/2), 0, X(u0 + w/2), Y(v0 + h/2), (w + h)*s);
+          g.addColorStop(0, tv ? 'rgba(130,175,255,0.16)' : 'rgba(255,200,120,0.16)'); g.addColorStop(1, 'rgba(255,200,120,0)');
+          ctx.fillStyle = g; ctx.fillRect(X(u0 - w), Y(v0 - h), w*3*s, h*3*s);
+        }
+      });
+      // the front door: homeDoor swings it open and walks the household from it
+      if (L.door) { const [u0, v0, u1, v1] = L.door; frontDoor(u0, v0, u1, v1, door, { path: [[(u0 + u1) / 2, v1], [(u0 + u1) / 2, 38.6]] }); }
+      if (L.smoke) smoke(L.smoke[0], L.smoke[1]);
+      if (L.lamp && on && !day && Camera.zoom > 0.5) {
+        const [lx, ly] = L.lamp, g = ctx.createRadialGradient(X(lx), Y(ly), 0, X(lx), Y(ly), 6*s);
+        g.addColorStop(0, 'rgba(255,210,130,0.5)'); g.addColorStop(1, 'rgba(255,210,130,0)');
+        ctx.fillStyle = g; ctx.fillRect(X(lx - 6), Y(ly - 6), 12*s, 12*s);
+        R(lx - 0.35, ly - 0.45, 0.7, 0.9, '#ffe6a8');
+      }
+      if (homeD && !Sp) homeD.walkers();
+      if (Sp) e._hsTv = tvLive;
+      if (!on) dimPainted('rgba(8,6,4,0.42)', X(1), Y(-10), 38*s, 49*s);
+      ctx.restore();
+      e._frontWalk = { x: L.doorCx, c: tier === 'budget' ? 'rgba(130,110,80,0.8)' : tier === 'luxury' ? '#d8d4c8' : '#9a9080' };
+      ctx.strokeStyle = on ? `rgba(255,220,120,${0.16 + 0.06*Math.sin(t*2)})` : 'rgba(40,32,16,0.45)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(X(1) + 0.5, Y(1) + 0.5, 38*s - 1, 38*s - 1);
+      _drawHouseStatusDots(e, px, py);
+      return;
+    }
+    e._haArt = false;
 
     // ── Lot ───────────────────────────────────────────────────────────
     const GND = 31;   // wall base line; the front yard runs GND..39
@@ -1493,7 +1752,8 @@ RenderSplit.register(T.HOUSE, {
       + (DayNight.darkness() > 0.25 ? 'D' : '')               // the hall behind an open door is lit
       + (e._hsSwing | 0)
       + (rel < 100 || sat < 80 ? (rel < 50 ? 2 : rel < 80 ? 1 : 0) + '' + (sat < 50 ? 2 : sat < 75 ? 1 : 0) : '-')
-      + (e.houseWealthTier || '') + (e.commercialSubtype || '');
+      + (e.houseWealthTier || '') + (e.commercialSubtype || '')
+      + (e._haArt ? 'A' : 'P' + HouseArt.gen);                 // painted until its rendered sprite loads
   },
 });
 
@@ -7068,6 +7328,7 @@ function renderCommercial(e, px, py, t) {
     // Manufacturing Co. is industrial now (save.js migrates old commercial
     // ones); this only covers anything that slips past that.
     if (sub === 'factory') { _commNative(e, px, py, t, e.businessName === 'Assembly Hall' ? _renderAssemblyHall : _renderManufacturingCo); return; }
+    if (_indArtTry(e, px, py, t, sub, _COM_ART_KEY)) return;   // rendered in Blender (render_industrial.py)
     const cx = px+TILE/2, cy = py+TILE/2, on = e.powered;
     if (on) {
       const gc = {jazzbar:'#4aa8ff',disco:'#ff5aa8',superclub:'#ff3a8a',cafe:'#ff8030',office:'#60a0ff',clinic:'#c0e0ff',grocery:'#40e020',coldstorage:'#40c0ff',factory:'#ff6020',datacenter:'#3050ff',fastfood:'#ffb020',donutshop:'#ff7ac0',hotdog:'#ff5030',pizzeria:'#ff9a30',restaurant:'#d04040',movietheater:'#ff2090',galleria:'#60ffc0',arcade:'#ffd890',pharmacy:'#28e6b4',bakery:'#e08c32',kakery:'#ff80b0',bank:'#d4af37',savingsloan:'#e05a3a',reservebank:'#e8c860',motel:'#ff7aa0',boutiquehotel:'#e8a860',resorthotel:'#60d8f0',autorepair:'#ff8c28',sciencemuseum:'#ffd890',marina:'#60c0ff',amusementpark:'#ff70d0',waterpark:'#40c8ff',thunderridge:'#ffb030',pharmalab:'#60e0a0',radiology:'#80c0ff',stadium:'#e0f0ff',bowling:'#ff40c0',truckstop:'#ff6040',cardealer:'#60d0ff',aquarium:'#40c8ff',convention:'#ffb040',finedining:'#ffc860',supperclub:'#ffd070',nightclub:'#e040ff',library:'#ffd890',clothing:'#ff70c0',lawoffice:'#ffd890',callcentre:'#60a8ff',summit:'#80c0ff',megatower:'#a0e0ff',quantumx:'#e8c050',holoarena:'#c070ff',spaceelevator:'#9ac8ff'}[sub]||'#f0c040';
@@ -8486,10 +8747,2361 @@ function _industrialGlowColour(sub) {
   return sub==='datacenter' || sub==='serverfarm' ? '#4080ff' : sub==='coldstorage' || sub==='coldchain' ? '#80e0ff' : sub==='chemical' ? '#a0e020' : sub==='bottling' ? '#60c8e0' : sub==='textilemill' ? '#e0a0b0' : sub==='recyclingplant' ? '#50e090' : sub==='aluminumsmelter' ? '#a0c8ff' : sub==='fertilizer' ? '#c0e080' : sub==='isotopelab' ? '#60c0ff' : sub==='cryptomine' ? '#40ff90' : sub==='machineshop' ? '#ffa040' : sub==='fishhatchery' ? '#40c0d0' : sub==='semifab' ? '#c080ff' : sub==='aicompute' ? '#40e0ff' : sub==='supercon' ? '#80d0ff' : sub==='verticalfarm' ? '#ff40d0' : sub==='geneworks' ? '#40ffa0' : sub==='collider' ? '#80a0ff' : sub==='desal' ? '#60b0ff' : sub==='brickworks' ? '#ff7040' : sub==='wastefacility' ? '#e0a020' : sub==='sawmill' ? '#e0b060' : sub==='glassworks' ? '#ff9040' : sub==='papermill' ? '#d0e0f0' : sub==='plastics' ? '#80d0ff' : sub==='spaceport' ? '#ffb060' : sub==='carbonrefinery' ? '#70e0a0' : sub==='massdriver' ? '#60c0ff' : sub==='antimatter' ? '#ff60e0' : '#ff8040';
 }
 
+/* Industrial properties rendered in Blender (scripts/render_industrial.py):
+   one base sprite per subtype at its default footprint, with the moving
+   parts drawn live from the anchors in IND_ART_LAYOUT (the script's
+   ind_layout.json; metres from the footprint's centre, x east, y north,
+   z up, oblique like the other rendered buildings). The painted building
+   stays the fallback: ghosts, other sizes, image fills off, or until the
+   sprite has loaded. */
+const IND_ART_LAYOUT = {"sf": {"handler": [-2.2, 0.92, 0.95], "heaps": [[-2.84, 1.6, 1.2], [-1.84, 1.44, 0.95]], "basket": [-1.28, 0.24, 0.55], "louvres": [[0.09, 2.19, 4.45], [0.361, 2.19, 4.45], [0.633, 2.19, 4.45], [0.904, 2.19, 4.45], [1.176, 2.19, 4.45], [1.447, 2.19, 4.45], [1.719, 2.19, 4.45], [1.99, 2.19, 4.45]], "louvreSize": [0.16, 0.36], "sign": [[1.58, -0.85, 2.2], [2.58, -0.85, 2.2], [1.58, -0.85, 3.0]], "elec": [[-0.08, 0.16, 1.25], [0.32, 0.16, 1.25], [0.72, 0.16, 1.25]], "furnace": [0.32, 0.16, 1.1, 0.72], "slagDoor": [0.32, -0.6, 0.55], "spout": [0.98, -0.44, 0.4], "crane": [-0.44, 1.08, 0.56, 3.8], "track": [-2.4, 0.96, -1.4, 0.15], "pour": [-2.12, -1.36, 1.7, 0.4], "bed": [-3.44, -0.56, -1.66, -2.66, 0.37], "bag": [], "stack": [3.456, -0.48, 7.6], "slag": [-0.24, -2.88, 0.6, 0.2], "lamps": [[-0.24, -1.26, 3.15], [2.88, -1.26, 3.15]], "frame": [-4, 4, -4, 4], "rect": [-4.3, 7.269, -7.975, 8.688], "ladleRect": [-0.8, 0.8, -0.7, 1.162], "armMag": [[-0.784, 0.841, 2.05], [-0.67, 0.935, 2.05], [-0.545, 1.013, 2.05], [-0.41, 1.074, 2.05], [-0.269, 1.118, 2.05], [-0.123, 1.143, 2.05], [0.024, 1.15, 2.05], [0.172, 1.137, 2.05], [0.316, 1.106, 2.05], [0.455, 1.056, 2.05], [0.587, 0.989, 2.05], [0.709, 0.905, 2.05], [0.819, 0.807, 2.05], [0.916, 0.695, 2.05], [0.998, 0.572, 2.05], [1.063, 0.439, 2.05], [1.11, 0.299, 2.05], [1.14, 0.154, 2.05], [1.15, 0.007, 2.05], [1.141, -0.141, 2.05], [1.114, -0.286, 2.05], [1.068, -0.426, 2.05], [1.005, -0.56, 2.05], [0.924, -0.684, 2.05]], "armRect": [-1.7, 2.911, -3.199, 3.49], "armN": 24, "armA": [133.0, -36.5]}, "df": {"tray": [-3.6, 1.2, 0.84, 0.52], "pods": [[-3.28, -2.4, 1.09, 1.0, -2.84, 2.28, 1.45], [-1.68, -0.8, 1.09, 1.0, -1.24, 2.28, 1.45], [-0.08, 0.8, 1.09, 1.0, 0.36, 2.28, 1.45], [-3.28, -2.4, -1.79, 1.0, -2.84, -0.6, 1.45], [-1.68, -0.8, -1.79, 1.0, -1.24, -0.6, 1.45], [-0.08, 0.8, -1.79, 1.0, 0.36, -0.6, 1.45]], "fans": [[-2.84, 2.744, 1.58, 0.26], [-2.84, 2.164, 1.58, 0.26], [-2.84, 1.584, 1.58, 0.26], [-1.24, 2.744, 1.58, 0.26], [-1.24, 2.164, 1.58, 0.26], [-1.24, 1.584, 1.58, 0.26], [0.36, 2.744, 1.58, 0.26], [0.36, 2.164, 1.58, 0.26], [0.36, 1.584, 1.58, 0.26], [-2.84, -0.136, 1.58, 0.26], [-2.84, -0.716, 1.58, 0.26], [-2.84, -1.296, 1.58, 0.26], [-1.24, -0.136, 1.58, 0.26], [-1.24, -0.716, 1.58, 0.26], [-1.24, -1.296, 1.58, 0.26], [0.36, -0.136, 1.58, 0.26], [0.36, -0.716, 1.58, 0.26], [0.36, -1.296, 1.58, 0.26]], "towers": [[2.64, 2.8, 1.68, 0.46], [2.64, 0.92, 1.68, 0.46]], "batts": [[2.29, 3.35, -1.03, 0.55], [2.29, 3.35, -1.83, 0.55]], "noc": [-3.45, -0.87, -3.55, 0.48, 1.02], "nocSign": [[-3.3, -3.56, 1.3], [-1.02, -3.56, 1.3], [-3.3, -3.56, 1.6]], "beacon": [-0.88, -2.64, 2.04], "dishes": [[-0.24, -3.09, 1.0], [0.64, -3.09, 1.0]], "frame": [-4, 4, -4, 4], "rect": [-4.3, 5.12, -5.316, 5.512]}, "tm": {"wins": [[-3.45, -3.13, -0.68, 1.85, 2.54, 0], [-2.807, -2.487, -0.68, 1.85, 2.54, 0], [-2.163, -1.843, -0.68, 1.85, 2.54, 0], [-0.877, -0.557, -0.68, 1.85, 2.54, 0], [-0.233, 0.087, -0.68, 1.85, 2.54, 0], [0.41, 0.73, -0.68, 1.85, 2.54, 0], [-3.45, -3.13, -0.68, 0.5, 1.19, 1], [-2.807, -2.487, -0.68, 0.5, 1.19, 1], [-2.163, -1.843, -0.68, 0.5, 1.19, 1], [-1.52, -1.2, -0.68, 0.5, 1.19, 1], [-0.877, -0.557, -0.68, 0.5, 1.19, 1], [-0.233, 0.087, -0.68, 0.5, 1.19, 1], [0.41, 0.73, -0.68, 0.5, 1.19, 1]], "clock": [-1.36, -0.69, 2.3, 0.25], "board": [[-2.06, -0.69, 1.32], [-0.66, -0.69, 1.32], [-2.06, -0.69, 1.52]], "glaze": [[-3.67, 0.95, -0.65, 3.11, 3.8], [-3.67, 0.95, 0.257, 3.11, 3.8], [-3.67, 0.95, 1.163, 3.11, 3.8]], "chimney": [1.44, 0.36, 8.3], "ewins": [[2.05, 2.31, -0.68, 0.45, 1.17, 0], [2.65, 2.91, -0.68, 0.45, 1.17, 0], [3.25, 3.51, -0.68, 0.45, 1.17, 0]], "exhaust": [3.296, 0.2, 2.65], "lampW": [-2.552, -0.72, 2.2], "vats": [[-2.04, -1.62, 0.9, 0.26], [-1.4, -1.62, 0.9, 0.26], [-0.76, -1.62, 0.9, 0.26]], "cloth": [0.04, 0.568, 0.44, -1.47, 1.83, 1.35], "dockLamp": [3.16, -1.85, 1.4], "van": [3.04, -2.34], "frame": [-4, 4, -3, 3], "rect": [-4.3, 7.581, -7.362, 8.15], "vanRect": [-1.1, 1.53, -1.332, 1.435]}, "wt": {"floc": [[-4.02, -1.98, 2.42, 3.02, 0.68], [-4.02, -1.98, 1.46, 2.24, 0.68], [-4.02, -1.98, 0.5, 1.28, 0.68]], "paddles": [[-3.672, 2.72, 0.72, 0.3], [-3.0, 2.72, 0.72, 0.3], [-2.328, 2.72, 0.72, 0.3], [-3.672, 1.76, 0.72, 0.3], [-3.0, 1.76, 0.72, 0.3], [-2.328, 1.76, 0.72, 0.3], [-3.672, 0.8, 0.72, 0.3], [-3.0, 0.8, 0.72, 0.3], [-2.328, 0.8, 0.72, 0.3]], "clar": [[-0.36, 1.76, 0.73, 0.9, 0.9], [-0.36, -1.76, 0.73, 0.9, 0.9]], "filters": [[1.41, 1.935, 1.66, 2.99, 1.01], [2.055, 2.58, 1.66, 2.99, 1.01], [2.7, 3.225, 1.66, 2.99, 1.01], [3.345, 3.87, 1.66, 2.99, 1.01], [1.41, 1.935, 0.21, 1.54, 1.01], [2.055, 2.58, 0.21, 1.54, 1.01], [2.7, 3.225, 0.21, 1.54, 1.01], [3.345, 3.87, 0.21, 1.54, 1.01]], "contact": [1.38, 3.9, -3.02, -0.98, 0.68], "baffles": 4, "clSign": [[3.58, -0.62, 0.47], [3.88, -0.62, 0.47], [3.58, -0.62, 0.75]], "reservoir": [5.1, 1.12, 1.1, 0.25], "pumpFan": [5.1, -1.29, 1.8, 0.28], "pumpLamp": [5.45, -2.75, 1.3], "labWins": [[-4.1, -3.7, -3.08, 0.45, 0.95], [-3.5, -3.1, -3.08, 0.45, 0.95], [-2.9, -2.5, -3.08, 0.45, 0.95], [-2.3, -1.9, -3.08, 0.45, 0.95], [-4.1, -3.7, -3.08, 1.4, 1.9], [-3.5, -3.1, -3.08, 1.4, 1.9], [-2.9, -2.5, -3.08, 1.4, 1.9], [-2.3, -1.9, -3.08, 1.4, 1.9]], "frame": [-6, 6, -4, 4], "rect": [-6.3, 7.276, -5.509, 5.743]}, "cw": {"tanks": [[1.38, 1.97, 0.3, 2.5], [2.484, 1.97, 0.3, 2.5], [3.588, 1.97, 0.3, 2.5], [4.692, 1.97, 0.3, 2.5]], "rack": [-5.52, 5.64, 0.63, 1.7], "colTop": [-4.67, -0.72, 9.1], "reactor": [-1.89, 0.0, 2.36, 0.18], "sight": [-2.18, -1.96, -0.5, 0.62, 1.18], "r101": [[-2.19, -0.5, 1.3], [-1.59, -0.5, 1.3], [-2.19, -0.5, 1.5]], "flare": [-0.3, 1.44, 7.72], "offName": [[-5.22, -3.23, 1.21], [-2.82, -3.23, 1.21], [-5.22, -3.23, 1.39]], "offWins": [[-5.37, -5.07, -3.22, 0.54, 0.96], [-4.95, -4.65, -3.22, 0.54, 0.96], [-4.53, -4.23, -3.22, 0.54, 0.96], [-4.11, -3.81, -3.22, 0.54, 0.96], [-3.69, -3.39, -3.22, 0.54, 0.96], [-3.27, -2.97, -3.22, 0.54, 0.96]], "offFans": [[-4.97, -2.52, 1.92, 0.2], [-4.47, -2.52, 1.92, 0.2]], "fork": [-0.36, 1.44, -2.556], "fillArm": [2.35, -1.04, 1.6], "tanker": [1.8, -1.08], "gantryLamp": [5.23, -0.48, 1.9], "clar": [[-4.8, -4.86, 0.52, 0.66, 0.66], [-3.0, -4.86, 0.52, 0.66, 0.66]], "guardWin": [4.44, 5.16, -5.26, 0.45, 0.75], "barrier": [4.2, -4.32, 0.7, 0.85], "lamps": [[-5.64, 5.64, 3.0], [0.36, 0.96, 3.0], [5.64, 0.36, 3.0], [-2.4, -3.12, 3.0]], "frame": [-6, 6, -6, 6], "rect": [-6.3, 9.972, -10.846, 11.727], "forkRect": [-0.8, 1.312, -1.087, 1.162], "tankerRect": [-0.6, 3.491, -1.284, 1.377]}, "ld": {"fans": [[-2.25, 1.15, 1.61, 0.16], [-1.525, 1.15, 1.61, 0.16], [-0.8, 1.15, 1.61, 0.16], [-2.25, 0.5, 1.61, 0.16], [-1.525, 0.5, 1.61, 0.16], [-0.8, 0.5, 1.61, 0.16]], "snow": [-1.55, -0.3, 1.35, 0.25], "temp": [[-1.3, -0.425, 1.35], [-0.4, -0.425, 1.35], [-1.3, -0.175, 1.35]], "name": [[0.0, -0.725, 1.35], [2.5, -0.725, 1.35], [0.0, -0.425, 1.35]], "lightsS": [[-2.15, -0.93, 0.9], [-1.47, -0.93, 0.9], [-0.79, -0.93, 0.9], [-0.11, -0.93, 0.9], [0.57, -0.93, 0.9], [1.25, -0.93, 0.9], [1.93, -0.93, 0.9], [2.61, -0.93, 0.9]], "lightsN": [[-2.15, 1.82, 1.32], [-1.47, 1.82, 1.32], [-0.79, 1.82, 1.32], [-0.11, 1.82, 1.32], [0.57, 1.82, 1.32], [1.25, 1.82, 1.32], [1.93, 1.82, 1.32], [2.61, 1.82, 1.32]], "bay": [[-2.45, 0], [-1.77, 0], [-1.09, 0], [-0.41, 0], [0.27, 0], [0.95, 0], [1.63, 0], [2.31, 0]], "wallS": -0.95, "wallN": 1.85, "fuel": [[-4.35, -1.34, 0.86], [-3.55, -1.34, 0.86], [-4.35, -1.34, 0.94]], "gateWin": [-4.6, -4.0, -3.08, 0.33, 0.58], "barrier": [-3.8, -3.1, 0.45, 1.0], "masts": [[-2.9, 3.5, 2.2], [2.9, 3.5, 2.2], [-2.9, -2.6, 2.2], [2.9, -2.6, 2.2]], "frame": [-5, 5, -5, 5], "rect": [-5.3, 6.198, -6.412, 6.628], "moverRect": [-2.3, 2.573, -2.639, 2.704], "ganRect": [2.5, 5.808, -1.329, 1.451], "vanRect": [-0.8, 0.956, -0.993, 1.031]}, "cc": {"fans": [[-4.327, 1.383, 3.38, 0.55], [-3.113, 1.383, 3.38, 0.55], [-0.967, 1.383, 3.38, 0.55], [0.247, 1.383, 3.38, 0.55], [2.393, 1.383, 3.38, 0.55], [3.607, 1.383, 3.38, 0.55]], "name": [[-3.0, -0.817, 2.85], [0.6, -0.817, 2.85], [-3.0, -0.117, 2.85]], "temp": [[3.36, -0.617, 3.01], [5.16, -0.617, 3.01], [3.36, -0.017, 3.01]], "doors": [[-5.04, -3.12, -1.12, 0.05, 2.2], [-2.28, -0.36, -1.12, 0.05, 2.2], [0.48, 2.4, -1.12, 0.05, 2.2], [3.24, 5.16, -1.12, 0.05, 2.2]], "dockLights": [[-2.92, -1.05, 2.45], [-0.16, -1.05, 2.45], [2.6, -1.05, 2.45], [5.36, -1.05, 2.45]], "reeferLeds": [[-3.83, -3.138, 0.95], [1.69, -3.138, 0.95]], "nh3": [[3.84, -3.6, 0.75], [4.44, -3.6, 0.75], [3.84, -3.6, 1.05]], "frost": [2.94, 5.34, -3.58, 0.4, 0.7], "frame": [-6, 6, -5, 5], "rect": [-6.3, 7.628, -6.944, 7.263]}, "bp": {"silos": [[-3.86, -0.54, 1.23, 4.17, -4.36], [-1.46, -0.54, 1.23, 4.17, -1.96]], "clere": [[0.276, 0.773, 0.68, 1.33, 1.87], [1.021, 1.518, 0.68, 1.33, 1.87], [1.766, 2.263, 0.68, 1.33, 1.87], [2.512, 3.008, 0.68, 1.33, 1.87], [3.257, 3.754, 0.68, 1.33, 1.87], [4.002, 4.499, 0.68, 1.33, 1.87], [4.747, 5.244, 0.68, 1.33, 1.87]], "sign": [[0.4, 0.67, 0.6], [5.12, 0.67, 0.6], [0.4, 0.67, 0.92]], "vents": [[0.992, 4.24, 3.1], [2.317, 4.24, 3.1]], "logo": [4.306, 3.84, 2.73, 0.66], "beacon": [2.65, 4.04, 2.9], "co2": [[3.46, -0.468, 0.62], [4.46, -0.468, 0.62], [3.46, -0.468, 0.9]], "co2Vent": [5.31, -0.048, 1.1], "belt": [[-1.5, -1.92, 0.42], [5.04, -1.92, 0.42], [5.04, -4.32, 0.42], [-3.0, -4.32, 0.42]], "filler": [-2.4, -1.92, 0.58, 0.9], "cap": [1.54, -1.92, 1.14, 1.65, 1.38], "lab": [5.04, -3.1, 1.14, 1.68, 1.38], "spool": [3.94, -3.65, 1.32, 0.33], "qc": [[-0.24, 0.66, -3.8, 0.5, 1.0], [0.78, 1.68, -3.8, 0.5, 1.0]], "packer": [-2.67, -4.326, 1.12], "fork": [-4.83, -1.2, -2.76], "truck": [-2.4, 6.6, -5.28], "workers": [-3.42, -1.98, -5.1, -1.2, 2.64, -3.78], "lamps": [[-5.64, 5.52, 3.0], [-0.24, 5.52, 3.0], [5.64, 0.96, 3.0], [-5.64, -0.84, 3.0], [5.64, -4.32, 3.0]], "frame": [-6, 6, -6, 6], "rect": [-6.3, 8.331, -8.815, 9.302], "forkRect": [-0.8, 1.152, -1.635, 1.32], "truckRect": [-0.5, 6.347, -1.577, 1.708]}, "sv": {"halls": [[-6.33, 1.99, 3.069, 4.011, 1.99], [-6.33, 1.99, -1.131, -0.189, 1.99]], "fans": [[-5.963, 4.73, 2.1, 0.42], [-4.878, 4.73, 2.1, 0.42], [-3.793, 4.73, 2.1, 0.42], [-2.708, 4.73, 2.1, 0.42], [-1.623, 4.73, 2.1, 0.42], [-0.538, 4.73, 2.1, 0.42], [0.547, 4.73, 2.1, 0.42], [1.631, 4.73, 2.1, 0.42], [-5.963, 2.35, 2.1, 0.42], [-4.878, 2.35, 2.1, 0.42], [-3.793, 2.35, 2.1, 0.42], [-2.708, 2.35, 2.1, 0.42], [-1.623, 2.35, 2.1, 0.42], [-0.538, 2.35, 2.1, 0.42], [0.547, 2.35, 2.1, 0.42], [1.631, 2.35, 2.1, 0.42], [-5.963, 0.53, 2.1, 0.42], [-4.878, 0.53, 2.1, 0.42], [-3.793, 0.53, 2.1, 0.42], [-2.708, 0.53, 2.1, 0.42], [-1.623, 0.53, 2.1, 0.42], [-0.538, 0.53, 2.1, 0.42], [0.547, 0.53, 2.1, 0.42], [1.631, 0.53, 2.1, 0.42], [-5.963, -1.85, 2.1, 0.42], [-4.878, -1.85, 2.1, 0.42], [-3.793, -1.85, 2.1, 0.42], [-2.708, -1.85, 2.1, 0.42], [-1.623, -1.85, 2.1, 0.42], [-0.538, -1.85, 2.1, 0.42], [0.547, -1.85, 2.1, 0.42], [1.631, -1.85, 2.1, 0.42]], "towers": [[4.62, 4.44, 1.6, 0.85], [4.62, 1.8, 1.6, 0.85]], "xfmr": [[3.5, -1.48, 0.75, 0.98], [4.76, -1.48, 0.75, 0.98], [6.02, -1.48, 0.75, 0.98]], "hv": [[4.48, -2.28, 0.08], [5.32, -2.28, 0.08], [4.48, -1.92, 0.08]], "trunk": [-6.86, 2.52, -2.82, 0.24], "gens": [[-5.985, -3.61, 1.8, -6.19, -3.38, 1.0], [-3.815, -3.61, 1.8, -4.02, -3.38, 1.0], [-1.645, -3.61, 1.8, -1.85, -3.38, 1.0], [0.525, -3.61, 1.8, 0.32, -3.38, 1.0]], "board": [[2.9, -4.627, 0.802], [6.48, -4.627, 0.802], [2.9, -4.111, 1.163]], "board2": [[3.1, -5.108, 0.464], [6.28, -5.108, 0.464], [3.1, -4.718, 0.737]], "frame": [-7, 7, -6, 6], "rect": [-7.3, 8.159, -7.364, 7.57]}, "rp": {"logo": [-5.28, 1.268, 3.13, 0.9], "bays": [[-6.32, -1.5, -7.04, -5.6], [-4.24, -1.5, -4.96, -3.52]], "beacons": [[-7.2, 3.008, 3.2], [-3.36, 3.008, 3.2]], "incline": [[-3.2, -0.72, 0.6], [-1.6, 0.96, 3.1]], "gwins": [[-1.92, -1.44, 0.68, 2.75, 3.35], [-1.147, -0.667, 0.68, 2.75, 3.35], [-0.373, 0.107, 0.68, 2.75, 3.35], [0.4, 0.88, 0.68, 2.75, 3.35], [1.173, 1.653, 0.68, 2.75, 3.35], [1.947, 2.427, 0.68, 2.75, 3.35], [2.72, 3.2, 0.68, 2.75, 3.35]], "sorter": [-1.62, 2.9, 0.68, 2.38], "bunkers": [[-1.28, 1.02, 2.2, 0.18, 1.3, -1.48, 0.3], [0.0, 1.02, 2.2, 0.18, 1.3, -1.48, 0.3], [1.28, 1.02, 2.2, 0.18, 1.3, -1.48, 0.3], [2.56, 1.02, 2.2, 0.18, 1.3, -1.48, 0.3]], "outfeed": [5.44, 6.92, -0.96, 0.62], "ram": [4.56, 2.9, 2.85], "fork": [3.52, 6.72, -4.8], "lamps": [[-2.48, -1.92, 3.0], [3.392, -1.92, 3.0], [7.6, -1.92, 3.0]], "tipY": [-1.64, -5.28], "frame": [-8, 8, -6, 6], "rect": [-8.3, 9.823, -8.186, 8.552], "tipRect": [-1.1, 1.647, -2.577, 2.808], "forkRect": [-0.9, 1.552, -1.235, 1.32], "forkRectW": [-1.2, 1.252, -1.235, 1.32]}, "mc": {"sign": [[-6.825, -1.88, 4.15], [1.875, -1.88, 4.15], [-6.825, -1.88, 4.85]], "glaze": [[-8.325, 3.375, -1.86, 5.05, 5.89], [-8.325, 3.375, -0.437, 5.05, 5.89], [-8.325, 3.375, 0.985, 5.05, 5.89], [-8.325, 3.375, 2.408, 5.05, 5.89], [-8.325, 3.375, 3.831, 5.05, 5.89]], "fans": [[-6.3, 3.526, 6.04, 0.4], [0.45, 0.713, 6.04, 0.4]], "doors": [[-7.425, -5.175, -1.9, 0.0, 2.9], [-4.275, -2.025, -1.9, 0.0, 2.9], [-1.125, 1.125, -1.9, 0.0, 2.9]], "stack": [5.625, 0.45, 10.15], "silos": [], "gateWin": [7.2, 8.1, -8.365, 0.55, 0.95], "barrier": [6.75, -7.875, 0.8, 2.475], "k": 0.113, "frame": [-9, 9, -9, 9], "rect": [-9.3, 13.362, -14.329, 15.304], "truckRect": [-1.4, 2.103, -2.77, 4.439]}, "al": {"stack": [0.956, 3.15, 11.1], "bush": [[3.15, 6.712, 2.85], [3.769, 6.712, 2.85], [4.388, 6.712, 2.85], [6.188, 6.712, 2.85], [6.806, 6.712, 2.85], [7.425, 6.712, 2.85]], "warn": [8.269, 8.1, 1.6], "sign": [[-5.438, -3.63, 3.38], [5.438, -3.63, 3.38], [-5.438, -3.63, 4.1]], "monitor": [-8.037, 8.037, -1.258, 4.38, 4.82], "pots": [[-7.1, -1.438, 0.9, 1.225, 1.9], [-5.325, -1.438, 0.9, 1.225, 1.9], [-3.55, -1.438, 0.9, 1.225, 1.9], [-1.775, -1.438, 0.9, 1.225, 1.9], [0.0, -1.438, 0.9, 1.225, 1.9], [1.775, -1.438, 0.9, 1.225, 1.9], [3.55, -1.438, 0.9, 1.225, 1.9], [5.325, -1.438, 0.9, 1.225, 1.9], [7.1, -1.438, 0.9, 1.225, 1.9]], "crane": [-7.237, 5.638, -1.238, 3.3], "walk": [-6.237, -2.762, -3.7], "cfans": [[-7.2, -7.025, 3.61, 0.36], [-3.15, -7.025, 3.61, 0.36]], "furnace": [-7.837, -5.663, -8.405, 0.15, 1.75], "launder": [-5.681, -4.444, -8.625, 0.68], "conv": [-4.388, 1.913, -7.425, 0.58], "quench": [-0.9, -7.425, 0.8], "bed": [7.481, -5.85, 0.833, 0.55], "carrier": [-6.075, 5.625, -3.825], "fork": [4.95, 5.963, -6.975, -6.75], "lamps": [[1.8, -4.275, 2.6], [8.775, 2.25, 2.6], [-8.775, -4.05, 2.6]], "k": 0.113, "frame": [-9, 9, -9, 9], "rect": [-9.3, 13.714, -14.765, 15.824], "crucE": [-0.27, -0.0, -0.0, 1.0], "carRect": [-1.2, 1.591, -1.284, 1.377], "crucW": [0.27, -0.0, -0.0, 1.0]}, "sm": {"pond": [-9.8, -4.4, -2.5, 2.1, 0.33], "ladder": [[-4.7, -0.2, 0.3], [-3.3, 0.6, 1.4]], "cupola": [-0.33, -0.85, 2.05, 4.75, 5.15], "sign": [[-2.0, -2.26, 2.58], [2.8, -2.26, 2.58], [-2.0, -2.26, 3.12]], "bay": [-2.7, 3.4, -2.1, 0.1, 2.4], "carriage": [-2.6, 1.4, -0.4, 0.5], "saw": [0.0, 0.2, 1.4], "cyclone": [5.0, 1.5, 3.6, 1.2], "burner": [6.4, 1.2, 4.9], "fireDoor": [6.05, 6.75, -0.28, 0.1, 0.8], "kfans": [[8.4, 1.6, 2.78, 0.33], [9.4, 1.6, 2.78, 0.33]], "kdoors": [[8.35, 8.45, -2.43, 1.3, 1.6], [9.35, 9.45, -2.43, 1.3, 1.6]], "kvents": [[8.4, 0.2, 3.05], [9.4, 0.2, 3.05]], "loader": [-4.4, -3.4], "fork": [4.0, 6.0, -5.2], "truckY": -7.4, "lamp": [4.4, -2.4, 3.4], "frame": [-10, 10, -8, 8], "rect": [-10.3, 12.761, -11.347, 11.937], "armRect": [-3.3, 4.706, -5.041, 5.378], "armN": 12, "armA": [150.0, 40.0], "truckRect": [-0.6, 4.786, -1.625, 1.766]}, "ev": {"rail": [6.4], "silos": [[-9.0, 1.98, 1.6], [-8.0, 1.98, 1.6], [-7.0, 1.98, 1.6]], "feed": [[-6.8, 4.0, 2.4], [-5.8, 4.0, 2.6]], "logo": [-0.762, 4.462, 1.0, 3.2, 3.16], "bays": [[-6.0, -3.383], [-3.383, -0.767], [-0.767, 1.85], [1.85, 4.467], [4.467, 7.083], [7.083, 9.7]], "line": [-5.7, 9.0, -2.05, 0.38], "mixers": [[-5.3, -0.7, 1.18, 0.3], [-4.1, -0.7, 1.18, 0.3]], "foil": [-3.083, -1.067, -0.2, -1.2, 0.74], "oven": [-2.075, -0.7, 1.3], "robots": [[0.483, -1.8, 0.7], [1.683, -1.8, 0.7]], "dry": [2.05, 4.267, -1.9, 0.5, 1.76], "form": [4.917, 0.4, 0.36, 0.45, 1.11], "pack": [7.383, 8.8, -1.6], "labels": [[-4.692, 0.8, 0.1], [-2.075, 0.8, 0.1], [0.542, 0.8, 0.1], [3.158, 0.8, 0.1], [5.775, 0.8, 0.1], [8.392, 0.8, 0.1]], "chargers": [[-2.5, -3.56, 0.42], [-1.4, -3.56, 0.42], [-0.3, -3.56, 0.42], [0.8, -3.56, 0.42], [1.9, -3.56, 0.42]], "transporter": [-2.4, -5.65, -5.95, 0.45, 1.2], "track": [6.5, -4.8, 2.9, 1.5, 0.09], "trackText": [[5.5, -4.95, 0.09], [7.5, -4.95, 0.09], [5.5, -4.6, 0.09]], "carpark": [-9.0, -3.8, 1.0, 1.7], "lamps": [[-9.6, -2.8, 2.6], [-3.2, -2.8, 2.6], [9.6, -2.8, 2.6], [-3.2, -6.5, 2.6]], "k": 0.05, "frame": [-10, 10, -7, 7], "rect": [-10.3, 11.98, -9.379, 9.783], "trainRect": [-0.5, 9.469, -1.38, 1.493], "carRect": [-1.1, 1.334, -0.99, 1.046]}, "car": {"rect": [-1.25, 1.562, -1.637, 1.712]}, "zb": {"wins": [[-1.1, -0.54, -2.093, 0.75, 1.5], [-0.26, 0.26, -2.293, 0.62, 1.65], [0.54, 1.4, -2.187, 0.75, 1.5]], "bolt": [0.1, -1.18, 3.55, 0.35], "pylon": [-2.84, -2.14, 2.5, 4.7, 1.6], "menu": [2.5, 3.7, -2.29, 1.6, 2.5], "speaker": [2.9, 3.3, -2.19, 0.55, 0.68], "exhaust": [1.76, -0.6, 3.2], "lane": [5.0, 3.15, 1.27, -3.1], "queue": [[0.0, -2.92], [-0.36, -3.14], [-0.72, -3.34], [-1.08, -3.54]], "eaters": [[-3.28, -3.1], [-2.54, -3.1], [-2.91, -3.72]], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.644, -7.202, 7.764]}, "dd": {"case": [-2.32, 0.52, -2.24, 0.42, 1.32], "door": [0.87, 1.53, -2.24, 0.12, 1.45], "hatch": [1.9, 2.62, -2.24, 0.82, 1.4], "ring": [0.1, -1.62, 3.25, 1.55, 0.45], "brush": [[-1.95, -1.1, 2.85], [2.15, -1.1, 2.85]], "sign": [[-1.4, -2.31, 1.9], [1.6, -2.31, 1.9], [-1.4, -2.31, 2.34]], "bulbs": [-1.5, 1.8, -2.31, 2.42], "vent": [-1.8, -1.6, 2.45], "bench": [-3.4, -1.7], "queue": [1.6, -2.24, 0.36], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.292, -6.766, 7.244]}, "cd": {"hatches": [[-2.0, -0.4, -2.25, 0.62, 1.38], [0.4, 2.0, -2.25, 0.62, 1.38]], "dog": [0.0, -1.0, 2.75], "coils": [[-3.54, -1.0, 2.95], [3.54, -1.0, 2.95]], "sign": [[-1.2, -2.31, 1.92], [1.2, -2.31, 1.92], [-1.2, -2.31, 2.32]], "eaters": [[-3.5, -1.1], [-2.94, -1.76]], "queue": [[-1.2, -2.2], [1.2, -2.2]], "lights": [-2.4, 2.4, -2.4, 1.95], "frame": [-4, 4, -4, 4], "rect": [-4.3, 5.628, -5.944, 6.263]}, "os": {"wins": [[-2.63, -1.87, -2.34, 0.6, 1.3], [-1.43, -0.67, -2.34, 0.6, 1.3], [0.87, 1.63, -2.34, 0.6, 1.3], [1.97, 2.73, -2.34, 0.6, 1.3]], "door": [-0.33, 0.33, -2.34, 0.1, 1.2], "pep": [], "slice": [[-2.7, -1.8, 1.8], [2.7, -1.8, 1.8], [0.0, 0.3, 5.4]], "chimney": [1.85, -0.4, 4.65], "pole": [-3.42, -1.68, 2.6, 3.35, 0.45], "queue": [-0.4, -2.6], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.487, -7.008, 7.533]}, "kk": {"sign": [[-2.6, -2.47, 2.42], [2.6, -2.47, 2.42], [-2.6, -2.47, 2.88]], "win": [[-2.75, 0.25, -2.47, 0.3, 1.5]], "door": [[0.7, 1.6, -2.47, 0.05, 1.6]], "candles": [[0.43, -0.467, 5.47], [0.006, -0.15, 5.47], [-0.426, -0.455, 5.47], [-0.27, -0.96, 5.47], [0.259, -0.968, 5.47]], "vent": [2.6, 0.2, 4.05], "eaters": [[2.1, -3.0], [3.1, -3.0]], "board": [[-1.24, -2.74, 0.3], [-0.76, -2.74, 0.3], [-1.24, -2.74, 0.75]], "walk": [1.1, -2.6, 1.1, -4.0], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.487, -7.008, 7.533]}, "bk": {"sign": [[-2.6, -2.78, 2.0], [3.6, -2.78, 2.0], [-2.6, -2.78, 2.4]], "win": [[-3.4, 0.2, -2.75, 0.35, 1.8]], "door": [[0.6, 1.6, -2.75, 0.05, 1.8]], "side": [[2.0, 3.4, -2.75, 0.6, 1.8]], "up": [[-3.0, -1.0, -2.67, 2.75, 3.35], [1.0, 3.0, -2.67, 2.75, 3.35]], "flue": [2.3, -0.6, 5.0], "regular": [2.35, -3.2], "queue": [1.1, -2.9], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.409, -6.911, 7.418]}, "cf": {"sign": [[-2.6, -2.96, 2.08], [3.2, -2.96, 2.48], [-2.6, -2.96, 2.52]], "win": [[-3.4, 0.0, -2.95, 0.4, 1.75], [2.2, 3.4, -2.95, 0.4, 1.75]], "door": [[1.0, 1.8, -2.95, 0.05, 1.85]], "up": [[-2.9, -1.5, -2.87, 3.0, 3.9], [-0.7, 0.7, -2.87, 3.0, 3.9], [1.5, 2.9, -2.87, 3.0, 3.9]], "tables": [[-2.0, -3.3], [-0.6, -3.3]], "queue": [1.4, -3.0], "open": [-3.3, -2.4, -2.9, 0.45, 0.75], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.37, -6.863, 7.36]}, "ph": {"sign": [[-1.95, -1.9, 1.66], [2.4, -1.9, 1.66], [-1.95, -1.9, 2.04]], "cross": [-2.4, -1.9, 1.85], "win": [[-2.55, -0.075, -1.87, 0.18, 1.5]], "door": [[0.075, 1.125, -1.87, 0.02, 1.58]], "side": [[1.275, 2.55, -1.87, 0.5, 1.5]], "hatch": [1.5, 2.325, -1.87, 0.2, 0.6], "h24": [[0.3, -1.9, 1.64], [0.9, -1.9, 1.64], [0.3, -1.9, 1.84]], "up": [[-2.325, -0.975, -1.87, 2.1, 2.75], [-0.375, 0.975, -1.87, 2.1, 2.75]], "scooter": [2.25, -2.4], "frame": [-3, 3, -3, 3], "rect": [-3.3, 4.784, -5.138, 5.494]}, "gy": {"sign": [[-0.933, -2.05, 3.7], [2.533, -2.05, 3.7], [-0.933, -2.05, 4.3]], "bell": [3.067, -2.05, 4.0], "up": [[-3.6, 3.6, -2.02, 2.2, 3.45]], "down": [[-3.6, 3.6, -2.02, 0.08, 1.9]], "units": [[2.033, 0.05, 5.15, 0.21], [3.1, 0.05, 5.15, 0.21]], "door": [-0.4, -2.1], "frame": [-4, 4, -3, 3], "rect": [-4.3, 6.37, -5.863, 6.36]}, "bi": {"sign": [[-1.5, -2.035, 1.9], [1.5, -2.035, 1.9], [-1.5, -2.035, 2.22]], "sub1": [[-4.333, -2.035, 1.92], [-1.667, -2.035, 1.92], [-4.333, -2.035, 2.12]], "sub2": [[1.833, -2.035, 1.92], [4.333, -2.035, 1.92], [1.833, -2.035, 2.12]], "win": [[-4.5, 0.167, -2.025, 0.2, 1.55]], "door": [[0.5, 1.5, -2.025, 0.02, 1.7]], "up": [[-3.975, -3.025, -1.945, 2.45, 3.15], [-1.725, -0.775, -1.945, 2.45, 3.15], [0.525, 1.475, -1.945, 2.45, 3.15], [2.775, 3.725, -1.945, 2.45, 3.15]], "dormers": [[-2.71, -2.29, -1.155, 3.75, 4.15], [-0.21, 0.21, -1.155, 3.75, 4.15], [2.29, 2.71, -1.155, 3.75, 4.15]], "stack": [3.917, 0.325, 4.6], "tables": [[-3.833, -2.4], [-1.667, -2.4], [0.5, -2.4], [2.667, -2.4]], "frame": [-5, 5, -3, 3], "rect": [-5.3, 7.175, -5.621, 6.071]}, "cw2": {"win": [[-4.183, -1.813, -3.67, 2.4, 4.3], [-1.393, 0.977, -3.67, 2.4, 4.3], [1.397, 3.767, -3.67, 2.4, 4.3]], "neon": [[-2.0, -3.69, 1.82], [2.0, -3.69, 1.82], [-2.0, -3.69, 2.18]], "cafe": [[-4.3, -0.8, -3.67, 0.2, 1.65], [1.2, 2.0, -3.67, 0.2, 1.65]], "door": [[-0.6, 1.0, -3.67, 0.02, 1.75]], "terrace": [[-2.0, -2.4], [2.0, -2.4]], "lights": [-4.4, 4.4, -3.5, 6.1], "walk": [0.2, -3.6, -5.0], "frame": [-5, 5, -5, 5], "rect": [-5.3, 8.034, -8.685, 9.341]}, "lw": {"win": [[-3.233, -2.433, -3.403, 0.55, 1.75, 0, 0], [-1.733, -0.933, -3.403, 0.55, 1.75, 0, 1], [0.933, 1.733, -3.403, 0.55, 1.75, 0, 2], [2.433, 3.233, -3.403, 0.55, 1.75, 0, 3], [-3.233, -2.433, -3.403, 2.5, 3.6, 1, 0], [-1.733, -0.933, -3.403, 2.5, 3.6, 1, 1], [0.933, 1.733, -3.403, 2.5, 3.6, 1, 2], [2.433, 3.233, -3.403, 2.5, 3.6, 1, 3], [-3.233, -2.433, -3.403, 4.15, 5.15, 2, 0], [-1.733, -0.933, -3.403, 4.15, 5.15, 2, 1], [0.933, 1.733, -3.403, 4.15, 5.15, 2, 2], [2.433, 3.233, -3.403, 4.15, 5.15, 2, 3]], "door": [-0.45, 0.45, -3.413, 0.1, 1.8], "fan": [0.0, -3.413, 2.0, 0.42], "plaque": [[1.667, -3.393, 1.38], [2.333, -3.393, 1.38], [1.667, -3.393, 1.62]], "dormers": [[-1.967, -1.367, -2.923, 6.05, 6.55], [0.7, 1.3, -2.923, 6.05, 6.55]], "lamp": [3.667, -4.167, 2.9], "car": [-2.5, -4.5], "frame": [-5, 5, -5, 5], "rect": [-5.3, 8.308, -9.024, 9.746]}, "sl": {"wins": [[-5.0, -3.5, -2.67, 0.4, 2.3], [-1.3, 0.2, -2.67, 0.4, 2.3], [0.5, 2.0, -2.67, 0.4, 2.3]], "door": [[-3.15, -1.65, -2.67, 0.02, 2.2]], "sign": [[-3.8, -0.64, 3.55], [1.0, -0.64, 3.55], [-3.8, -0.64, 4.35]], "kiosks": [[3.2, -1.61, 0.95], [5.0, -1.61, 0.95]], "lanes": [4.0, 5.8], "laneY": [-3.4, 2.5], "atm": [1.5, 2.1, -2.36, 0.55, 0.85], "lot": [-3.1], "frame": [-6, 6, -6, 6], "rect": [-6.3, 8.058, -8.476, 8.898]}, "bnk": {"sign": [[-2.8, -4.72, 5.55], [2.8, -4.72, 5.55], [-2.8, -4.72, 5.95]], "door": [-0.9, 0.9, -3.28, 0.65, 2.75], "transom": [-1.05, 1.05, -3.28, 3.0, 3.45], "win": [[-5.97, -5.03, -3.28, 1.6, 4.7], [-4.57, -3.63, -3.28, 1.6, 4.7], [3.63, 4.57, -3.28, 1.6, 4.7], [5.03, 5.97, -3.28, 1.6, 4.7]], "lantern": [0.0, 0.4, 10.6], "lamps": [[-4.6, -7.0, 2.9], [4.6, -7.0, 2.9]], "plaza": [-3.0, 3.0, -5.0], "frame": [-8, 8, -8, 8], "rect": [-8.3, 12.597, -13.62, 14.651]}, "to": {"floors": [-1.4, 5.2, -3.86, 0.9, 0.82, 10, 8], "logo": [[0.0, -3.89, 9.35], [3.0, -3.89, 9.35], [0.0, -3.89, 9.8]], "hex": [-0.5, -3.89, 9.6], "beacon": [4.6, -0.8, 12.45], "lobby": [-0.8, 2.6, -3.88, 0.1, 1.0], "pod": [[-5.25, -1.35, -3.86, 1.0, 2.1], [-5.25, -1.35, -3.86, 2.6, 3.7]], "terrace": [[-4.1, -2.4, 4.4], [-2.1, -2.4, 4.4]], "charger": [3.7, -4.01, 0.75], "ev": [2.75, -4.55], "plazaY": [-4.4], "frame": [-6, 6, -6, 6], "rect": [-6.3, 11.222, -12.393, 13.575]}, "mo": {"rooms": [[-4.85, -4.25, -0.45, 0.95, 1.75], [-3.4, -2.8, -0.45, 0.95, 1.75], [-1.95, -1.35, -0.45, 0.95, 1.75], [-0.5, 0.1, -0.45, 0.95, 1.75], [0.95, 1.55, -0.45, 0.95, 1.75], [2.4, 3.0, -0.45, 0.95, 1.75]], "office": [-7.0, -5.2, -0.45, 0.5, 2.3], "pool": [4.4, 7.0, 0.2, 2.4, 0.13], "star": [-7.6, -4.12, 5.5], "panel": [[-7.5, -4.12, 4.05], [-5.5, -4.12, 4.05], [-7.5, -4.12, 4.75]], "arrow": [-7.5, -2.2, -4.11, 3.35], "vac": [[-7.4, -4.1, 2.4], [-5.8, -4.1, 2.4], [-7.4, -4.1, 2.8]], "lot": [-5.0, 3.7, -2.4], "frame": [-8, 8, -6, 6], "rect": [-8.3, 10.644, -9.202, 9.764]}, "ar": {"sign": [[-4.2, -2.7, 2.72], [1.5, -2.7, 2.72], [-4.2, -2.7, 3.25]], "bays": [[-5.3, -2.967, -2.68, 0.02, 2.5], [-2.767, -0.433, -2.68, 0.02, 2.5], [-0.233, 2.1, -2.68, 0.02, 2.5]], "vend": [4.95, 5.45, -1.33, 0.55, 1.4], "tow": [4.3, -3.3], "custCar": [-0.2, -3.3], "wallpack": [2.8, -2.9, 2.6], "frame": [-6, 6, -4, 4], "rect": [-6.3, 7.941, -6.331, 6.725], "towRect": [-1.8, 2.247, -1.577, 1.708]}, "cl": {"wins": [[-0.96, -0.4, -1.57, 1.33, 1.78], [-0.203, 0.357, -1.57, 1.33, 1.78], [0.553, 1.113, -1.57, 1.33, 1.78], [1.31, 1.87, -1.57, 1.33, 1.78], [2.066, 2.626, -1.57, 1.33, 1.78]], "lobby": [[1.176, 2.364, -1.59, 0.05, 1.05]], "wait": [[-1.0, 0.978, -1.59, 0.3, 0.95]], "canopy": [-2.04, -0.62, 2.0], "amb": [-2.04, -0.62], "pole": [2.77, -1.32, 2.25], "frame": [-3, 3, -2, 2], "rect": [-3.3, 4.511, -3.799, 4.09], "ambRect": [-1.3, 1.969, -1.38, 1.493]}, "gr": {"hvac": [[-4.2, 1.8, 4.1, 0.26], [-0.7, 1.8, 4.1, 0.26], [3.5, 1.8, 4.1, 0.26]], "sign": [[-2.52, -0.41, 3.55], [2.52, -0.41, 3.55], [-2.52, -0.41, 4.15]], "glass": [[-6.14, -0.84, -0.47, 0.15, 2.1], [1.12, 6.14, -0.47, 0.15, 2.1]], "door": [[-0.56, 0.84, -0.47, 0.02, 2.1]], "crates": [[-5.6, -0.9, 0.55], [-4.62, -0.9, 0.55], [-3.64, -0.9, 0.55], [-2.66, -0.9, 0.55], [-1.68, -0.9, 0.55]], "lamp": [2.24, -2.88, 3.2], "lot": [-6.3, 1.12, -2.4], "frame": [-7, 7, -4, 4], "rect": [-7.3, 9.097, -6.525, 6.956]}, "cs": {"fans": [[-1.6, 3.7, 3.58, 0.36], [-1.6, 2.9, 3.58, 0.36], [0.2, 3.7, 3.58, 0.36], [0.2, 2.9, 3.58, 0.36], [2.0, 3.7, 3.58, 0.36], [2.0, 2.9, 3.58, 0.36], [3.8, 3.7, 3.58, 0.36], [3.8, 2.9, 3.58, 0.36]], "office": [-4.4, -3.0, -1.54, 1.1, 1.7], "doors": [[-2.0, -0.5, -1.52, 0.05, 2.2], [0.15, 1.65, -1.52, 0.05, 2.2], [2.3, 3.8, -1.52, 0.05, 2.2]], "lights": [[-0.35, -1.45, 2.4], [1.8, -1.45, 2.4], [3.95, -1.45, 2.4]], "staff": [[-4.23, -3.2], [-3.68, -3.2]], "fork": [0.5, 3.5, -2.4], "frame": [-5, 5, -5, 5], "rect": [-5.3, 6.706, -7.041, 7.378]}, "dc": {"fans": [[-2.75, 2.427, 2.78, 0.23], [-2.13, 2.427, 2.78, 0.23], [-1.51, 2.427, 2.78, 0.23], [-0.57, 2.427, 2.78, 0.23], [0.05, 2.427, 2.78, 0.23], [0.67, 2.427, 2.78, 0.23], [-2.75, 1.2, 2.78, 0.23], [-2.13, 1.2, 2.78, 0.23], [-1.51, 1.2, 2.78, 0.23], [-0.57, 1.2, 2.78, 0.23], [0.05, 1.2, 2.78, 0.23], [0.67, 1.2, 2.78, 0.23], [-2.75, -0.027, 2.78, 0.23], [-2.13, -0.027, 2.78, 0.23], [-1.51, -0.027, 2.78, 0.23], [-0.57, -0.027, 2.78, 0.23], [0.05, -0.027, 2.78, 0.23], [0.67, -0.027, 2.78, 0.23]], "entrance": [-1.84, -0.24, -1.09, 0.1, 1.7], "xf": [[2.72, 2.8, 1.45], [2.72, 1.04, 1.45]], "gens": [[1.74, -0.6, 1.55, 2.84, -1.26, 1.0], [1.74, -1.88, 1.55, 2.84, -2.54, 1.0]], "gate": [0.0, -3.52, 0.8, -0.88, 0.88, -3.76, 0.7], "frame": [-4, 4, -4, 4], "rect": [-4.3, 5.433, -5.702, 5.974]}, "rd": {"studio": [[-3.917, 0.583, -6.02, 0.5, 1.6]], "door": [[1.5, 2.5, -6.02, 0.05, 1.7]], "band": [[-3.667, -6.02, 2.55], [2.833, -6.02, 2.55], [-3.667, -6.02, 2.95]], "onair": [[2.833, -6.04, 2.15], [3.583, -6.04, 2.15], [2.833, -6.04, 2.45]], "mast": [0.0, -3.65, 12.6], "lights": [[0.0, -3.95, 6.9], [0.0, -3.85, 10.0]], "notes": [-1.667, -6.35, 2.0], "frame": [-5, 5, -7, 7], "rect": [-5.3, 10.3, -13.49, 14.69]}, "ir": {"sign": [[-7.333, -5.175, 6.2], [0.917, -5.175, 6.2], [-7.333, -5.175, 7.0]], "rink": [-9.35, 2.75, -5.875, 0.75, 4.05], "hire": [[3.392, 5.958, -5.845, 2.6, 3.6]], "hireSign": [[3.483, -5.865, 2.08], [5.867, -5.865, 2.08], [3.483, -5.865, 2.42]], "door": [[3.758, 5.592, -5.845, 0.05, 1.9]], "eave": [-10.267, 6.417, -5.975, 4.55], "fans": [[7.929, -5.375, 2.16, 0.45], [7.929, -4.175, 2.16, 0.45], [9.854, -5.375, 2.16, 0.45], [9.854, -4.175, 2.16, 0.45]], "temp": [8.292, 9.492, -6.845, 2.4, 3.4], "plume": [[7.929, -4.775, 2.2], [9.854, -4.775, 2.2]], "frame": [-11, 11, -7, 7], "rect": [-11.3, 14.269, -10.975, 11.688]}, "nw": {"vents": [[-8.076, 4.5, 10.32, 0.38], [1.86, 4.5, 10.32, 0.38]], "up": [[-9.564, -8.724, -8.34, 5.75, 7.45], [-8.364, -7.524, -8.34, 5.75, 7.45], [-7.164, -6.324, -8.34, 5.75, 7.45], [-5.964, -5.124, -8.34, 5.75, 7.45], [0.516, 1.356, -8.34, 5.75, 7.45], [1.716, 2.556, -8.34, 5.75, 7.45], [2.916, 3.756, -8.34, 5.75, 7.45], [4.116, 4.956, -8.34, 5.75, 7.45]], "press": [[-9.84, -4.8, -8.35, 0.5, 4.5], [0.24, 5.28, -8.35, 0.5, 4.5]], "ticker": [-3.86, -0.7, -8.36, 4.5, 5.5], "door": [[-3.18, -1.38, -8.37, 0.05, 2.7]], "clock": [-2.28, -8.25, 13.5, 0.98], "flag": [-2.28, -6.65, 21.4], "dispatch": [6.72, 10.56, -8.35, 0.05, 3.9], "stack": [9.6, 2.4, 8.5], "bundles": [-0.48, -8.85], "van": [8.64, -9.95], "lamps": [[-10.08, -9.0, 4.0], [10.08, -9.0, 4.0]], "frame": [-12, 12, -10, 10], "rect": [-12.3, 20.815, -20.842, 22.886]}, "gh": {"flags": [[-6.3, -6.3, 4.6], [6.3, -6.3, 4.6]], "arches": [[-6.09, -5.09, -6.28, 0.5, 3.5], [-4.493, -3.493, -6.28, 0.5, 3.5], [-2.896, -1.896, -6.28, 0.5, 3.5], [1.896, 2.896, -6.28, 0.5, 3.5], [3.493, 4.493, -6.28, 0.5, 3.5], [5.09, 6.09, -6.28, 0.5, 3.5]], "door": [[-1.1, 1.1, -6.27, 0.05, 2.6]], "canopy": [[-2.1, -8.82, 3.08], [2.1, -8.82, 3.08], [-2.1, -8.82, 3.34]], "tw": [[-4.31, -3.495, -4.25, 6.53, 7.47], [-3.195, -2.38, -4.25, 6.53, 7.47], [-2.08, -1.265, -4.25, 6.53, 7.47], [-0.965, -0.15, -4.25, 6.53, 7.47], [0.15, 0.965, -4.25, 6.53, 7.47], [1.265, 2.08, -4.25, 6.53, 7.47], [2.38, 3.195, -4.25, 6.53, 7.47], [3.495, 4.31, -4.25, 6.53, 7.47], [-4.31, -3.495, -4.25, 7.98, 8.92], [-3.195, -2.38, -4.25, 7.98, 8.92], [-2.08, -1.265, -4.25, 7.98, 8.92], [-0.965, -0.15, -4.25, 7.98, 8.92], [0.15, 0.965, -4.25, 7.98, 8.92], [1.265, 2.08, -4.25, 7.98, 8.92], [2.38, 3.195, -4.25, 7.98, 8.92], [3.495, 4.31, -4.25, 7.98, 8.92], [-4.31, -3.495, -4.25, 9.43, 10.37], [-3.195, -2.38, -4.25, 9.43, 10.37], [-2.08, -1.265, -4.25, 9.43, 10.37], [-0.965, -0.15, -4.25, 9.43, 10.37], [0.15, 0.965, -4.25, 9.43, 10.37], [1.265, 2.08, -4.25, 9.43, 10.37], [2.38, 3.195, -4.25, 9.43, 10.37], [3.495, 4.31, -4.25, 9.43, 10.37], [-4.31, -3.495, -4.25, 10.88, 11.82], [-3.195, -2.38, -4.25, 10.88, 11.82], [-2.08, -1.265, -4.25, 10.88, 11.82], [-0.965, -0.15, -4.25, 10.88, 11.82], [0.15, 0.965, -4.25, 10.88, 11.82], [1.265, 2.08, -4.25, 10.88, 11.82], [2.38, 3.195, -4.25, 10.88, 11.82], [3.495, 4.31, -4.25, 10.88, 11.82], [-4.31, -3.495, -4.25, 12.33, 13.27], [-3.195, -2.38, -4.25, 12.33, 13.27], [-2.08, -1.265, -4.25, 12.33, 13.27], [-0.965, -0.15, -4.25, 12.33, 13.27], [0.15, 0.965, -4.25, 12.33, 13.27], [1.265, 2.08, -4.25, 12.33, 13.27], [2.38, 3.195, -4.25, 12.33, 13.27], [3.495, 4.31, -4.25, 12.33, 13.27], [-4.31, -3.495, -4.25, 13.78, 14.72], [-3.195, -2.38, -4.25, 13.78, 14.72], [-2.08, -1.265, -4.25, 13.78, 14.72], [-0.965, -0.15, -4.25, 13.78, 14.72], [0.15, 0.965, -4.25, 13.78, 14.72], [1.265, 2.08, -4.25, 13.78, 14.72], [2.38, 3.195, -4.25, 13.78, 14.72], [3.495, 4.31, -4.25, 13.78, 14.72], [-4.31, -3.495, -4.25, 15.23, 16.17], [-3.195, -2.38, -4.25, 15.23, 16.17], [-2.08, -1.265, -4.25, 15.23, 16.17], [-0.965, -0.15, -4.25, 15.23, 16.17], [0.15, 0.965, -4.25, 15.23, 16.17], [1.265, 2.08, -4.25, 15.23, 16.17], [2.38, 3.195, -4.25, 15.23, 16.17], [3.495, 4.31, -4.25, 15.23, 16.17], [-4.31, -3.495, -4.25, 16.68, 17.62], [-3.195, -2.38, -4.25, 16.68, 17.62], [-2.08, -1.265, -4.25, 16.68, 17.62], [-0.965, -0.15, -4.25, 16.68, 17.62], [0.15, 0.965, -4.25, 16.68, 17.62], [1.265, 2.08, -4.25, 16.68, 17.62], [2.38, 3.195, -4.25, 16.68, 17.62], [3.495, 4.31, -4.25, 16.68, 17.62], [-4.31, -3.495, -4.25, 18.13, 19.07], [-3.195, -2.38, -4.25, 18.13, 19.07], [-2.08, -1.265, -4.25, 18.13, 19.07], [-0.965, -0.15, -4.25, 18.13, 19.07], [0.15, 0.965, -4.25, 18.13, 19.07], [1.265, 2.08, -4.25, 18.13, 19.07], [2.38, 3.195, -4.25, 18.13, 19.07], [3.495, 4.31, -4.25, 18.13, 19.07]], "terrace": [-4.46, 4.46, -3.9, 20.1], "set": [[-2.737, -2.097, -2.85, 20.13, 20.97], [-1.77, -1.13, -2.85, 20.13, 20.97], [-0.803, -0.163, -2.85, 20.13, 20.97], [0.163, 0.803, -2.85, 20.13, 20.97], [1.13, 1.77, -2.85, 20.13, 20.97], [2.097, 2.737, -2.85, 20.13, 20.97], [-2.737, -2.097, -2.85, 21.53, 22.37], [-1.77, -1.13, -2.85, 21.53, 22.37], [-0.803, -0.163, -2.85, 21.53, 22.37], [0.163, 0.803, -2.85, 21.53, 22.37], [1.13, 1.77, -2.85, 21.53, 22.37], [2.097, 2.737, -2.85, 21.53, 22.37]], "beacon": [0, 0.2, 31.5], "crown": [[-2.3, -2.0, 24.4], [2.3, -2.0, 24.4]], "blade": [4.36, -4.72, 8.8, 15.2], "loop": [0, -7.6, 3.6, 1.1], "frame": [-7, 7, -9, 9], "rect": [-7.3, 19.643, -24.582, 27.544]}, "hb": {"ghost": [-5.65, -4.43, 8.2], "rooms": [[-4.7, -3.7, -4.48, 9.0, 10.3], [-2.85, -1.85, -4.48, 9.0, 10.3], [-1.0, 0.0, -4.48, 9.0, 10.3], [0.85, 1.85, -4.48, 9.0, 10.3], [2.7, 3.7, -4.48, 9.0, 10.3], [4.55, 5.55, -4.48, 9.0, 10.3], [-4.7, -3.7, -4.48, 6.4, 7.7], [-2.85, -1.85, -4.48, 6.4, 7.7], [-1.0, 0.0, -4.48, 6.4, 7.7], [0.85, 1.85, -4.48, 6.4, 7.7], [2.7, 3.7, -4.48, 6.4, 7.7], [4.55, 5.55, -4.48, 6.4, 7.7], [-4.7, -3.7, -4.48, 3.8, 5.1], [-2.85, -1.85, -4.48, 3.8, 5.1], [-1.0, 0.0, -4.48, 3.8, 5.1], [0.85, 1.85, -4.48, 3.8, 5.1], [2.7, 3.7, -4.48, 3.8, 5.1], [4.55, 5.55, -4.48, 3.8, 5.1]], "lobby": [[-5.2, -3.4, -4.48, 0.3, 2.6], [-3.05, -1.25, -4.48, 0.3, 2.6], [1.25, 3.05, -4.48, 0.3, 2.6], [3.4, 5.2, -4.48, 0.3, 2.6]], "door": [[-0.9, 0.9, -4.5, 0.05, 2.4]], "canopy": [[-1.4, -6.21, 2.62], [1.4, -6.21, 2.62], [-1.4, -6.21, 2.86]], "door2": [-1.4, -5.3], "tank": [-5.1, 4.0, 17.0], "bar": [-3.4, -0.6, -3.6, 12.95], "festoon": [[-3.8, -0.6, -3.8, 14.6], [-0.6, 2.6, -3.8, 14.6], [2.6, 5.8, -3.8, 14.6]], "deck": [-3.4, 5.0, -2.8, 12.95], "taxi": [-8, 8, -6.4], "frame": [-8, 8, -8, 8], "rect": [-8.3, 15.018, -16.618, 18.23]}, "ar2": {"up": [[-8.643, -7.893, -3.3, 4.2, 5.7], [-6.893, -6.143, -3.3, 4.2, 5.7], [-5.143, -4.393, -3.3, 4.2, 5.7], [-3.393, -2.643, -3.3, 4.2, 5.7], [2.643, 3.393, -3.3, 4.2, 5.7], [4.393, 5.143, -3.3, 4.2, 5.7], [6.143, 6.893, -3.3, 4.2, 5.7], [7.893, 8.643, -3.3, 4.2, 5.7]], "shops": [[-8.818, -7.718, -3.31, 0.15, 2.6], [-7.068, -5.968, -3.31, 0.15, 2.6], [-5.318, -4.218, -3.31, 0.15, 2.6], [-3.568, -2.468, -3.31, 0.15, 2.6], [2.468, 3.568, -3.31, 0.15, 2.6], [4.218, 5.318, -3.31, 0.15, 2.6], [5.968, 7.068, -3.31, 0.15, 2.6], [7.718, 8.818, -3.31, 0.15, 2.6]], "trades": [[[-8.718, -3.32, 2.95], [-7.818, -3.32, 2.95], [-8.718, -3.32, 3.25]], [[-6.968, -3.32, 2.95], [-6.068, -3.32, 2.95], [-6.968, -3.32, 3.25]], [[-5.218, -3.32, 2.95], [-4.318, -3.32, 2.95], [-5.218, -3.32, 3.25]], [[-3.468, -3.32, 2.95], [-2.568, -3.32, 2.95], [-3.468, -3.32, 3.25]], [[2.568, -3.32, 2.95], [3.468, -3.32, 2.95], [2.568, -3.32, 3.25]], [[4.318, -3.32, 2.95], [5.218, -3.32, 2.95], [4.318, -3.32, 3.25]], [[6.068, -3.32, 2.95], [6.968, -3.32, 2.95], [6.068, -3.32, 3.25]], [[7.818, -3.32, 2.95], [8.718, -3.32, 2.95], [7.818, -3.32, 3.25]]], "name": [[-1.857, -3.34, 8.45], [1.857, -3.34, 8.45], [-1.857, -3.34, 8.95]], "arch": [-1.429, 1.429, -3.3, 0.05, 5.0], "clock": [0, -3.3, 12.4, 0.54], "carousel": [-6.0, -4.9, 1.6, 1.25, 2.0], "lamps": [[-8.857, -6.02, 2.9], [-3.143, -6.02, 2.9], [3.143, -6.02, 2.9], [8.857, -6.02, 2.9]], "frame": [-10, 10, -7, 7], "rect": [-10.3, 16.393, -14.844, 16.307]}, "gl": {"stalls": [-8.755, -7.505, -6.255, -5.005, -3.755, -2.505, -1.255, -0.005, 1.245, 2.495, 3.745, 4.995, 6.245, 7.495, 8.745], "lotY": -5.42, "pool": [-7.357, 7.357, -3.71, -3.29, 0.16], "floors": [[-7.857, 4.714, -2.92, 0.1], [-7.857, 4.714, -2.92, 3.2], [-7.857, 4.714, -2.92, 6.4], [-7.857, 4.714, -2.92, 9.75]], "shops": [[-7.707, -6.272, -2.9, 0.5, 2.7], [-5.972, -4.538, -2.9, 0.5, 2.7], [-4.238, -2.803, -2.9, 0.5, 2.7], [-2.503, -1.068, -2.9, 0.5, 2.7], [-0.768, 0.666, -2.9, 0.5, 2.7], [0.966, 2.401, -2.9, 0.5, 2.7], [2.701, 4.136, -2.9, 0.5, 2.7], [-7.707, -6.272, -2.9, 3.7, 5.9], [-5.972, -4.538, -2.9, 3.7, 5.9], [-4.238, -2.803, -2.9, 3.7, 5.9], [-2.503, -1.068, -2.9, 3.7, 5.9], [-0.768, 0.666, -2.9, 3.7, 5.9], [0.966, 2.401, -2.9, 3.7, 5.9], [2.701, 4.136, -2.9, 3.7, 5.9], [-7.707, -6.272, -2.9, 6.9, 9.1], [-5.972, -4.538, -2.9, 6.9, 9.1], [-4.238, -2.803, -2.9, 6.9, 9.1], [-2.503, -1.068, -2.9, 6.9, 9.1], [-0.768, 0.666, -2.9, 6.9, 9.1], [0.966, 2.401, -2.9, 6.9, 9.1], [2.701, 4.136, -2.9, 6.9, 9.1]], "dome": [5.857, 1.8, 11.2], "sign": [[-4.4, -2.18, 11.9], [3.171, -2.18, 11.9], [-4.4, -2.18, 12.9]], "sign2": [[-2.543, -2.18, 11.55], [1.314, -2.18, 11.55], [-2.543, -2.18, 11.85]], "screen": [5.0, 8.429, -3.0, 3.3, 7.5], "door": [[-1.571, 1.571, -2.87, 0.05, 2.6]], "canopy": [-2.429, 2.429, -4.42, 2.95], "lamps": [[-9.286, -4.9, 4.0], [9.286, -4.9, 4.0]], "frame": [-10, 10, -7, 7], "rect": [-10.3, 15.612, -13.877, 15.152]}, "ml": {"stalls": [-8.755, -7.505, -6.255, -5.005, -3.755, -2.505, -1.255, -0.005, 1.245, 2.495, 3.745, 4.995, 6.245, 7.495, 8.745], "lotY": -5.69, "fountain": [0.0, -4.34, 0.45], "anchors": [[[-8.9, -3.88, 5.85], [-5.5, -3.88, 5.85], [-8.9, -3.88, 6.95]], [[5.5, -3.88, 5.85], [8.9, -3.88, 5.85], [5.5, -3.88, 6.95]]], "display": [[-9.05, -8.1, -3.86, 0.4, 2.8], [-6.3, -5.35, -3.86, 0.4, 2.8], [5.35, 6.3, -3.86, 0.4, 2.8], [8.1, 9.05, -3.86, 0.4, 2.8]], "adoor": [[-8.0, -6.4, -3.85, 0.05, 2.4], [6.4, 8.0, -3.85, 0.05, 2.4]], "fans": [[-8.2, 4.4, 9.45, 0.32], [6.2, 4.4, 9.45, 0.32]], "shops": [[-4.85, -3.75, -3.26, 0.3, 2.5], [-3.6, -2.5, -3.26, 0.3, 2.5], [-4.85, -3.75, -3.26, 3.4, 5.6], [-3.6, -2.5, -3.26, 3.4, 5.6], [2.35, 3.45, -3.26, 0.3, 2.5], [3.6, 4.7, -3.26, 0.3, 2.5], [2.35, 3.45, -3.26, 3.4, 5.6], [3.6, 4.7, -3.26, 3.4, 5.6]], "atrium": [-1.9, 1.9, -3.86, 2.4, 5.8], "door": [[-1.7, 1.7, -3.85, 0.05, 2.3]], "plate": [[-1.6, -5.2, 2.47], [1.6, -5.2, 2.47], [-1.6, -5.2, 2.66]], "finial": [0, -3.58, 9.8], "lamps": [[-8.8, -5.04, 4.0], [8.8, -5.04, 4.0]], "frame": [-10, 10, -7, 7], "rect": [-10.3, 14.987, -13.103, 14.228]}, "hs": {"screens": [[-8.983, -6.05, -4.59, 0.9, 2.9], [-2.75, 0.183, -4.59, 0.9, 2.9]], "door": [-5.317, -3.483, -4.57, 0.3, 2.5], "noren": [-5.317, -3.483, -4.65, 1.7, 2.5], "board": [[-7.7, -4.64, 2.97], [-1.1, -4.64, 2.97], [-7.7, -4.64, 3.33]], "lanterns": [[-9.717, -4.95, 2.9], [-6.967, -4.95, 2.9], [-1.833, -4.95, 2.9], [0.917, -4.95, 2.9]], "maple": [8.8, 2.8, 3.3], "pools": [[6.05, -1.5, 3.2, 1.9, 0.86], [1.283, -6.3, 5.4, 2.0, 0.14]], "fall": [2.85, 3.75, -3.68, 0.12, 0.84], "valve": [2.017, -4.08, 2.3, 0.22], "tourou": [[-9.35, -6.76, 1.1], [9.717, -5.68, 1.1]], "spout": [8.158, -7.56, 0.8, 1.0], "bathers": [[4.85, -1.8], [6.95, -1.1], [-1.317, -6.0], [1.683, -6.8], [4.183, -6.1]], "frame": [-11, 11, -9, 9], "rect": [-11.3, 13.097, -11.525, 11.956]}, "ch": {"edge": [[-8.46, -3.92, 4.032], [-7.768, -3.92, 4.525], [-7.079, -3.92, 4.966], [-6.394, -3.92, 5.356], [-5.712, -3.92, 5.694], [-5.034, -3.92, 5.981], [-4.36, -3.92, 6.217], [-3.69, -3.92, 6.401], [-3.023, -3.92, 6.533], [-2.36, -3.92, 6.615], [-1.701, -3.92, 6.645], [-1.045, -3.92, 6.623], [-0.393, -3.92, 6.55], [0.255, -3.92, 6.425], [0.9, -3.92, 6.25], [1.536, -3.92, 6.112], [2.156, -3.92, 5.986], [2.762, -3.92, 5.873], [3.354, -3.92, 5.772], [3.931, -3.92, 5.684], [4.493, -3.92, 5.608], [5.04, -3.92, 5.544], [5.573, -3.92, 5.493], [6.091, -3.92, 5.453], [6.594, -3.92, 5.427], [7.082, -3.92, 5.412], [7.556, -3.92, 5.41], [8.016, -3.92, 5.421], [8.46, -3.92, 5.443]], "glass": [[-8.46, -3.05, 3.125], [-7.768, -3.05, 3.576], [-7.079, -3.05, 3.981], [-6.394, -3.05, 4.337], [-5.712, -3.05, 4.647], [-5.034, -3.05, 4.909], [-4.36, -3.05, 5.124], [-3.69, -3.05, 5.292], [-3.023, -3.05, 5.412], [-2.36, -3.05, 5.485], [-1.701, -3.05, 5.511], [-1.045, -3.05, 5.489], [-0.393, -3.05, 5.421], [0.255, -3.05, 5.304], [0.9, -3.05, 5.141], [1.536, -3.05, 5.017], [2.156, -3.05, 4.904], [2.762, -3.05, 4.803], [3.354, -3.05, 4.713], [3.931, -3.05, 4.634], [4.493, -3.05, 4.567], [5.04, -3.05, 4.511], [5.573, -3.05, 4.466], [6.091, -3.05, 4.433], [6.594, -3.05, 4.411], [7.082, -3.05, 4.4], [7.556, -3.05, 4.4], [8.016, -3.05, 4.412], [8.46, -3.05, 4.435]], "fins": [0.25, 7.0, 1.86, 5.0, 13.0, 0.45], "lamp": [6.9, 2.2, 13.1], "rig": [[-5.4, 0.0, 7.401], [-2.16, 0.0, 7.401], [2.16, 0.0, 7.401]], "canopy": [-2.92, 2.92, -4.56, 3.45], "doors": [-2.22, 2.22, -3.06, 0.1, 2.6], "screen": [3.24, 7.92, -3.22, 1.6, 3.6], "kiosks": [[-6.16, -5.36, -5.46, 0.3, 1.9], [5.36, 6.16, -5.46, 0.3, 1.9]], "plaza": [-8.5, 8.5, -5.2, -6.4], "frame": [-9, 9, -7, 7], "rect": [-9.3, 14.495, -13.732, 14.979]}, "mt": {"fans": [[-4.5, 2.6, 8.45, 0.36], [4.5, 2.6, 8.45, 0.36]], "screens": [[-6.15, -3.95, -3.49, 4.45, 6.15], [4.15, 6.35, -3.49, 4.45, 6.15]], "posters": [[-3.77, -3.03, -3.53, 0.55, 1.85], [3.03, 3.77, -3.53, 0.55, 1.85]], "door": [[-2.5, 2.5, -3.5, 0.05, 1.8]], "board": [-3.55, 3.55, -5.04, 3.3, 4.2], "bulbs": [-3.8, 3.8, -5.06, 4.35, 3.15], "blade": [0, -4.14, 6.6, 11.5], "booth": [-0.3, 0.3, -4.34, 0.62, 1.08], "lamps": [[-6.0, -3.9, 3.2], [6.0, -3.9, 3.2]], "road": [-7, 7, -4.3, -4.8], "queue": [-1.3, -4.3], "searchlights": [[-4.5, 4.0, 7.6], [4.5, 4.0, 7.6]], "frame": [-7, 7, -5, 5], "rect": [-7.3, 11.948, -11.055, 12.17]}, "bb": {"hoops": [[-4.1, 0.1, 2.85], [4.1, 0.1, 2.85]], "lights": [[-4.8, 2.8, 5.35], [4.8, 2.8, 5.35], [-4.8, -2.8, 5.35], [4.8, -2.8, 5.35]], "score": [1.35, 2.25, -2.82, 1.25, 1.75], "benches": [[-2.5, -2.55], [2.8, -2.55]], "court": [-4.3, 4.3, -2.2, 2.4], "frame": [-5, 5, -3, 3], "rect": [-5.3, 7.487, -6.008, 6.533]}, "fm": {"stalls": [[-3.75, -2.25, 0.3, 0.92], [-1.75, -0.25, 0.3, 0.92], [0.25, 1.75, 0.3, 0.92], [2.25, 3.75, 0.3, 0.92]], "bunting": [-3.9, 3.9, -1.6, 2.9], "aisle": [-3.6, 3.6, -0.6], "frame": [-4, 4, -2, 2], "rect": [-4.3, 5.276, -3.509, 3.743]}, "fn": {"basin": [0, 0, 0.46, 1.12], "tier": [0, 0, 1.32, 0.45], "jet": [0, 0, 1.9], "benches": [[-2.0, 1.4], [2.0, 1.4], [-2.0, -1.5], [2.0, -1.5]], "lamps": [[-0.8, 1.9, 2.6], [0.8, -1.9, 2.6]], "frame": [-3, 3, -3, 3], "rect": [-3.3, 4.511, -4.799, 5.09]}, "tstv": {"trees": [[0.45, 3], [0.45, 1], [0.45, -1], [0.45, -3]], "lamps": [[0.15, 2.0, 3.2], [0.15, -2.0, 3.2]], "benches": [[0.05, -0.0]], "walk": [[-0.45, 3.9], [-0.45, -3.9]], "frame": [-1, 1, -4, 4], "rect": [-1.3, 3.175, -6.621, 7.071]}, "tst": {"trees": [[-3, 0.45], [-1, 0.45], [1, 0.45], [3, 0.45]], "lamps": [[-2.0, 0.15, 3.2], [2.0, 0.15, 3.2]], "benches": [[0.0, 0.05]], "walk": [[-3.9, -0.45], [3.9, -0.45]], "frame": [-4, 4, -1, 1], "rect": [-4.3, 6.175, -3.621, 4.071]}, "cg": {"scarecrow": [2.1, -0.9, 1.5], "beds": {"lettuce": [-1.5, 1.5], "tomato": [-1.5, -1.5], "pumpkin": [1.5, -1.5]}, "shedDoor": [1.45, 1.95, 1.35, 0.1, 1.3], "shedWin": [2.2, 2.5, 1.35, 0.95, 1.25], "sunflowers": [[0.9, 0.75, 1.5], [1.2, 0.95, 1.5], [1.5, 0.75, 1.5], [1.8, 0.95, 1.5], [2.1, 0.75, 1.5]], "path": [0, -2.9, 0, 2.6], "frame": [-3, 3, -3, 3], "rect": [-3.3, 4.159, -4.364, 4.57]}, "spk": {"pond": [1.6, 0.9, 1.0, 0.7, 0.08], "path": [[-0.6, -2.0], [-0.4, -1.0], [0.2, -0.3], [1.4, -0.4], [3.0, -0.6]], "bench": [0.9, 0.35], "lamp": [-0.1, -0.7, 2.6], "frame": [-3, 3, -2, 2], "rect": [-3.3, 4.745, -4.089, 4.436]}, "dp": {"pool": [3.6, 2.2, 0.25, 0.62], "fountain": [-1.0, -0.2, 1.05], "benches": [[-1.4, 3.0], [1.2, -3.2]], "field": [-1.0, -0.2, 2.6, 1.8], "run": [3.4, 0.0, 1.0, 3.0], "gate": [0, -3.9], "frame": [-5, 5, -4, 4], "rect": [-5.3, 6.745, -6.089, 6.436]}, "bf": {"bases": [[0.0, -6.8], [3.2, -3.6], [0.0, -0.4], [-3.2, -3.6]], "dugouts": [[-3.6, -4.6], [3.6, -4.6]], "stands": [[-8.2, -6.6, 1.8], [8.2, -6.6, 1.8]], "stand": [7.3, 9.7, -10.15, 1.4, 2.2], "board": [-11.9, -8.3, 5.84, 3.8, 5.4], "lights": [[-12.4, -2.0, 10.0], [12.4, -2.0, 10.0], [-12.4, 8.0, 10.0], [12.4, 8.0, 10.0]], "home": [0.0, -6.8], "frame": [-13, 13, -10, 10], "rect": [-13.3, 17.401, -15.378, 16.362]}, "sp": {"jets": [[2.6, 0.0, 0.1], [2.103, 1.528, 0.1], [0.803, 2.473, 0.1], [-0.803, 2.473, 0.1], [-2.103, 1.528, 0.1], [-2.6, 0.0, 0.1], [-2.103, -1.528, 0.1], [-0.803, -2.473, 0.1], [0.803, -2.473, 0.1], [2.103, -1.528, 0.1]], "geyser": [0, 0, 0.12], "pad": [0, 0, 0.1, 3.2], "pump": [3.8, 3.19, 0.8], "benches": [[-3.8, -3.6], [3.6, -3.6]], "frame": [-5, 5, -5, 5], "rect": [-5.3, 6.355, -6.606, 6.859]}, "pg": {"swings": [[0.8, 2.3, 2.2], [1.8, 2.3, 2.2], [2.8, 2.3, 2.2]], "merry": [2.1, -1.7, 0.3, 0.9], "seesaw": [-1.3, -1.9, 0.35, 1.2], "bench": [2.0, -3.4], "gate": [0, -3.9], "frame": [-4, 4, -4, 4], "rect": [-4.3, 5.706, -6.041, 6.378]}, "alt": {"plots": [[-4.2, 3.4], [-1.6, 3.4], [1.6, 3.4], [4.2, 3.4]], "glasshouse": [-3.4, -2.6, 1.0], "sheds": [[1.6, -4.12, 1.0], [3.6, -4.12, 1.0]], "hives": [[5.2, -1.2, 0.95], [5.2, -2.2, 0.95]], "path": [0, -4.9, 0, 4.6], "frame": [-6, 6, -5, 5], "rect": [-6.3, 7.589, -6.896, 7.205]}, "fa": {"fields": [[2.3, 9.7, 2.9, 7.5], [2.3, 9.7, -2.1, 2.5], [2.3, 9.7, -7.5, -2.5]], "house": [[-9.0, -8.3, 4.18, 1.2, 2.2], [-6.9, -6.2, 4.18, 1.2, 2.2]], "barnDoor": [-3.35, -1.85, 2.92, 0.05, 2.5], "vane": [-2.6, 4.8, 6.7], "windmill": [-0.4, 1.3, 5.1, 0.9], "shed": [-6.4, 0.6], "coop": [-0.8, -1.6], "pigs": [-5.4, -4.4, 1.0, 0.8], "cows": [-8.3, -2.2, 1.2, 1.2], "sheep": [-8.3, -5.8, 1.2, 1.4], "horses": [-5.4, -1.8, 1.0, 0.6], "pond": [-1.2, -6.0, 1.4, 0.9, 0.08], "hives": [[1.6, -4.4, 0.85], [3.0, -4.4, 0.85]], "sign": [[-3.7, -7.66, 1.25], [-2.3, -7.66, 1.25], [-3.7, -7.66, 1.55]], "lamp": [-4.4, 3.4, 3.4], "yard": [-3.0, 2.0], "frame": [-10, 10, -8, 8], "rect": [-10.3, 12.956, -11.588, 12.226]}, "gh2": {"dome": [0, 1.6, 3.0, 3.2], "wings": [[-4.4, 1.6, 2.0], [4.4, 1.6, 2.0]], "vents": [[-4.4, 1.2, 4.0], [4.4, 1.2, 4.0]], "doors": [-0.7, 0.7, -1.62, 0.1, 2.2], "pond": [-4.0, -3.8, 1.8, 1.0, 0.08], "paths": [[0, -5.6], [0, -1.8], [-6.8, -1.6], [6.8, -1.6], [6.8, 4.6], [-6.8, 4.6]], "lamps": [[-1.2, -5.4, 3.0], [1.2, -5.4, 3.0]], "frame": [-8, 8, -6, 6], "rect": [-8.3, 10.605, -9.153, 9.706]}, "cc2": {"hall": [[-5.55, -4.05, -1.27, 0.9, 3.1], [-3.65, -2.15, -1.27, 0.9, 3.1], [-1.75, -0.25, -1.27, 0.9, 3.1], [0.15, 1.65, -1.27, 0.9, 3.1]], "foyer": [-8.2, -5.8, -1.27, 0.1, 3.5], "sign": [[-8.1, -3.12, 3.6], [-5.9, -3.12, 3.6], [-8.1, -3.12, 3.85]], "hoop": [6.4, 3.7, 2.85], "court": [4.4, 8.4, -4.4, 3.0], "lamps": [[-8.6, -5.6, 3.2], [3.6, -5.6, 3.2]], "frame": [-9, 9, -6, 6], "rect": [-9.3, 11.917, -9.54, 10.168]}, "cst3": {"win": [[-1.55, -0.45, -1.17, 0.3, 2.2], [0.45, 1.55, -1.17, 0.3, 2.2]], "door": [[-0.35, 0.35, -1.17, 0.05, 2.2]], "sign": [[-1.2, -1.18, 2.82], [1.2, -1.18, 2.82], [-1.2, -1.18, 3.08]], "up": [[-1.25, -0.55, -1.17, 3.5, 4.4], [0.55, 1.25, -1.17, 3.5, 4.4]], "crates": [[-1.2, -1.65, 0.5], [-0.7, -1.65, 0.5], [-0.2, -1.65, 0.5]], "frame": [-2, 2, -2, 2], "rect": [-2.3, 4.487, -5.008, 5.533]}, "cst2": {"win": [[-1.55, -0.45, -1.17, 0.3, 2.2], [0.45, 1.55, -1.17, 0.3, 2.2]], "door": [[-0.35, 0.35, -1.17, 0.05, 2.2]], "sign": [[-1.2, -1.18, 2.82], [1.2, -1.18, 2.82], [-1.2, -1.18, 3.08]], "up": [[-1.25, -0.55, -1.17, 3.5, 4.4], [0.55, 1.25, -1.17, 3.5, 4.4]], "crates": [[-1.2, -1.65, 0.5], [-0.7, -1.65, 0.5], [-0.2, -1.65, 0.5]], "frame": [-2, 2, -2, 2], "rect": [-2.3, 4.487, -5.008, 5.533]}, "cst1": {"win": [[-1.55, -0.45, -1.17, 0.3, 2.2], [0.45, 1.55, -1.17, 0.3, 2.2]], "door": [[-0.35, 0.35, -1.17, 0.05, 2.2]], "sign": [[-1.2, -1.18, 2.82], [1.2, -1.18, 2.82], [-1.2, -1.18, 3.08]], "up": [[-1.25, -0.55, -1.17, 3.5, 4.4], [0.55, 1.25, -1.17, 3.5, 4.4]], "crates": [[-1.2, -1.65, 0.5], [-0.7, -1.65, 0.5], [-0.2, -1.65, 0.5]], "frame": [-2, 2, -2, 2], "rect": [-2.3, 4.487, -5.008, 5.533]}, "cst0": {"win": [[-1.55, -0.45, -1.17, 0.3, 2.2], [0.45, 1.55, -1.17, 0.3, 2.2]], "door": [[-0.35, 0.35, -1.17, 0.05, 2.2]], "sign": [[-1.2, -1.18, 2.82], [1.2, -1.18, 2.82], [-1.2, -1.18, 3.08]], "up": [[-1.25, -0.55, -1.17, 3.5, 4.4], [0.55, 1.25, -1.17, 3.5, 4.4]], "crates": [[-1.2, -1.65, 0.5], [-0.7, -1.65, 0.5], [-0.2, -1.65, 0.5]], "frame": [-2, 2, -2, 2], "rect": [-2.3, 4.487, -5.008, 5.533]}, "sch": {"busloop": [6.0, -5.8, 1.6], "swings": [[-8.2, -6.2, 1.8], [-7.0, -6.2, 1.8]], "rooms": [[-9.05, -7.95, -3.47, 1.05, 2.75], [-7.55, -6.45, -3.47, 1.05, 2.75], [-6.05, -4.95, -3.47, 1.05, 2.75], [-4.55, -3.45, -3.47, 1.05, 2.75], [-3.05, -1.95, -3.47, 1.05, 2.75], [-9.05, -7.95, -3.47, 4.35, 6.05], [-7.55, -6.45, -3.47, 4.35, 6.05], [-6.05, -4.95, -3.47, 4.35, 6.05], [-4.55, -3.45, -3.47, 4.35, 6.05], [-3.05, -1.95, -3.47, 4.35, 6.05]], "bell": [0, 0, 12.0], "clock": [0, -4.1, 7.4, 0.62], "lintel": [[-1.3, -4.06, 4.42], [1.3, -4.06, 4.42], [-1.3, -4.06, 4.78]], "door": [[-0.7, 0.7, -4.08, 0.05, 2.35]], "hall": [[6.5, 7.5, -3.47, 1.6, 3.6], [7.7, 8.7, -3.47, 1.6, 3.6], [8.9, 9.9, -3.47, 1.6, 3.6]], "sign": [[-1.2, -8.27, 1.35], [1.2, -8.27, 1.35], [-1.2, -8.27, 1.65]], "yard": [-2.0, -6.0], "frame": [-10, 10, -9, 9], "rect": [-10.3, 15.768, -16.07, 17.383]}, "wb": {"dormers": [[-4.7, -4.1, -6.09, 9.95, 10.65], [-2.5, -1.9, -6.09, 9.95, 10.65], [1.9, 2.5, -6.09, 9.95, 10.65], [4.1, 4.7, -6.09, 9.95, 10.65]], "units": [[-5.3, -4.5, -6.27, 0.95, 2.45], [-3.9, -3.1, -6.27, 0.95, 2.45], [-2.5, -1.7, -6.27, 0.95, 2.45], [1.7, 2.5, -6.27, 0.95, 2.45], [3.1, 3.9, -6.27, 0.95, 2.45], [4.5, 5.3, -6.27, 0.95, 2.45], [-5.3, -4.5, -6.27, 3.85, 5.35], [-3.9, -3.1, -6.27, 3.85, 5.35], [-2.5, -1.7, -6.27, 3.85, 5.35], [-1.1, -0.3, -6.27, 3.85, 5.35], [0.3, 1.1, -6.27, 3.85, 5.35], [1.7, 2.5, -6.27, 3.85, 5.35], [3.1, 3.9, -6.27, 3.85, 5.35], [4.5, 5.3, -6.27, 3.85, 5.35], [-5.3, -4.5, -6.27, 6.75, 8.25], [-3.9, -3.1, -6.27, 6.75, 8.25], [-2.5, -1.7, -6.27, 6.75, 8.25], [-1.1, -0.3, -6.27, 6.75, 8.25], [0.3, 1.1, -6.27, 6.75, 8.25], [1.7, 2.5, -6.27, 6.75, 8.25], [3.1, 3.9, -6.27, 6.75, 8.25], [4.5, 5.3, -6.27, 6.75, 8.25]], "arch": [-1.2, 1.2, -6.26, 0.05, 3.2], "plaque": [[-1.4, -6.3, 4.6], [1.4, -6.3, 4.6], [-1.4, -6.3, 4.9]], "court": [0, 1.0], "frame": [-6, 6, -8, 8], "rect": [-6.3, 10.987, -14.103, 15.228]}, "fl": {"units": [[-2.35, -1.35, -2.68, 3.4, 4.9], [-0.5, 0.5, -2.68, 3.4, 4.9], [1.35, 2.35, -2.68, 3.4, 4.9], [-2.35, -1.35, -2.68, 5.7, 7.2], [-0.5, 0.5, -2.68, 5.7, 7.2], [1.35, 2.35, -2.68, 5.7, 7.2], [-2.35, -1.35, -2.68, 8.0, 9.5], [-0.5, 0.5, -2.68, 8.0, 9.5], [1.35, 2.35, -2.68, 8.0, 9.5]], "sawtooth": [[-0.8, 0.8, 11.2], [0.2, 0.8, 11.2], [1.2, 0.8, 11.2]], "chimney": [-2.0, 1.6, 15.6], "sign": [[-2.3, -2.67, 2.8], [0.4, -2.67, 2.8], [-2.3, -2.67, 3.1]], "cafe": [-2.6, -0.2, -2.67, 0.1, 2.3], "door": [[0.9, 1.6, -2.67, 0.05, 2.2]], "lamps": [[-2.3, -2.85, 3.4], [0.4, -2.85, 3.4]], "frame": [-3, 3, -4, 4], "rect": [-3.3, 9.393, -11.844, 13.307]}, "bw": {"units": [[-2.5, -0.9, -2.67, 3.05, 4.65], [-0.6, 1.0, -2.67, 3.05, 4.65], [-2.5, -0.9, -2.67, 5.45, 7.05], [-0.6, 1.0, -2.67, 5.45, 7.05], [-2.5, -0.9, -2.67, 7.85, 9.45], [-0.6, 1.0, -2.67, 7.85, 9.45], [-2.5, -0.9, -2.67, 10.25, 11.85], [-0.6, 1.0, -2.67, 10.25, 11.85]], "balconies": [[-0.75, -3.1, 3.1], [-0.75, -3.1, 5.5], [-0.75, -3.1, 7.9], [-0.75, -3.1, 10.3]], "lobby": [-2.3, 0.7, -2.67, 0.1, 2.7], "frame": [-3, 3, -4, 4], "rect": [-3.3, 8.378, -10.587, 11.806]}, "ap": {"units": [[-2.3, -1.5, -2.67, 3.7, 5.3], [-1.05, -0.25, -2.67, 3.7, 5.3], [0.25, 1.05, -2.67, 3.7, 5.3], [1.5, 2.3, -2.67, 3.7, 5.3], [-2.3, -1.5, -2.67, 6.7, 8.3], [-1.05, -0.25, -2.67, 6.7, 8.3], [0.25, 1.05, -2.67, 6.7, 8.3], [1.5, 2.3, -2.67, 6.7, 8.3], [-2.3, -1.5, -2.67, 9.7, 11.3], [-1.05, -0.25, -2.67, 9.7, 11.3], [0.25, 1.05, -2.67, 9.7, 11.3], [1.5, 2.3, -2.67, 9.7, 11.3]], "balconies": [[0, -3.1, 3.6], [0, -3.1, 6.6], [0, -3.1, 9.6]], "lobby": [[-0.6, 0.6, -2.67, 0.05, 2.4]], "ground": [[-2.4, -1.4, -2.67, 0.8, 2.2], [1.4, 2.4, -2.67, 0.8, 2.2]], "canopy": [[-0.8, -3.82, 2.66], [0.8, -3.82, 2.66], [-0.8, -3.82, 2.85]], "frame": [-3, 3, -4, 4], "rect": [-3.3, 8.69, -10.974, 12.267]}};   // pasted from render_industrial.py (ind_layout.json)
+const _IND_ART_KEY = { steelfoundry: 'sf', datacenter: 'df', textilemill: 'tm', watertreat: 'wt', coldstorage: 'ld', coldchain: 'cc', chemical: 'cw', bottling: 'bp', serverfarm: 'sv', recyclingplant: 'rp', mfgco: 'mc', aluminumsmelter: 'al', sawmill: 'sm', evfactory: 'ev' };
+const IndArt = (() => {
+  const ims = new Map();
+  function get(name) {
+    let im = ims.get(name);
+    if (!im) { im = new Image(); im._bad = false; im.onerror = () => { im._bad = true; }; im.src = `img/${name}.png`; ims.set(name, im); }
+    return !im._bad && im.complete && im.naturalWidth ? im : null;
+  }
+  return { get };
+})();
+function _indFrame(e, px, py) {
+  const W = (e.width || 1) * TILE, H = (e.height || 1) * TILE;
+  const M = 20 * (TILE / 40), cx = px + W / 2, cy = py + H / 2, TN = Math.tan(Math.PI / 6);
+  const P = (x, y, z = 0) => [cx + x * M, cy - (y + z * TN) * M];
+  const draw = (im, rect, dx = 0, dy = 0) => { if (!im) return; const [x0, x1, v0, v1] = rect; ctx.drawImage(im, cx + (x0 + dx) * M, cy - (v1 + dy) * M, (x1 - x0) * M, (v1 - v0) * M); };
+  return { W, H, M, P, TN, draw, rectPx: ([x0, x1, v0, v1]) => [cx + x0 * M, cy - v1 * M, (x1 - x0) * M, (v1 - v0) * M] };
+}
+// Called at the top of renderIndustrial, inside dispatchScaledRender's
+// ctx.scale(width, height): undoes it (as _commNative does) so the sprite
+// keeps its proportions on any footprint shape. True when it drew.
+// Commercial properties share the same machinery (keys prefixed by their
+// own map, sprites in the same ind_layout / img/ind_<key>.png).
+const _COM_ART_KEY = { fastfood: 'zb', donutshop: 'dd', hotdog: 'cd', pizzeria: 'os', kakery: 'kk', bakery: 'bk', cafe: 'cf', pharmacy: 'ph', gym: 'gy', restaurant: 'bi', coworking: 'cw2', lawoffice: 'lw', savingsloan: 'sl', bank: 'bnk', office: 'to', motel: 'mo', autorepair: 'ar', clinic: 'cl', grocery: 'gr', coldstorage: 'cs', datacenter: 'dc', radio: 'rd', newspaper: 'nw', icerink: 'ir', boutiquehotel: 'hb', hotel: 'gh', mall: 'ml', galleria: 'gl', arcade: 'ar2', movietheater: 'mt', venue: 'ch', hotsprings: 'hs' };
+function _indArtTry(e, px, py, t, sub, keys = _IND_ART_KEY) {
+  if (!IND_ART_LAYOUT || e._ghost || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  const key = keys[sub], L = key && IND_ART_LAYOUT[key];
+  if (!L) return false;
+  // Subtypes in ArtFootprints are drawn with e.width/height set to their old
+  // art size inside renderEntityAt's stretch to the real footprint; the
+  // sprite is made for the real one, so that stretch is cancelled too.
+  const fp = SubtypeFootprints[e.commercialSubtype] || SubtypeFootprints[sub], fw = e.width || 1, fh = e.height || 1;
+  if (!fp) return false;
+  const art = typeof ArtFootprints !== 'undefined' ? ArtFootprints.sub[e.commercialSubtype] : null;
+  let kx = 1, ky = 1;
+  if (fw === fp.width && fh === fp.height) { /* drawn at its own size */ }
+  else if (art && fw === art[0] && fh === art[1]) { kx = art[0] / fp.width; ky = art[1] / fp.height; }
+  else return false;
+  const base = IndArt.get('ind_' + key);
+  if (!base || !_IND_ART_FN[key].ready()) return false;
+  ctx.save();
+  ctx.scale(kx / fw, ky / fh);
+  e.width = fp.width; e.height = fp.height;
+  try { _IND_ART_FN[key].draw(e, px * fw / kx, py * fh / ky, t, L, base); } finally { ctx.restore(); e.width = fw; e.height = fh; }
+  return true;
+}
+// Steel Foundry: the painted heat cycle (CHARGE -> MELT -> TAP -> COOL,
+// ~50 s), on the rendered melt shop.
+function _indSfArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M, TN } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const dark = DayNight.darkness(), X = f => (f - 0.5) * 8;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const heat = (t * 0.02) % 1;
+  const CHARGE = heat < 0.18, MELT = heat >= 0.18 && heat < 0.66, TAP = heat >= 0.66 && heat < 0.82;
+  const meltT = MELT ? (heat - 0.18) / 0.48 : (heat >= 0.66 ? 1 : 0), tapT = TAP ? (heat - 0.66) / 0.16 : 0;
+  const hot = (r, g, b, a) => `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+  ctx.save();
+  // scrap glints on the heaps
+  if (on && Camera.zoom > 0.5) L.heaps.forEach(([hx, hy, hz], i) => {
+    for (let g = 0; g < 4; g++) {
+      const a = 0.35 + 0.35 * Math.sin(t * 1.3 + g * 2 + i * 3), [gx, gy] = P(hx + Math.cos(g * 2.4 + i) * 0.5, hy + Math.sin(g * 1.7 + i) * 0.4, hz * (0.6 + 0.1 * g));
+      ctx.fillStyle = `rgba(235,232,222,${a.toFixed(3)})`; ctx.fillRect(gx - 0.05 * M, gy - 0.03 * M, 0.1 * M, 0.05 * M);
+    }
+  });
+  // material handler: the rendered arm slewing from the heap to the basket
+  // (frame 0 over the heap, the last over the basket), eased at each end
+  { const swing = on ? 0.5 - 0.5 * Math.cos(t * 0.6) : 0.3, k = Math.round(swing * (L.armN - 1)), [hx, hy] = L.handler;
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(IndArt.get('ind_sf_arm_' + String(k).padStart(2, '0')), L.armRect, hx, hy);
+    ctx.filter = 'none';
+    if (on && swing < 0.15) { const [mx, my, mz] = L.armMag[k], [qx, qy] = P(hx + mx, hy + my, mz - 0.12);   // scrap hanging off the magnet
+      for (let q = 0; q < 3; q++) { ctx.fillStyle = q === 1 ? '#7c5436' : '#8a8a8e'; ctx.fillRect(qx - 0.15 * M + q * 0.11 * M, qy + (q % 2) * 0.04 * M, 0.08 * M, 0.06 * M); } } }
+  // the crane: trolley runs over the furnace and lowers the basket in
+  { const [c0, c1, cyy, cz] = L.crane, [fx] = L.furnace;
+    const craneF = CHARGE ? heat / 0.18 : 0, run = Math.min(1, craneF * 1.6), lower = Math.max(0, craneF * 1.6 - 1) / 0.6;
+    const tx = c0 + run * (fx - c0), [ax, ay] = P(tx, cyy, cz);
+    ctx.fillStyle = on ? '#c8a040' : '#4a3c18'; ctx.fillRect(ax - 0.22 * M, ay - 0.1 * M, 0.44 * M, 0.2 * M);
+    if (CHARGE) { const bz = cz - 0.4 - lower * 1.4, [kx, ky] = P(tx, cyy, bz);
+      ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 0.04 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(kx, ky); ctx.stroke();
+      ctx.fillStyle = '#4a4640'; ctx.fillRect(kx - 0.24 * M, ky, 0.48 * M, 0.34 * M); ctx.fillStyle = '#6c6c70'; ctx.fillRect(kx - 0.2 * M, ky - 0.04 * M, 0.4 * M, 0.08 * M); } }
+  // ladle car: tapped at the furnace, run out to the caster
+  let ladX, fill;
+  if (CHARGE) { ladX = 0.26 + Math.min(1, heat / 0.10) * 0.26; fill = 0; }
+  else if (MELT) { ladX = 0.52; fill = 0; }
+  else if (TAP) { ladX = 0.52; fill = tapT; }
+  else { const mv = Math.min(1, (heat - 0.82) / 0.08); ladX = 0.52 - mv * 0.26; fill = mv < 1 ? 1 : Math.max(0, 1 - (heat - 0.90) / 0.10); }
+  const lx = X(ladX + 0.035), [, , ty] = L.track, ladle = IndArt.get('ind_sf_ladle');
+  if (!on) ctx.filter = 'brightness(0.55)';
+  F.draw(ladle, L.ladleRect, lx, ty);
+  ctx.filter = 'none';
+  ctx.globalCompositeOperation = 'lighter';
+  if (on && fill > 0) { const [qx, qy] = P(lx, ty, 0.78); ctx.fillStyle = hot(255, 160 + Math.round(60 * fill), 60, 0.55 + 0.4 * fill);
+    ctx.beginPath(); ctx.ellipse(qx, qy, 0.26 * M, 0.14 * M, 0, 0, Math.PI * 2); ctx.fill(); _anGlow(qx, qy, 0.7 * M, '255,170,80', 0.35 * fill); }
+  // louvres on the roof monitor, lit by the arc
+  { const [lw, lh] = L.louvreSize;
+    L.louvres.forEach(([x, y, z], k) => { if (!on) return;
+      const glow = MELT ? 0.30 + 0.45 * meltT * Math.abs(Math.sin(t * 11 + k)) : TAP ? 0.45 : 0.12, [gx, gy] = P(x, y, z);
+      ctx.fillStyle = hot(255, 160, 70, glow); ctx.fillRect(gx - lw / 2 * M, gy - lh / 2 * TN * M, lw * M, lh * TN * M); }); }
+  if (on) {
+    // the bath through the slag door; arcs at the electrode tips; flash on the floor
+    const bath = CHARGE ? 0.15 : MELT ? 0.35 + 0.6 * meltT : TAP ? 0.95 - 0.6 * tapT : Math.max(0.12, 0.35 - (heat - 0.82) * 1.5);
+    { const [sx, sy] = P(...L.slagDoor); ctx.fillStyle = hot(255, 150, 50, bath); ctx.fillRect(sx - 0.15 * M, sy - 0.08 * M, 0.3 * M, 0.14 * M);
+      ctx.fillStyle = hot(255, 235, 170, bath * 0.9); ctx.fillRect(sx - 0.08 * M, sy - 0.04 * M, 0.16 * M, 0.07 * M); _anGlow(sx, sy, 0.9 * M, '255,150,60', bath * 0.4); }
+    if (MELT) {
+      const [fx, fy, fz] = L.furnace, [cx0, cy0] = P(fx, fy, 0.1);
+      _anGlow(cx0, cy0, 1.6 * M, '190,220,255', 0.08 + 0.1 * Math.abs(Math.sin(t * 13)));
+      L.elec.forEach(([x, y, z], el) => { const fl = 0.5 + 0.5 * Math.abs(Math.sin(t * 17 + el * 2.3)), [ex, ey] = P(x, y, z);
+        _anGlow(ex, ey, 0.45 * fl * M, '170,210,255', 0.5 * fl); _anGlow(ex, ey, 0.18 * fl * M, '235,245,255', 0.9 * fl); });
+    }
+    if (MELT || TAP) { const [fx, fy, fz] = L.furnace;
+      for (let i = 0; i < 6; i++) { const ph = (t * 0.5 + i / 6) % 1, [ex, ey] = P(fx - 0.5 + i * 0.2 + Math.sin(t * 1.7 + i) * 0.1, fy, fz + ph * 2.2);
+        ctx.fillStyle = `rgba(255,${150 + Math.round(80 * (1 - ph))},70,${((1 - ph) * 0.7).toFixed(3)})`; ctx.fillRect(ex, ey, 0.06 * M, 0.06 * M); } }
+    if (TAP) { const [sx, sy] = P(...L.spout), [qx, qy] = P(lx, ty, 0.8);
+      ctx.strokeStyle = hot(255, 210, 120, 0.8 + 0.2 * Math.sin(t * 20)); ctx.lineWidth = 0.1 * M; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx, qy, qx, qy); ctx.stroke(); }
+    if (!CHARGE && !MELT && !TAP && ladX <= 0.27) { const [px0, py0, pz, ph] = L.pour, [ax, ay] = P(px0, py0, pz), [bx, by] = P(px0, py0, pz - ph);
+      ctx.fillStyle = hot(255, 190, 90, 0.85); ctx.fillRect(ax - 0.05 * M, ay, 0.1 * M, by - ay); _anGlow(bx, by, 0.4 * M, '255,170,80', 0.4); }
+    // slag pot
+    { const [sx, sy, sz, sr] = L.slag, [gx, gy] = P(sx, sy, sz); ctx.fillStyle = hot(255, 110, 35, 0.35 + 0.2 * Math.sin(t * 1.6));
+      ctx.beginPath(); ctx.ellipse(gx, gy, sr * M, sr * 0.55 * M, 0, 0, Math.PI * 2); ctx.fill(); }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // billets stepping along the cooling bed (cool grey stock when idle)
+  { const [x0, x1, y0, y1, z] = L.bed, beat = on ? (t * 0.04) % 1 : 0;
+    for (let b = 0; b < 7; b++) {
+      const f = ((b / 7) + beat) % 1, y = y0 + (y1 - y0) * f, [ax, ay] = P(x0, y, z), [bx] = P(x1, y, z);
+      ctx.fillStyle = !on ? '#3a3634' : f < 0.25 ? hot(255, 230, 160, 0.95) : f < 0.55 ? hot(240, 120, 40, 0.95) : f < 0.8 ? '#7a3a22' : '#4a4644';
+      ctx.fillRect(ax, ay - 0.07 * M, bx - ax, 0.14 * M);
+    }
+    if (on) for (let q = 0; q < 3; q++) _indSmoke(F, x0 + 0.5 + q * 1.0, y0, z + 0.2, t + q * 1.7, '225,222,218', 0.3, 0.6); }
+  // stack fumes, thickest during the tap
+  { const [sx, sy] = P(...L.stack); _wfSmoke(sx, sy, TILE / 40 * 1.1, t, '170,162,154', on, MELT ? 0.2 + 0.2 * meltT : TAP ? 0.42 : 0.12); }
+  // the sign, floodlights after dark
+  _civText(F, L.sign, 'ARC STEEL', on ? '#e8e2d8' : 'rgba(90,90,90,0.8)');
+  if (on && dark > 0.3) { ctx.globalCompositeOperation = 'lighter';
+    L.lamps.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y - 1.2, 0); _anGlow(fx, fy, 2.2 * M, '255,220,160', 0.22); _anGlow(gx, gy, 0.3 * M, '255,236,190', 0.9); });
+    ctx.globalCompositeOperation = 'source-over'; }
+  ctx.restore();
+}
+// A roof fan: Hyperion's rendered fan blades when loaded, else the painted cage.
+function _indFan(F, x, y, z, r, ang, on) {
+  if (typeof AdvNukeArt !== 'undefined' && AdvNukeArt.get('hyp_fan')) { _anFan(F, x, y, z, r, ang); return; }
+  const [fx, fy] = F.P(x, y, z); _csFan(fx, fy, r * F.M, TILE / 40, ang, on);
+}
+// Data Farm: container pods with roof fans, tray data pulses, tower plumes,
+// battery gauges, the NOC's screens, and the outage beacon.
+function _indDfArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M, TN } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver(), dark = DayNight.darkness();
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  ctx.save();
+  const zoomOK = Camera.zoom > 0.45;
+  // fans on the pods and towers
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * (10 + (k % 5)) + k : k, on));
+  L.towers.forEach(([x, y, z, r], i) => _indFan(F, x, y, z, r, on ? t * 6 + i : i, on));
+  if (on) {
+    // data pulses running along the tray
+    const [x0, x1, ty, tz] = L.tray, cols = ['#40d0ff', '#ff60c0', '#50ff90'];
+    for (let k = 0; k < 6; k++) { const p = (t * 0.35 + k / 6) % 1, [dx, dy] = P(x0 + p * (x1 - x0), ty + (k % 3 - 1) * 0.1, tz);
+      ctx.fillStyle = cols[k % 3]; ctx.beginPath(); ctx.arc(dx, dy, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
+    // vapour off the towers
+    L.towers.forEach(([x, y, z, r], i) => _indSmoke(F, x, y, z, t + i * 2.3, '240,246,248', 0.4, r * 2.2));
+  }
+  // status LEDs on each pod's end wall (red blink in an outage)
+  if (zoomOK) L.pods.forEach(([x0, x1, y, z], c) => { for (let k = 0; k < 5; k++) {
+    const lit = Math.sin(t * (on ? 8 : 5) + k * 1.9 + c * 2) > (on ? 0 : 0.3), [lx, ly] = P(x0 + (x1 - x0) * (k + 0.5) / 5, y, z);
+    ctx.fillStyle = !lit ? '#20282a' : on ? (k === 4 ? '#50ff90' : '#40c8ff') : '#ff3a2a'; ctx.fillRect(lx - 0.05 * M, ly - 0.03 * M, 0.1 * M, 0.06 * M); } });
+  // battery charge: full and breathing on the grid, draining in an outage
+  L.batts.forEach(([x0, x1, y, z], i) => {
+    const lvl = on ? 0.9 + 0.08 * Math.sin(t * 0.8 + i) : Math.max(0.08, 0.55 - ((t * 0.05 + i * 0.2) % 0.5)), [ax, ay] = P(x0, y, z), [bx] = P(x1, y, z);
+    ctx.fillStyle = on ? '#40e080' : (lvl < 0.25 && Math.sin(t * 8) > 0 ? '#ff3a2a' : '#ffa030'); ctx.fillRect(ax, ay - 0.05 * M, (bx - ax) * lvl, 0.1 * M); });
+  // the NOC: control-room glazing with its wall screens
+  { const [x0, x1, y, z0, z1] = L.noc, [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+    if (on) { ctx.fillStyle = dark > 0.3 ? 'rgba(159,224,255,0.75)' : 'rgba(95,154,184,0.45)'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+      for (let k = 0; k < 6; k++) { ctx.fillStyle = Math.sin(t * 2 + k) > 0 ? 'rgba(80,255,150,0.85)' : 'rgba(40,120,255,0.85)';
+        ctx.fillRect(ax + (bx - ax) * (k + 0.2) / 6, ay + (by - ay) * 0.25, (bx - ax) * 0.1, (by - ay) * 0.4); }
+      if (dark > 0.3) { ctx.globalCompositeOperation = 'lighter'; _anGlow((ax + bx) / 2, by, (bx - ax) * 0.6, '150,210,255', 0.25); ctx.globalCompositeOperation = 'source-over'; } } }
+  _civText(F, L.nocSign, 'DATA FARM', on ? 'rgba(210,240,255,0.95)' : 'rgba(110,120,125,0.6)');
+  // dish feed lights; the roof beacon (green; a red sweep in an outage)
+  if (on && zoomOK) L.dishes.forEach(([x, y, z], k) => { const [dx, dy] = P(x, y, z); ctx.fillStyle = Math.sin(t * 2 + k * 2) > 0.2 ? '#ff5040' : '#602820'; ctx.fillRect(dx - 0.04 * M, dy - 0.04 * M, 0.08 * M, 0.08 * M); });
+  { const [bx, by] = P(...L.beacon);
+    if (!on) { const a = t * 6; ctx.fillStyle = 'rgba(255,60,40,0.35)';
+      for (const o of [0, Math.PI]) { ctx.beginPath(); ctx.moveTo(bx, by); ctx.arc(bx, by, 0.8 * M, a + o, a + o + 0.7); ctx.closePath(); ctx.fill(); } }
+    ctx.fillStyle = on ? '#3a8a50' : '#ff4030'; ctx.beginPath(); ctx.arc(bx, by, 0.07 * M, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+// A billow column of smoke or steam at plan (x, y, z): the cooling-tower look
+// (_smokeColumn, render_hydro_coal.js). size scales its rise and girth.
+function _indSmoke(F, x, y, z, t, rgb, alpha, size = 1) {
+  if (typeof _smokeColumn !== 'function') return;
+  const [sx, sy] = F.P(x, y, z);
+  _smokeColumn(sx, sy, F.M / 20 * size, t, rgb, alpha, 1, (x * 7.3 + y * 3.1).toFixed(1));
+}
+// A lit rectangle on a south-facing wall: [x0, x1, y, z0, z1].
+function _indWin(P, [x0, x1, y, z0, z1], col) {
+  const [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+  ctx.fillStyle = col; ctx.fillRect(ax, ay, bx - ax, by - ay);
+}
+// Textile Mill: the day shift (07:00-19:00) lights the looms, roof glazing
+// and engine house, smokes the chimney and steams the vats; the van waits
+// at the dock. After hours only the watchman's window and lamps.
+const _TM_DYES = ['#d8506a', '#4a9ec4', '#e2b44a', '#6ab87a'];
+function _indTmArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M, TN } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), dark = DayNight.darkness();
+  const shift = on && hr >= 7 && hr < 19, watchman = on && !shift && dark > 0.3;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  ctx.save();
+  // windows: looms behind the lower row, shuttles flying
+  L.wins.forEach((w, i) => {
+    const lit = shift || (watchman && w[5] === 1 && i === 10);
+    if (!lit) return;
+    _indWin(P, w, `rgba(255,208,140,${shift ? (0.7 + 0.1 * Math.sin(t * 1.3 + i)).toFixed(3) : 0.7})`);
+    if (shift && w[5] === 1 && Camera.zoom > 0.6) { const f = 0.5 + 0.5 * Math.sin(t * 3.2 + i * 1.7), [sx, sy] = P(w[0] + 0.04 + f * (w[1] - w[0] - 0.12), w[2], (w[3] + w[4]) / 2);
+      ctx.fillStyle = '#fff4dc'; ctx.fillRect(sx, sy, 0.06 * M, 0.06 * M); }
+  });
+  if (shift) { L.ewins.forEach((w, i) => _indWin(P, w, `rgba(255,190,110,${(0.6 + 0.2 * Math.sin(t * 2 + i)).toFixed(3)})`));
+    L.glaze.forEach((g, i) => _indWin(P, g, `rgba(255,210,150,${(0.45 + 0.12 * Math.sin(t * 1.7 + i * 1.2)).toFixed(3)})`)); }
+  // the mill clock: game time while powered, stopped at ten past ten without
+  { const [cx, cy, cz, r] = L.clock, clockHr = on ? hr : 10 + 10 / 60, [fx, fy] = P(cx, cy, cz);
+    ctx.fillStyle = on ? (dark > 0.3 ? '#ffe9b0' : '#f2ead6') : '#3a362e';
+    ctx.beginPath(); ctx.ellipse(fx, fy, r * M, r * TN * M, 0, 0, Math.PI * 2); ctx.fill();
+    const hand = (a, len, lw) => { const [hx, hy] = P(cx + Math.sin(a) * len, cy, cz + Math.cos(a) * len); ctx.strokeStyle = '#1e1410'; ctx.lineWidth = lw * M; ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(hx, hy); ctx.stroke(); };
+    hand((clockHr % 12) / 12 * Math.PI * 2, r * 0.55, 0.05); hand((clockHr % 1) * Math.PI * 2, r * 0.85, 0.03); }
+  _civText(F, L.board, 'ALBION MILL', on ? '#eee4cc' : 'rgba(90,80,70,0.8)');
+  // smoke and steam on the shift
+  { const [sx, sy] = P(...L.chimney); _wfSmoke(sx, sy, TILE / 40 * 1.1, t, '200,196,192', shift, 0.3); }
+  { const [sx, sy] = P(...L.exhaust); _wfSmoke(sx, sy, TILE / 40 * 0.6, t + 1, '235,235,235', shift, 0.3); }
+  L.vats.forEach(([vx, vy, vz, vr], v) => {
+    if (shift) { const a = t * 1.6 + v * 2.1, [ax, ay] = P(vx, vy, vz), [bx, by] = P(vx + Math.cos(a) * vr * 0.85, vy + Math.sin(a) * vr * 0.85, vz + 0.05);
+      ctx.strokeStyle = '#c8a878'; ctx.lineWidth = 0.05 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      _indSmoke(F, vx, vy, vz + 0.1, t + v * 1.3, '235,235,235', 0.3, 0.45); } });
+  // dyed cloth drying on the tenter line
+  { const [x0, step, w, y, zt, h] = L.cloth;
+    for (let c = 0; c < 4; c++) {
+      const cx0 = x0 + c * step, sway = on ? Math.sin(t * 1.4 + c * 1.1) * 0.1 : 0;
+      const q = [P(cx0, y, zt), P(cx0 + w, y, zt), P(cx0 + w + sway, y - 0.05, zt - h), P(cx0 + sway, y - 0.05, zt - h)];
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; const [g0, g1] = [P(cx0 + 0.2 + sway, y - 0.4, 0), P(cx0 + w + 0.2 + sway, y - 0.4, 0)]; ctx.fillRect(g0[0], g0[1] - 0.06 * M, g1[0] - g0[0], 0.12 * M);
+      ctx.fillStyle = on ? _TM_DYES[(c + 1) % 4] : '#3a3430';
+      ctx.beginPath(); ctx.moveTo(...q[0]); for (let k = 1; k < 4; k++) ctx.lineTo(...q[k]); ctx.closePath(); ctx.fill();
+      const fold = [P(cx0 + w * 0.72, y, zt), q[1], q[2], P(cx0 + w * 0.72 + sway, y - 0.05, zt - h)];
+      ctx.fillStyle = 'rgba(0,0,0,0.16)'; ctx.beginPath(); ctx.moveTo(...fold[0]); for (let k = 1; k < 4; k++) ctx.lineTo(...fold[k]); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e8dcc0'; for (const px_ of [cx0 + 0.05, cx0 + w - 0.09]) { const [gx, gy] = P(px_, y - 0.01, zt + 0.02); ctx.fillRect(gx, gy, 0.04 * M, 0.08 * M); }
+    } }
+  // the van waits at the dock through the shift
+  if (shift) F.draw(IndArt.get('ind_tm_van'), L.vanRect, L.van[0], L.van[1]);
+  // lamps
+  ctx.globalCompositeOperation = 'lighter';
+  if (watchman) { const [lx, ly, lz] = L.lampW, [gx, gy] = P(lx, ly, lz), [fx, fy] = P(lx, ly - 0.6, 0); _anGlow(fx, fy, 1.6 * M, '255,220,150', 0.2); _anGlow(gx, gy, 0.25 * M, '255,230,168', 0.9); }
+  if (on && dark > 0.3) { const [lx, ly, lz] = L.dockLamp, [gx, gy] = P(lx, ly, lz); _anGlow(gx, gy, 1.2 * M, '255,220,150', 0.3); }
+  ctx.restore();
+}
+// Water Treatment Plant: water moving through every stage (raw -> settled
+// -> clean), paddles and scraper bridges turning, one filter backwashing.
+function _indWtArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver(), dark = DayNight.darkness();
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const sq = ([x0, x1, y0, y1, z]) => { const [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z); return [ax, ay, bx - ax, by - ay]; };
+  ctx.save();
+  // flocculation lanes, raw to settled, with paddles turning
+  L.floc.forEach((r, i) => { const [x, y, w, h] = sq(r), k = i / (L.floc.length - 1);
+    ctx.fillStyle = `rgba(${Math.round(120 - 50 * k)},${Math.round(100 + 30 * k)},${Math.round(60 + 60 * k)},0.85)`; ctx.fillRect(x, y, w, h);
+    BldWater.draw(ctx, 'rect', x, y, w, h, t, { murky: k < 0.5, depth: 0.35, still: !on }); });
+  L.paddles.forEach(([x, y, z, r], i) => { const a = on ? t * 2 + i : 0.3;
+    ctx.strokeStyle = '#e8e4d8'; ctx.lineWidth = 0.07 * M; ctx.beginPath();
+    for (const o of [0, Math.PI / 2]) { const [ax, ay] = P(x - Math.cos(a + o) * r, y - Math.sin(a + o) * r, z), [bx, by] = P(x + Math.cos(a + o) * r, y + Math.sin(a + o) * r, z); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); }
+    ctx.stroke(); const [cx, cy] = P(x, y, z + 0.1); ctx.fillStyle = '#3a3a3e'; ctx.beginPath(); ctx.arc(cx, cy, 0.07 * M, 0, Math.PI * 2); ctx.fill(); });
+  // clarifiers: water, weir ring, the scraper bridge sweeping round
+  L.clar.forEach(([x, y, z, r, bz], i) => {
+    const [cx, cy] = P(x, y, z), wg = ctx.createRadialGradient(cx - r * 0.3 * M, cy - r * 0.3 * M, 1, cx, cy, r * M);
+    wg.addColorStop(0, on ? '#8ad0c8' : '#5a7a76'); wg.addColorStop(1, on ? '#2a7a78' : '#2a4a48');
+    ctx.fillStyle = wg; ctx.beginPath(); ctx.arc(cx, cy, r * M, 0, Math.PI * 2); ctx.fill();
+    BldWater.draw(ctx, 'ell', cx - r * M, cy - r * M, 2 * r * M, 2 * r * M, t, { depth: 0.45, still: !on });
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 0.05 * M; ctx.beginPath(); ctx.arc(cx, cy, r * 0.82 * M, 0, Math.PI * 2); ctx.stroke();
+    const a = on ? t * 0.5 + i * 1.3 : 0.6 + i, ca = Math.cos(a), sa = Math.sin(a), hw = 0.12;
+    const corner = (u, v) => P(x + ca * u - sa * v, y + sa * u + ca * v, bz);
+    const q = [corner(-r, -hw), corner(r, -hw), corner(r, hw), corner(-r, hw)];
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); q.forEach(([qx, qy], k) => k ? ctx.lineTo(qx + 0.1 * M, qy + 0.25 * M) : ctx.moveTo(qx + 0.1 * M, qy + 0.25 * M)); ctx.fill();
+    ctx.fillStyle = '#8a8470'; ctx.strokeStyle = '#3a382e'; ctx.lineWidth = 0.04 * M; ctx.beginPath(); q.forEach(([qx, qy], k) => k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy)); ctx.closePath(); ctx.fill(); ctx.stroke();
+    const [dx, dy] = corner(r - 0.12, 0); ctx.fillStyle = '#d8a820'; ctx.fillRect(dx - 0.1 * M, dy - 0.14 * M, 0.2 * M, 0.2 * M);
+    const [kx, ky] = P(x, y, bz + 0.1); ctx.fillStyle = '#5a564a'; ctx.beginPath(); ctx.arc(kx, ky, 0.2 * M, 0, Math.PI * 2); ctx.fill(); });
+  // sand filters; one at a time backwashes
+  const washing = on ? Math.floor(t * 0.15) % L.filters.length : -1;
+  L.filters.forEach((r, idx) => { const [x, y, w, h] = sq(r);
+    if (idx === washing) { ctx.fillStyle = 'rgba(170,140,90,0.85)'; ctx.fillRect(x, y, w, h);
+      for (let b = 0; b < 5; b++) { const p = (t * 1.2 + b / 5) % 1; ctx.fillStyle = `rgba(255,255,255,${(0.8 * (1 - p)).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(x + w * ((b * 0.37) % 1), y + h * (1 - p), (0.04 + p * 0.07) * M, 0, Math.PI * 2); ctx.fill(); } }
+    else { ctx.fillStyle = on ? 'rgba(74,160,192,0.85)' : 'rgba(58,90,104,0.85)'; ctx.fillRect(x, y, w, h);
+      BldWater.draw(ctx, 'rect', x, y, w, h, t + idx * 7, { depth: 0.3, still: !on }); } });
+  // flow snaking through the chlorine contact tank (its baffles are in the sprite)
+  if (on) { const [x0, x1, y0, y1, z] = L.contact, n = L.baffles + 1, lw = (x1 - x0) / n;
+    ctx.strokeStyle = 'rgba(230,250,255,0.75)'; ctx.lineWidth = 0.05 * M; ctx.setLineDash([0.1 * M, 0.2 * M]); ctx.lineDashOffset = -t * 0.6 * M; ctx.beginPath();
+    for (let l = 0; l < n; l++) { const lx = x0 + lw * (l + 0.5), top = P(lx, y1 - 0.2, z), bot = P(lx, y0 + 0.2, z);
+      if (l === 0) ctx.moveTo(...top);
+      if (l % 2 === 0) { ctx.lineTo(...bot); if (l < n - 1) ctx.lineTo(...P(lx + lw, y0 + 0.2, z)); }
+      else { ctx.lineTo(...top); if (l < n - 1) ctx.lineTo(...P(lx + lw, y1 - 0.2, z)); } }
+    ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+  _civText(F, L.clSign, 'Cl', on ? '#2a8a40' : '#3a4a3a');
+  // the reservoir's water-drop mark
+  { const [x, y, z, r] = L.reservoir, [cx, cy] = P(x, y, z); ctx.fillStyle = on ? '#2a88c8' : '#3a5a68';
+    ctx.beginPath(); ctx.moveTo(cx, cy - r * M); ctx.quadraticCurveTo(cx + r * 0.8 * M, cy + 0.1 * r * M, cx, cy + r * 0.8 * M); ctx.quadraticCurveTo(cx - r * 0.8 * M, cy + 0.1 * r * M, cx, cy - r * M); ctx.fill(); }
+  // pump house fan and run lamp; the lab's windows
+  { const [x, y, z, r] = L.pumpFan; _indFan(F, x, y, z, r, on ? t * 8 : 0.4, on);
+    const [lx, ly] = P(...L.pumpLamp); ctx.fillStyle = on && Math.sin(t * 3) > 0 ? '#60ff90' : '#2a4a34'; ctx.beginPath(); ctx.arc(lx, ly, 0.08 * M, 0, Math.PI * 2); ctx.fill(); }
+  L.labWins.forEach((w, k) => { const lit = on && (dark > 0.3 ? _cmFrac(k + 7) > 0.3 : _cmFrac(k + 7) > 0.8); if (lit) _indWin(P, w, 'rgba(255,224,160,0.9)'); });
+  ctx.restore();
+}
+// Logistics Depot: the painted depot's traffic (two trucks working the free
+// bays, the gantry, the van out through the barrier) on the rendered yard.
+// Painted units: 200 across the 5x5 footprint, 20 to the metre.
+function _indLdArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver(), night = DayNight.darkness() > 0.3, tt = on ? t : 0;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const X = u => (u - 100) / 20, Y = v => (100 - v) / 20, WY = 64, WH = 54, bayX = i => 51 + i * 13.6;
+  const [lx0, ly0] = P(-5, 5), [lx1, ly1] = P(5, -5);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 3 * M, lx1 - lx0, ly1 - ly0 + 3 * M); ctx.clip();
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, tt * (9 + (k % 3)) + k, on));
+  // roof marks
+  { const [sx, sy, sz, r] = L.snow; ctx.strokeStyle = on ? (night ? 'rgba(120,200,255,0.8)' : 'rgba(40,110,160,0.85)') : 'rgba(60,70,75,0.6)'; ctx.lineWidth = 0.06 * M; ctx.beginPath();
+    for (let a = 0; a < 3; a++) { const an = a * Math.PI / 3, [ax, ay] = P(sx - Math.cos(an) * r, sy - Math.sin(an) * r, sz), [bx, by] = P(sx + Math.cos(an) * r, sy + Math.sin(an) * r, sz); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); } ctx.stroke(); }
+  _civText(F, L.temp, '-22°C', on ? (night ? '#80d0ff' : 'rgba(40,110,160,0.9)') : '#3a4044');
+  _civText(F, L.name, 'LOGISTICS DEPOT', on ? (night ? '#c8d8e8' : '#f4f6f8') : '#3a3c40');
+  // dock signals
+  const lit = (i, side) => on && (Math.sin(t * 0.4 + i * 1.9 + side * 3) > -0.3);
+  [[L.lightsN, 0], [L.lightsS, 1]].forEach(([ls, side]) => ls.forEach(([x, y, z], i) => { const [dx, dy] = P(x, y, z);
+    ctx.fillStyle = !on ? '#2a2c2a' : lit(i, side) ? '#46f08a' : '#ff4a3a'; ctx.beginPath(); ctx.arc(dx, dy, 0.05 * M, 0, Math.PI * 2); ctx.fill(); }));
+  // the two working trucks
+  const [wx0] = P(X(44), 0), [wx1] = P(X(156), 0), [, wyTop] = P(0, Y(WY), 1.3), [, wyBot] = P(0, Y(WY + WH), 0);
+  const mover = (period, phase0, bay, side, key) => {
+    const u = ((t / period) + phase0) % 1, bx = bayX(bay), wall = side ? WY + WH + 1 : WY - 1, dir = side ? 1 : -1;
+    const lane = wall + dir * 34, dockAng = side ? Math.PI / 2 : Math.PI * 1.5, outAng = side ? 0 : Math.PI * 2;
+    let rx, ry, ang;
+    if (!on) { rx = bx; ry = wall; ang = dockAng; }
+    else if (u < 0.16) { const q = _lgEase(u / 0.16); rx = 230 - q * (230 - (bx + 34)); ry = lane; ang = Math.PI; }
+    else if (u < 0.26) { const q = _lgEase((u - 0.16) / 0.1); rx = bx + 34 * (1 - q); ry = lane; ang = Math.PI + (dockAng - Math.PI) * q; }
+    else if (u < 0.34) { const q = _lgEase((u - 0.26) / 0.08); rx = bx; ry = lane + (wall - lane) * q; ang = dockAng; }
+    else if (u < 0.72) { rx = bx; ry = wall; ang = dockAng; }
+    else if (u < 0.8) { const q = _lgEase((u - 0.72) / 0.08); rx = bx; ry = wall + dir * q * 30; ang = dockAng; }
+    else { const q = _lgEase((u - 0.8) / 0.2); rx = bx + q * 200; ry = wall + dir * 30; ang = dockAng + (outAng - dockAng) * Math.min(1, q * 4); }
+    if (on && u >= 0.34 && u < 0.72) { const [x, y, z] = (side ? L.lightsS : L.lightsN)[bay], [dx, dy] = P(x, y, z); ctx.fillStyle = '#ffb030'; ctx.beginPath(); ctx.arc(dx, dy, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
+    const th = ((-ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI), k = Math.round(th / (Math.PI / 8)) % 16;
+    const im = IndArt.get(`ind_ld_mv_${key}_${String(k).padStart(2, '0')}`);
+    ctx.save();
+    if (!side) { ctx.beginPath(); ctx.rect(lx0 - 3 * M, ly0 - 6 * M, lx1 - lx0 + 6 * M, ly1 - ly0 + 9 * M); ctx.rect(wx0, wyTop, wx1 - wx0, wyBot - wyTop); ctx.clip('evenodd'); }
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(im, L.moverRect, X(rx), Y(ry));
+    ctx.restore();
+    if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P(X(rx + Math.cos(ang) * 37), Y(ry + Math.sin(ang) * 37), 0.2); _anGlow(gx, gy, 0.5 * M, '255,250,220', 0.4); ctx.restore(); }
+  };
+  mover(40, 0.5, 1, 0, 'c8322a');
+  mover(34, 0, 2, 1, '2e6fb8');
+  // the container gantry and its trolley
+  { const gy = 48 + (Math.sin(tt * 0.12) * 0.5 + 0.5) * 82, tr = 168 + (Math.sin(tt * 0.31) * 0.5 + 0.5) * 22;
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(IndArt.get('ind_ld_gantry'), L.ganRect, 0, Y(gy));
+    ctx.filter = 'none';
+    const [tx, ty] = P(X(tr), Y(gy), 1.25); ctx.fillStyle = on ? '#3a3e44' : '#1a1c20'; ctx.fillRect(tx - 0.15 * M, ty - 0.12 * M, 0.3 * M, 0.24 * M);
+    if (Math.sin(tt * 0.31) > 0.2) { const [cx, cy] = P(X(tr), Y(gy), 0.95); ctx.fillStyle = 'rgba(232,232,232,0.95)'; ctx.fillRect(cx - 0.3 * M, cy - 0.32 * M, 0.6 * M, 0.5 * M); ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(cx - 0.3 * M, cy + 0.1 * M, 0.6 * M, 0.08 * M); }
+    if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(tx, ty, 1.0 * M, '255,240,200', 0.3); ctx.restore(); } }
+  _civText(F, L.fuel, 'FUEL', on && night ? '#ffd890' : '#2a2a2a');
+  { const [x0, x1, y, z0, z1] = L.gateWin; _indWin(P, L.gateWin, on ? (night ? 'rgba(255,224,170,0.9)' : 'rgba(138,180,204,0.6)') : 'rgba(20,24,28,0.8)'); }
+  // the van down the lane and out under the barrier
+  const van = on ? (t * 0.05) % 1 : -1;
+  const vx = van < 0 ? -99 : van < 0.5 ? 40 : 40 - (van - 0.5) * 2 * 70, vy = van < 0.5 ? 110 + van * 2 * 62 : 172;
+  const bar = van >= 0 && vy > 148 && vx > 20 ? 1 : 0;
+  { const [bx, by, bz, len] = L.barrier, a = bar * Math.PI * 0.45, [ax, ay] = P(bx, by, bz), [ex, ey] = P(bx + Math.cos(a) * len, by, bz + Math.sin(a) * len);
+    ctx.lineWidth = 0.06 * M; ctx.strokeStyle = '#f4f4f0'; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = '#d83a3a'; ctx.setLineDash([0.12 * M, 0.12 * M]); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]); }
+  if (van >= 0) { F.draw(IndArt.get(van < 0.5 ? 'ind_ld_van_s' : 'ind_ld_van_w'), L.vanRect, X(vx), Y(vy));
+    if (night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P(X(vx + (van < 0.5 ? 0 : -9)), Y(vy + (van < 0.5 ? 9 : 0)), 0.15); _anGlow(gx, gy, 0.4 * M, '255,250,220', 0.5); ctx.restore(); } }
+  // road traffic
+  if (on) for (let c = 0; c < 2; c++) { const q = (t * 0.05 + c * 0.5) % 1, cx = c ? q * 220 - 10 : 210 - q * 220, cy = c ? 188 : 176, [sx, sy] = P(X(cx), Y(cy), 0.06); _cmCar(sx, sy, c ? '#3a3a40' : '#e0b020', TILE / 40, !c); }
+  // floodlights
+  if (on && night) { ctx.globalCompositeOperation = 'lighter'; L.masts.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y, 0); _anGlow(fx, fy, 1.7 * M, '255,236,190', 0.22); _anGlow(gx, gy, 0.2 * M, '255,242,200', 0.9); }); ctx.globalCompositeOperation = 'source-over'; }
+  if (!on) { const [cx, cy] = P(0, Y(91), 1.35); ctx.fillStyle = 'rgba(14,10,14,0.82)'; ctx.beginPath(); ctx.roundRect(cx - 2 * M, cy - 0.35 * M, 4 * M, 0.7 * M, 0.1 * M); ctx.fill();
+    ctx.fillStyle = 'rgba(255,90,70,0.95)'; ctx.font = `bold ${(0.35 * M).toFixed(1)}px "Courier New", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('NO POWER', cx, cy); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; }
+  ctx.restore();
+}
+// Cold Chain Warehouse: condenser fans, readouts, dock signals, the open
+// door's cold mist (shut when the power's out), reefer LEDs, NH3 frost.
+function _indCcArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M, TN } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const ice = a => `rgba(140,225,255,${a})`;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  ctx.save();
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * (7 + k) : k, on));
+  _civText(F, L.name, 'COLD CHAIN', on ? ice(0.75) : 'rgba(110,125,130,0.35)');
+  _civText(F, L.temp, on ? '-18°C' : '--.-', on ? `rgba(120,255,200,${(0.8 + 0.15 * Math.sin(t * 1.5)).toFixed(3)})` : 'rgba(60,80,70,0.5)', false);
+  // door 1 rolled up while powered, shut in an outage
+  if (!on) { const [x0, x1, y, z0, z1] = L.doors[1], [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+    ctx.fillStyle = '#343d42'; ctx.fillRect(ax, ay, bx - ax, by - ay); ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.03 * M;
+    for (let s = 1; s < 6; s++) { const sy = ay + (by - ay) * s / 6; ctx.beginPath(); ctx.moveTo(ax, sy); ctx.lineTo(bx, sy); ctx.stroke(); } }
+  L.dockLights.forEach(([x, y, z], i) => { const trailer = i === 0 || i === 2, lit = on && (trailer || Math.sin(t * 3 + i) > 0), [dx, dy] = P(x, y, z);
+    ctx.fillStyle = lit ? (trailer ? '#50ff80' : '#ffb030') : '#2a2a20'; ctx.beginPath(); ctx.arc(dx, dy, 0.08 * M, 0, Math.PI * 2); ctx.fill(); });
+  if (on) { const [x0, x1, y] = L.doors[1], mx = (x0 + x1) / 2, w = x1 - x0;
+    _indSmoke(F, mx, y - 0.3, 0.2, t, '220,245,255', 0.3, 0.6); }
+  L.reeferLeds.forEach(([x, y, z], i) => { const [dx, dy] = P(x, y, z); ctx.fillStyle = on && Math.sin(t * 4 + i * 2) > -0.3 ? '#60ff90' : '#1a2a1e'; ctx.beginPath(); ctx.arc(dx, dy, 0.07 * M, 0, Math.PI * 2); ctx.fill(); });
+  _civText(F, L.nh3, 'NH3', on ? '#20404c' : 'rgba(30,40,45,0.7)');
+  if (on) _indWin(P, L.frost, ice((0.14 + 0.05 * Math.sin(t * 1.7)).toFixed(3)));
+  ctx.restore();
+}
+// Solvent Works: the day shift (07:00-19:00) runs the plant: flare burning,
+// product pulsing along the rack, reactor stirring, tanks filling and
+// emptying, the forklift moving drums and a tanker on the gantry.
+function _indCwArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), dark = DayNight.darkness(), run = on && hr >= 7 && hr < 19;
+  const acid = a => `rgba(150,235,50,${Math.max(0, Math.min(1, a)).toFixed(3)})`;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  ctx.save();
+  // product pulses along the rack
+  if (run) { const [x0, x1, y, z] = L.rack; for (let s = 0; s < 6; s++) { const sp = (t * 0.12 + s / 6) % 1, [dx, dy] = P(x0 + sp * (x1 - x0), y, z);
+    ctx.fillStyle = acid(0.85 * (1 - Math.abs(sp - 0.5) * 1.2)); ctx.beginPath(); ctx.arc(dx, dy, 0.09 * M, 0, Math.PI * 2); ctx.fill(); } }
+  // tank levels in the sight gauges
+  const TANK = [['150,235,45', 0.70], ['230,210,30', 0.45], ['120,215,90', 0.80], ['90,200,220', 0.30]];
+  if (on) L.tanks.forEach(([x, y, z0, z1], i) => { const lvl = TANK[i][1] + (run ? 0.18 * Math.sin(t * 0.5 + i * 1.9) : 0), [ax, ay] = P(x, y, z0 + (z1 - z0) * lvl), [, by] = P(x, y, z0);
+    ctx.fillStyle = `rgba(${TANK[i][0]},${run ? 0.9 : 0.55})`; ctx.fillRect(ax - 0.04 * M, ay, 0.08 * M, by - ay); });
+  // column overhead vapour; the reactor's agitator and sight glass
+  if (run) { const [cx, cy] = P(...L.colTop); _wfSmoke(cx, cy, TILE / 40 * 0.8, t, '225,240,215', true, 0.3); }
+  { const [x, y, z, r] = L.reactor, a = run ? t * 6 : 0.6, [ax, ay] = P(x - Math.cos(a) * r, y - Math.sin(a) * r, z), [bx, by] = P(x + Math.cos(a) * r, y + Math.sin(a) * r, z);
+    ctx.strokeStyle = on ? '#e8f0f8' : '#2a3038'; ctx.lineWidth = 0.05 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    if (on) { const sw = run ? 0.5 + 0.5 * Math.sin(t * 4) : 0.3, [x0, x1, sy, z0, z1] = L.sight; _indWin(P, [x0, x1, sy, z0, z0 + (z1 - z0) * (0.5 + 0.5 * sw)], acid(run ? 0.85 : 0.45)); } }
+  _civText(F, L.r101, 'R-101', on ? '#1c2010' : '#0c0e08');
+  // the flare: burning on the shift, a blue pilot otherwise
+  { const [fx, fy] = P(...L.flare); ctx.globalCompositeOperation = 'lighter';
+    if (run) { const fl = 0.65 + 0.35 * Math.sin(t * 9 + Math.sin(t * 3.3) * 2);
+      _anGlow(fx, fy - 0.2 * M, 0.9 * fl * M, '180,255,90', 0.35 * fl);
+      ctx.fillStyle = `rgba(${150 + Math.round(80 * fl)},255,80,0.85)`; ctx.beginPath(); ctx.moveTo(fx - 0.14 * M, fy); ctx.quadraticCurveTo(fx - 0.1 * M, fy - 0.5 * fl * M, fx, fy - 0.75 * fl * M); ctx.quadraticCurveTo(fx + 0.1 * M, fy - 0.45 * fl * M, fx + 0.14 * M, fy); ctx.fill();
+      ctx.fillStyle = 'rgba(250,255,220,0.85)'; ctx.beginPath(); ctx.moveTo(fx - 0.06 * M, fy); ctx.lineTo(fx, fy - 0.35 * fl * M); ctx.lineTo(fx + 0.06 * M, fy); ctx.fill(); }
+    else if (on) _anGlow(fx, fy - 0.08 * M, 0.2 * M, '120,200,255', 0.55 + 0.25 * Math.sin(t * 7));
+    ctx.globalCompositeOperation = 'source-over'; }
+  // office: name, windows, roof fans
+  _civText(F, L.offName, 'SOLVENT WORKS', on ? '#eef8e0' : 'rgba(50,60,40,0.9)');
+  const winLit = on && (run || dark > 0.25);
+  if (winLit) L.offWins.forEach((w, q) => _indWin(P, w, `rgba(225,245,170,${(0.75 + 0.15 * Math.sin(t * 1.3 + q * 2)).toFixed(3)})`));
+  L.offFans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * (run ? 9 : 4) + k : 0.4, on));
+  // forklift shuttling drums to the apron
+  { const [x0, x1, fy] = L.fork, k = run ? 0.5 - 0.5 * Math.cos(t * 0.35) : 0, fx = x0 + k * (x1 - x0);
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(IndArt.get('ind_cw_fork'), L.forkRect, fx, fy); ctx.filter = 'none';
+    if (run && Math.sin(t * 0.35) > 0) { const [dx, dy] = P(fx + 0.45, fy, 0.3); ctx.fillStyle = '#2e6cb0'; ctx.beginPath(); ctx.ellipse(dx, dy, 0.17 * M, 0.12 * M, 0, 0, Math.PI * 2); ctx.fill(); } }
+  // tanker on the gantry through the shift, acid running down the arm
+  if (run) { F.draw(IndArt.get('ind_cw_tanker'), L.tankerRect, L.tanker[0], L.tanker[1]);
+    const [ax, ay] = P(...L.fillArm); ctx.fillStyle = acid(0.5 + 0.4 * Math.sin(t * 6)); ctx.beginPath(); ctx.arc(ax, ay, 0.1 * M, 0, Math.PI * 2); ctx.fill(); }
+  if (on) { const [gx, gy] = P(...L.gantryLamp); ctx.fillStyle = run ? `rgba(80,255,90,${(0.6 + 0.4 * Math.sin(t * 5)).toFixed(3)})` : 'rgba(255,170,40,0.85)'; ctx.beginPath(); ctx.arc(gx, gy, 0.08 * M, 0, Math.PI * 2); ctx.fill(); }
+  // effluent clarifiers stirring and bubbling
+  L.clar.forEach(([x, y, z, r, az], c) => { const [cx, cy] = P(x, y, z);
+    ctx.fillStyle = on ? `rgba(110,170,60,${run ? 0.85 : 0.65})` : '#1a2210'; ctx.beginPath(); ctx.arc(cx, cy, r * M, 0, Math.PI * 2); ctx.fill();
+    if (on) BldWater.draw(ctx, 'ell', cx - r * M, cy - r * M, 2 * r * M, 2 * r * M, t + c, { murky: true, depth: 0.4, still: !run });
+    const a = run ? t * 0.5 + c * 2 : c * 2, [ax, ay] = P(x - Math.cos(a) * r, y - Math.sin(a) * r, az), [bx, by] = P(x + Math.cos(a) * r, y + Math.sin(a) * r, az);
+    ctx.strokeStyle = on ? '#c8ccbc' : '#2c2e26'; ctx.lineWidth = 0.08 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    if (run) for (let b = 0; b < 3; b++) { const bp = (t * 0.9 + b * 0.37 + c * 0.2) % 1, ba = b * 2.1 + c, [qx, qy] = P(x + Math.cos(ba) * r * 0.55, y + Math.sin(ba) * r * 0.55, z);
+      ctx.fillStyle = `rgba(200,255,120,${(0.6 * (1 - bp)).toFixed(3)})`; ctx.beginPath(); ctx.arc(qx, qy, (0.05 + bp * 0.07) * M, 0, Math.PI * 2); ctx.fill(); } });
+  // guard house and barrier; floodlights
+  _indWin(P, L.guardWin, on && dark > 0.25 ? 'rgba(255,230,160,0.85)' : 'rgba(74,90,98,0.4)');
+  { const [x, y, z, len] = L.barrier, [ax, ay] = P(x, y, z), [bx, by] = P(x, y + (run ? 0 : -len), z + (run ? len : 0));
+    ctx.strokeStyle = run ? '#e8e0d8' : '#e83020'; ctx.lineWidth = 0.06 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); }
+  if (on && dark > 0.3) { ctx.globalCompositeOperation = 'lighter'; L.lamps.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y, 0); _anGlow(fx, fy, 1.6 * M, '255,235,180', 0.16); _anGlow(gx, gy, 0.2 * M, '255,240,200', 0.9); }); ctx.globalCompositeOperation = 'source-over'; }
+  ctx.restore();
+}
+// Bottling Plant: the line runs flat out on the day shift and at 40%
+// overnight (frozen without power): silo levels, the filler turret,
+// bottles round the belt past the capper and labeller, the forklift,
+// a curtain-sider reversing in to load, staff, the hall's lit clerestory.
+function _indBpArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), night = DayNight.darkness() > 0.3, shift = hr >= 7 && hr < 19;
+  const speed = !on ? 0 : shift ? 1 : 0.4, lt = t * speed, aqua = a => `rgba(90,210,240,${a})`;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const dot = (x, y, z, r, c) => { const [dx, dy] = P(x, y, z); ctx.fillStyle = c; ctx.beginPath(); ctx.arc(dx, dy, r * M, 0, Math.PI * 2); ctx.fill(); };
+  const [lx0, ly0] = P(-6, 6), [lx1, ly1] = P(6, -6);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 4 * M, lx1 - lx0, ly1 - ly0 + 4 * M); ctx.clip();
+  // silo levels and labels
+  L.silos.forEach(([x, y, z0, z1, lx], i) => { const f = 0.3 + 0.22 * (0.5 + 0.5 * Math.sin(lt * 0.5 + i * 1.7)) + 0.03 * Math.sin(t * 3 + i), [ax, ay] = P(x, y, z0 + (z1 - z0) * f), [, by] = P(x, y, z0);
+    ctx.fillStyle = on ? (i ? 'rgba(220,120,40,0.9)' : aqua(0.85)) : 'rgba(40,60,70,0.6)'; ctx.fillRect(ax - 0.05 * M, ay, 0.1 * M, by - ay);
+    _civText(F, [[lx - 0.45, y, z1 - 0.5], [lx + 0.3, y, z1 - 0.5], [lx - 0.45, y, z1 - 0.2]], i ? 'SYRUP' : 'H2O', on ? '#e8f4f8' : '#50585c'); });
+  // clerestory chase, vents, sign, logo drop, beacon
+  L.clere.forEach((w, i) => _indWin(P, w, on ? `rgba(150,225,245,${(0.3 + 0.35 * (0.5 + 0.5 * Math.sin(lt * 3 - i * 0.9))).toFixed(3)})` : 'rgba(20,30,34,0.6)'));
+  if (on) L.vents.forEach(([x, y, z], i) => { for (let k = 0; k < 4; k++) { const p = (t * 0.5 + k / 4 + i * 0.4) % 1; dot(x + Math.sin(p * 4 + i) * 0.1, y, z + p * 1.2, 0.12 + p * 0.25, `rgba(230,240,245,${((1 - p) * (0.2 + 0.25 * speed)).toFixed(3)})`); } });
+  _civText(F, L.sign, 'SPRINGWELL BOTTLING', on ? (night ? '#a8ecff' : '#e8f6fa') : '#4a5458');
+  { const [x, y, z, r] = L.logo, [cx, cy] = P(x, y, z), R = r * 0.62 * M; ctx.fillStyle = on ? aqua(0.95) : 'rgba(80,110,120,0.5)';
+    ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.bezierCurveTo(cx + R * 0.9, cy, cx + R * 0.65, cy + R * 0.9, cx, cy + R * 0.9); ctx.bezierCurveTo(cx - R * 0.65, cy + R * 0.9, cx - R * 0.9, cy, cx, cy - R); ctx.fill(); }
+  { const [bx, by] = P(...L.beacon); ctx.fillStyle = on ? '#ffb030' : '#3a2e18'; ctx.beginPath(); ctx.arc(bx, by, 0.1 * M, 0, Math.PI * 2); ctx.fill();
+    if (on) { const a = t * 4; ctx.fillStyle = 'rgba(255,190,60,0.22)'; ctx.beginPath(); ctx.moveTo(bx, by); ctx.arc(bx, by, 0.6 * M, a - 0.35, a + 0.35); ctx.closePath(); ctx.fill(); } }
+  _civText(F, L.co2, 'CO2', on ? '#ffffff' : '#50585c');
+  if (on && (t * 0.35) % 1 < 0.5) { const [x, y, z] = L.co2Vent; for (let k = 0; k < 3; k++) { const q = ((t * 0.35) % 1 * 2 + k / 3) % 1; dot(x + q * 0.4, y, z + q * 0.8, 0.07 + q * 0.18, `rgba(235,245,250,${(0.35 * (1 - q)).toFixed(3)})`); } }
+  // the filler turret and the bottles round the belt
+  { const [fx, fy, fz, fr] = L.filler, spin = lt * 1.6;
+    for (let i = 0; i < 10; i++) { const a = spin + i * Math.PI * 2 / 10, near = on && Math.cos(a + Math.PI / 2) > 0.92;
+      dot(fx + Math.cos(a) * fr * 0.78, fy + Math.sin(a) * fr * 0.78, fz, near ? 0.11 : 0.08, near ? 'rgba(220,250,255,0.95)' : on ? aqua(0.85) : 'rgba(60,75,80,0.7)'); } }
+  { const pts = L.belt, seg = [], tot = (() => { let s = 0; for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(l); s += l; } return s; })();
+    const at = d => { for (let i = 0; i < seg.length; i++) { if (d <= seg[i]) { const k = d / seg[i]; return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k]; } d -= seg[i]; } return pts[pts.length - 1]; };
+    const N = 14, labelAt = seg[0] + seg[1] * 0.5;
+    for (let i = 0; i < N; i++) { const d = ((i * tot / N + lt * 0.9) % tot + tot) % tot, [bx, by] = at(d), a = Math.min(1, Math.min(d, tot - d) / 0.45), z = pts[0][2];
+      const [sx, sy] = P(bx, by, z), [, ty] = P(bx, by, z + 0.42);
+      ctx.fillStyle = on ? (i % 3 === 2 ? `rgba(110,190,90,${0.9 * a})` : aqua(0.9 * a)) : `rgba(60,75,80,${0.7 * a})`;
+      ctx.beginPath(); ctx.roundRect(sx - 0.08 * M, ty + 0.1 * M, 0.16 * M, sy - ty - 0.1 * M, 0.04 * M); ctx.fill(); ctx.fillRect(sx - 0.035 * M, ty, 0.07 * M, 0.12 * M);
+      ctx.fillStyle = on ? `rgba(240,90,60,${a})` : `rgba(80,50,40,${a})`; ctx.fillRect(sx - 0.045 * M, ty - 0.04 * M, 0.09 * M, 0.05 * M);
+      if (d > labelAt) { ctx.fillStyle = on ? `rgba(245,245,240,${0.85 * a})` : `rgba(90,90,90,${0.5 * a})`; ctx.fillRect(sx - 0.08 * M, ty + 0.22 * M, 0.16 * M, 0.07 * M); } } }
+  // capper plunger, labeller spool, station lamps, QC screens, packer
+  { const [x, y, z] = L.cap, plunge = on ? Math.max(0, Math.sin(lt * 9)) : 0, [ax, ay] = P(x, y, z + 0.5 - plunge * 0.25);
+    ctx.fillStyle = on ? '#9fb3bd' : '#3a4246'; ctx.fillRect(ax - 0.05 * M, ay, 0.1 * M, 0.35 * M); ctx.fillStyle = on ? '#d8e4ea' : '#4a5256'; ctx.fillRect(ax - 0.17 * M, ay + 0.3 * M, 0.34 * M, 0.08 * M); }
+  { const [x, y, z, r] = L.spool, a0 = lt * 5; ctx.strokeStyle = on ? '#8a9aa2' : '#30383d'; ctx.lineWidth = 0.04 * M; ctx.beginPath();
+    for (let s = 0; s < 4; s++) { const a = a0 + s * Math.PI / 2, [cx, cy] = P(x, y, z), [ex, ey] = P(x + Math.cos(a) * r * 0.85, y + Math.sin(a) * r * 0.85, z); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); } ctx.stroke(); }
+  [[L.cap, 0], [L.lab, 2]].forEach(([[x, y, z, w, d], k]) => dot(x + w / 2 - 0.15, y + d / 2 - 0.15, z, 0.07, on && Math.sin(t * 6 + k) > 0 ? '#60ff90' : on ? '#2a5a3a' : '#1a2a1e'));
+  L.qc.forEach((w, i) => { _indWin(P, w, on ? 'rgba(20,60,70,0.9)' : 'rgba(20,30,34,0.9)');
+    if (on) { const bar = (lt * 2 + i) % 1, [x0, x1, y, z0, z1] = w; _indWin(P, [x0 + 0.06, x1 - 0.06, y - 0.01, z1 - (z1 - z0) * (0.15 + bar * 0.65) - 0.06, z1 - (z1 - z0) * (0.15 + bar * 0.65)], aqua(0.75)); } });
+  { const [x, y, z] = L.packer, drop = on ? Math.max(0, Math.sin(lt * 4.5)) : 0, [ax, ay] = P(x, y, z + 0.2 - drop * 0.15);
+    ctx.fillStyle = on ? '#9fb3bd' : '#3a4246'; ctx.fillRect(ax - 0.33 * M, ay, 0.66 * M, 0.14 * M); dot(x + 0.4, y - 0.3, z, 0.06, on && Math.sin(t * 5) > 0 ? '#60ff90' : '#2a5a3a'); }
+  // forklift between the crate stacks and the line
+  { const cycle = on ? lt * 0.35 % 1 : 0.5, down = cycle < 0.5, k = down ? cycle * 2 : (1 - cycle) * 2, ease = k * k * (3 - 2 * k), [fx, y0, y1] = L.fork, fy = y0 + (y1 - y0) * ease;
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(IndArt.get('ind_bp_fork'), L.forkRect, fx, fy); ctx.filter = 'none';
+    if (down && on) { const [cx, cy] = P(fx, fy - 0.6, 0.35); ctx.fillStyle = '#2a88a2'; ctx.fillRect(cx - 0.4 * M, cy - 0.2 * M, 0.8 * M, 0.4 * M); } }
+  // the curtain-sider: reverses in, loads, drives off
+  { const tc = on ? (t * 0.016 + 0.2) % 1 : 0.3, [park, out, ty] = L.truck, tE = k => k * k * (3 - 2 * k);
+    const tx = tc < 0.12 ? out + (park - out) * tE(tc / 0.12) : tc < 0.72 ? park : tc < 0.88 ? park + (out - park) * tE((tc - 0.72) / 0.16) : null;
+    const loading = on && tc >= 0.14 && tc < 0.7, fill = !on ? 0 : tc < 0.14 ? 0 : tc < 0.7 ? (tc - 0.14) / 0.56 : 1;
+    if (tx !== null) { if (!on) ctx.filter = 'brightness(0.55)';
+      F.draw(IndArt.get('ind_bp_truck'), L.truckRect, tx, ty); ctx.filter = 'none';
+      if (loading) { const [ax, ay] = P(tx + 0.1, ty + 0.46, 1.3), [bx, by] = P(tx + 3.6, ty - 0.46, 1.3); ctx.fillStyle = '#20282c'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+        for (let c = 0, n = Math.floor(fill * 8); c < n; c++) { const [cx] = P(tx + 0.2 + c * 0.42, 0, 0); ctx.fillStyle = c % 2 ? '#1f6f86' : '#2a88a2'; ctx.fillRect(cx, ay + 0.1 * M, 0.36 * M, by - ay - 0.2 * M); } }
+      if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [hx, hy] = P(tx + 5.4, ty, 0.4); _anGlow(hx, hy, 0.6 * M, '255,246,208', 0.5); ctx.restore(); } }
+    // a worker carrying crates to the truck while it loads; a technician walking the line
+    const person = (x, y, coat, cap, step) => { const [sx, sy] = P(x, y, 0.06); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(sx + 0.06 * M, sy + 0.03 * M, 0.2 * M, 0.08 * M, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = coat; ctx.beginPath(); ctx.roundRect(sx - 0.15 * M, sy - 0.5 * M + step, 0.3 * M, 0.5 * M, 0.08 * M); ctx.fill();
+      ctx.fillStyle = '#d8b090'; ctx.beginPath(); ctx.arc(sx, sy - 0.62 * M + step, 0.12 * M, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = cap; ctx.fillRect(sx - 0.13 * M, sy - 0.74 * M + step, 0.26 * M, 0.08 * M); return [sx, sy]; };
+    const [w0, w1, wy, v0, v1, vy] = L.workers;
+    if (loading) { const lp = (t * 0.6) % 1, k = lp < 0.5 ? lp * 2 : (1 - lp) * 2, [sx, sy] = person(w0 + k * (w1 - w0), wy, '#ff8a20', '#f4e040', 0);
+      if (lp < 0.5) { ctx.fillStyle = '#2a88a2'; ctx.fillRect(sx + 0.08 * M, sy - 0.45 * M, 0.3 * M, 0.2 * M); } } }
+  if (on) { const wp = (t * 0.05) % 1, k = wp < 0.5 ? wp * 2 : 2 - wp * 2, [, , , v0, v1, vy] = L.workers; const [sx, sy] = P(v0 + k * (v1 - v0), vy, 0.06), step = Math.sin(t * 7) * 0.03 * M;
+    ctx.fillStyle = '#e8f0f2'; ctx.beginPath(); ctx.roundRect(sx - 0.15 * M, sy - 0.5 * M + step, 0.3 * M, 0.5 * M, 0.08 * M); ctx.fill();
+    ctx.fillStyle = '#c89870'; ctx.beginPath(); ctx.arc(sx, sy - 0.62 * M + step, 0.12 * M, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#40a0e0'; ctx.fillRect(sx - 0.13 * M, sy - 0.74 * M + step, 0.26 * M, 0.08 * M); }
+  if (on && night) { ctx.globalCompositeOperation = 'lighter'; L.lamps.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y, 0); _anGlow(fx, fy, 1.5 * M, '255,235,180', 0.16); _anGlow(gx, gy, 0.2 * M, '255,240,200', 0.9); }); ctx.globalCompositeOperation = 'source-over'; }
+  ctx.restore();
+}
+// Server Farm: rack LEDs through the halls' glazed spines, roof and tower
+// fans, fibre pulses, transformer hum; in an outage the gensets smoke,
+// rack fault lights blink red and the board flashes ON BACKUP.
+function _indSvArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const blue = a => `rgba(80,160,255,${a})`, hash = n => { const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  ctx.save();
+  // rack lights seen down through the spines
+  if (Camera.zoom > 0.4) L.halls.forEach(([x0, x1, y0, y1, z], idx) => { const racks = 22, rw = (x1 - x0) / racks;
+    for (let r = 0; r < racks; r++) for (let l = 0; l < 4; l++) { const seed = idx * 1000 + r * 10 + l; let col;
+      if (on) { const lit = Math.sin(t * (3 + hash(seed) * 9) + hash(seed + 1) * 6.28) > 0.2 - hash(seed + 2); col = !lit ? 'rgba(30,50,80,0.6)' : hash(seed + 3) > 0.85 ? 'rgba(120,255,160,0.95)' : blue(0.95); }
+      else col = l === 0 && Math.sin(t * 2 + r) > 0.6 ? 'rgba(255,60,50,0.85)' : 'rgba(40,20,20,0.6)';
+      const [lx, ly] = P(x0 + (r + 0.5) * rw, y1 - (l + 0.5) * (y1 - y0) / 4, z); ctx.fillStyle = col; ctx.fillRect(lx - rw * 0.2 * M, ly - 0.04 * M, rw * 0.4 * M, 0.08 * M); } });
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * (8 + (k % 3)) + k : k, on));
+  L.towers.forEach(([x, y, z, r], c) => { _indFan(F, x, y, z, r, on ? t * 5 + c : c, on);
+    if (on) _indSmoke(F, x, y, z, t + c * 1.9, '225,240,250', 0.3, r * 1.8); });
+  // transformer hum
+  if (on) { ctx.globalCompositeOperation = 'lighter'; L.xfmr.forEach(([x, y, z, w], k) => { const [gx, gy] = P(x, y, z); _anGlow(gx, gy, w * 0.9 * M, '120,190,255', 0.12 + 0.1 * Math.sin(t * 6 + k * 2)); }); ctx.globalCompositeOperation = 'source-over'; }
+  _civText(F, L.hv, 'HV', on ? 'rgba(255,210,90,0.85)' : 'rgba(110,100,60,0.4)');
+  // fibre pulses along the trunk
+  if (on) { const [x0, x1, y, z] = L.trunk; for (let k = 0; k < 6; k++) { const p = (t * 0.35 + k / 6) % 1, [dx, dy] = P(x0 + p * (x1 - x0), y, z);
+    ctx.fillStyle = k % 2 ? 'rgba(120,255,220,0.95)' : blue(0.95); ctx.beginPath(); ctx.arc(dx, dy, 0.08 * M, 0, Math.PI * 2); ctx.fill(); } }
+  // gensets: green on standby, amber and smoking in an outage
+  L.gens.forEach(([sx, sy, sz, lx, ly, lz], g) => { const [dx, dy] = P(lx, ly, lz); ctx.fillStyle = on ? '#40ff80' : (Math.sin(t * 5 + g) > 0 ? '#ffb030' : '#5a3a10'); ctx.beginPath(); ctx.arc(dx, dy, 0.07 * M, 0, Math.PI * 2); ctx.fill();
+    const [kx, ky] = P(sx, sy, sz); _wfSmoke(kx, ky, TILE / 40 * 0.7, t + g, '70,70,70', !on, 0.5); });
+  // the board
+  _civText(F, L.board, 'SERVER FARM', on ? blue(0.95) : 'rgba(90,110,130,0.45)');
+  _civText(F, L.board2, on ? 'UPTIME 99.999%' : 'ON BACKUP', on ? 'rgba(120,255,180,0.9)' : (Math.sin(t * 4) > 0 ? 'rgba(255,90,60,0.95)' : 'rgba(120,40,30,0.8)'), false);
+  ctx.restore();
+}
+// Recycling Plant: tippers back in and dump, material rides the incline to
+// the sorting gallery, drops down chutes into the bunkers, the baler slams
+// and bales roll out to the forklift. Everything doubles pace on a sorting
+// burst (e._spiking: amber beacons, dust).
+const _RP_MAT = [['#c8a878', 'PAPER'], ['#4a8fd8', 'PLASTIC'], ['#5ab06a', 'GLASS'], ['#9aa2aa', 'METAL']];
+function _indRpArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver(), dark = DayNight.darkness();
+  const busy = on && e._spiking, speed = busy ? 2.2 : 1;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const dot = (x, y, z, r, c) => { const [dx, dy] = P(x, y, z); ctx.fillStyle = c; ctx.beginPath(); ctx.arc(dx, dy, r * M, 0, Math.PI * 2); ctx.fill(); };
+  const [lx0, ly0] = P(-8, 6), [lx1, ly1] = P(8, -6);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 4 * M, lx1 - lx0, ly1 - ly0 + 4 * M); ctx.clip();
+  // the recycle arrows turning on the roof
+  { const [x, y, z, r] = L.logo, [cx, cy] = P(x, y, z), R = r * M, rot = on ? t * 0.5 * speed : 0, g = on ? '#2e9a5a' : '#1e3a26';
+    ctx.strokeStyle = g; ctx.fillStyle = g; ctx.lineWidth = 0.22 * M;
+    for (let a = 0; a < 3; a++) { const a0 = rot + a * 2.094 + 0.25, a1 = a0 + 1.5; ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
+      const hx = cx + Math.cos(a1) * R, hy = cy + Math.sin(a1) * R, hs = 0.32 * M;
+      ctx.beginPath(); ctx.moveTo(hx - Math.sin(a1) * hs, hy + Math.cos(a1) * hs); ctx.lineTo(hx + Math.cos(a1) * hs * 0.8, hy + Math.sin(a1) * hs * 0.8); ctx.lineTo(hx - Math.cos(a1) * hs * 0.8, hy - Math.sin(a1) * hs * 0.8); ctx.closePath(); ctx.fill(); } }
+  if (busy) { ctx.globalCompositeOperation = 'lighter'; L.beacons.forEach(([x, y, z], k) => { const [bx, by] = P(x, y, z); _anGlow(bx, by, 0.5 * M, '255,170,30', 0.35 + 0.65 * Math.max(0, Math.sin(t * 6 + k * 3))); }); ctx.globalCompositeOperation = 'source-over'; }
+  // tippers backing into the bays and dumping
+  if (on) for (let i = 0; i < (busy ? 2 : 1); i++) {
+    const p = (t * 0.045 * speed + i * 0.5) % 1; let approach, tipping = false;
+    if (p < 0.3) approach = p / 0.3; else if (p < 0.6) { approach = 1; tipping = true; } else if (p < 0.9) approach = 1 - (p - 0.6) / 0.3; else continue;
+    const [bx, by] = L.bays[i], dock = by - 1.75, ty = dock - (1 - approach) * 4.5;
+    F.draw(IndArt.get('ind_rp_tipper'), L.tipRect, bx, ty);
+    if (tipping) for (let m = 0; m < 4; m++) { const f = (t * 1.6 * speed + m / 4) % 1; dot(bx - 0.45 + m * 0.3, by - 0.1, 1.1 - f * 0.9, 0.12, _RP_MAT[m][0]); }
+  }
+  if (busy) for (let q = 0; q < 5; q++) { const ph = (t * 0.5 + q / 5) % 1, [, by] = L.bays[0]; dot(L.bays[0][0] + q * 0.6 - 0.4, by - 0.3, 0.3 + ph * 1.6, 0.25 + ph * 0.5, `rgba(200,205,190,${((1 - ph) * 0.18).toFixed(3)})`); }
+  // the incline belt and the gallery
+  if (on) { const [a, b] = L.incline; for (let i = 0; i < 6; i++) { const f = (t * 0.25 * speed + i / 6) % 1; dot(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f, 0.12, _RP_MAT[i % 4][0]); } }
+  L.gwins.forEach((w, k) => { _indWin(P, w, on ? `rgba(200,235,255,${(0.55 + 0.15 * Math.sin(t * 1.5 + k)).toFixed(3)})` : 'rgba(20,24,22,0.8)');
+    if (on) { const bob = Math.sin(t * 3 * speed + k * 1.9) * 0.05, [x0, x1, y, z0] = w, [hx, hy] = P((x0 + x1) / 2, y, z0 + 0.32 + bob);
+      ctx.fillStyle = '#2f5a7a'; ctx.fillRect(hx - 0.07 * M, hy, 0.14 * M, 0.26 * M); ctx.fillStyle = '#e8c8a8'; ctx.beginPath(); ctx.arc(hx, hy - 0.06 * M, 0.08 * M, 0, Math.PI * 2); ctx.fill(); } });
+  { const [x0, x1, y, z] = L.sorter; for (let l = 0; l < 8; l++) { const blink = on && Math.sin(t * (busy ? 22 : 9) + l * 2.3) > 0.2;
+    dot(x0 + (x1 - x0) * l / 7, y, z, 0.07, blink ? (l % 2 ? 'rgba(80,255,130,0.95)' : 'rgba(255,80,60,0.95)') : 'rgba(30,40,34,0.8)'); } }
+  // chutes into the bunkers; labels on the bunker fronts
+  L.bunkers.forEach(([x, y0, z0, y1, z1, ly, lz], m) => {
+    if (on) for (let q = 0; q < 2; q++) { const f = (t * 1.2 * speed + q / 2 + m * 0.25) % 1; dot(x, y0 + (y1 - y0) * f, z0 + (z1 - z0) * f, 0.1, _RP_MAT[m][0]); }
+    _civText(F, [[x - 0.5, ly, lz - 0.1], [x + 0.5, ly, lz - 0.1], [x - 0.5, ly, lz + 0.15]], _RP_MAT[m][1], on ? '#d8e0da' : 'rgba(60,60,60,0.8)'); });
+  // baler: the ram rod, bales rolling out to the stacks
+  { const cyc = on ? (t * 0.9 * speed) % 1 : 0, ram = cyc < 0.22 ? cyc / 0.22 : 1 - (cyc - 0.22) / 0.78, [x, y, z] = L.ram, [ax, ay] = P(x, y, z + 0.4 * (1 - ram)), [, by] = P(x, y, z);
+    ctx.fillStyle = on ? '#c8ccc8' : '#2a2c2a'; ctx.fillRect(ax - 0.08 * M, ay, 0.16 * M, Math.max(0, by - ay) + 0.02 * M); }
+  if (on) { const [x0, x1, y, z] = L.outfeed, f = (t * 0.12 * speed) % 1, bx = x0 + 0.3 + f * (x1 - x0), [ax, ay] = P(bx - 0.3, y + 0.25, z + 0.5), [cx, cy] = P(bx + 0.3, y - 0.25, z);
+    ctx.fillStyle = _RP_MAT[Math.floor(t * 0.12 * speed) % 4][0]; ctx.fillRect(ax, ay, cx - ax, cy - ay); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(ax, cy - 0.12 * M, cx - ax, 0.12 * M); }
+  // forklift carrying bales to the street
+  if (on) { const [x0, x1, y] = L.fork, fc = (t * 0.1 * speed) % 2, out = fc < 1, pos = out ? fc : 2 - fc, fx = x0 + pos * (x1 - x0);
+    F.draw(IndArt.get(out ? 'ind_rp_fork_e' : 'ind_rp_fork_w'), out ? L.forkRect : L.forkRectW, fx, y);
+    if (out) { const [ax, ay] = P(fx + 0.45, y + 0.25, 0.65), [cx, cy] = P(fx + 0.95, y - 0.25, 0.12); ctx.fillStyle = _RP_MAT[Math.floor(t * 0.05) % 4][0]; ctx.fillRect(ax, ay, cx - ax, cy - ay); } }
+  if (on && dark > 0.3) { ctx.globalCompositeOperation = 'lighter'; L.lamps.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y - 0.8, 0); _anGlow(fx, fy, 1.6 * M, '255,230,170', 0.18); _anGlow(gx, gy, 0.2 * M, '255,232,176', 0.9); }); ctx.globalCompositeOperation = 'source-over'; }
+  ctx.restore();
+}
+// Manufacturing Co: the day shift lights the sawtooth glazing, rolls up
+// two dock shutters (a welding cell in the first), smokes the stack, runs
+// the forklift and backs a box van in to load; car park fills on shift.
+function _indMcArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), night = DayNight.darkness() > 0.3, run = on && hr >= 7 && hr < 19;
+  const k = L.k, X = u => (u - 80) * k, Y = v => (80 - v) * k;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const [lx0, ly0] = P(-9, 9), [lx1, ly1] = P(9, -9);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 7 * M, lx1 - lx0, ly1 - ly0 + 7 * M); ctx.clip();
+  if (run) L.glaze.forEach((g, r) => _indWin(P, g, night ? `rgba(255,200,120,${(0.85 + 0.1 * Math.sin(t * 1.2 + r)).toFixed(3)})` : 'rgba(240,216,160,0.75)'));
+  L.fans.forEach(([x, y, z, r], i) => _indFan(F, x, y, z, r, run ? t * 9 + i : 0.3, on));
+  _civText(F, L.sign, 'MANUFACTURING CO.', on ? (night ? '#ffd9a8' : '#f4f0e6') : 'rgba(110,100,90,0.8)');
+  // dock doors: lit interiors, shutters rolled up on the shift, the welding cell
+  [0.72, 0, 0.9].forEach((open0, i) => {
+    const [x0, x1, y, z0, z1] = L.doors[i], open = run ? open0 : 0;
+    _indWin(P, L.doors[i], run ? (night ? 'rgba(255,207,138,0.95)' : 'rgba(232,200,144,0.95)') : 'rgba(22,24,26,0.95)');
+    if (run && i === 0) { const [wx, wy] = P((x0 + x1) / 2 + 0.2, y, 0.6);
+      if (Math.sin(t * 17) > 0.2) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(wx, wy, 1.1 * M, '170,210,255', 0.9); ctx.restore(); }
+      for (let s = 0; s < 6; s++) { const ph = (t * 1.7 + s / 6) % 1, a = -Math.PI * 0.2 - _cmFrac(s + 40) * Math.PI * 0.6;
+        ctx.fillStyle = `rgba(255,220,120,${(1 - ph).toFixed(3)})`; ctx.fillRect(wx + Math.cos(a) * ph * 1.0 * M, wy + (Math.sin(a) * ph * 0.8 + ph * ph * 0.9) * M, 0.06 * M, 0.06 * M); }
+      const [bx, by] = P((x0 + x1) / 2 - 0.4, y, 0); ctx.fillStyle = '#3a70d8'; ctx.fillRect(bx - 0.14 * M, by - 0.9 * M, 0.28 * M, 0.9 * M); ctx.fillStyle = '#2a2a2e'; ctx.fillRect(bx - 0.15 * M, by - 1.15 * M, 0.3 * M, 0.25 * M); }
+    if (open < 1) { const zs = z1 - (z1 - z0) * (1 - open) * 0; const [ax, ay] = P(x0, y - 0.01, z1), [bx, by] = P(x1, y - 0.01, z1 - (z1 - z0) * (1 - open));
+      ctx.fillStyle = on ? '#aab2b8' : '#3a3c3e'; ctx.fillRect(ax, ay, bx - ax, by - ay); ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      for (let s = ay + 0.1 * M; s < by; s += 0.1 * M) ctx.fillRect(ax, s, bx - ax, 0.025 * M); }
+  });
+  { const [sx, sy] = P(...L.stack); _wfSmoke(sx, sy, TILE / 40 * 1.2, t, night ? '120,124,136' : '214,214,210', run, 0.45);
+    if (on && night && Math.sin(t * 2.6) > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(sx, sy - 0.1 * M, 0.5 * M, '255,64,48', 0.8); ctx.restore(); } }
+  // forklift between the doors and the crate stacks
+  if (run) { const fc = (t * 0.09) % 1, path = fc < 0.5 ? fc * 2 : (1 - fc) * 2, fx = X(80 - path * 52), fy = Y(104 + path * 12), loaded = fc < 0.5;
+    F.draw(IndArt.get(loaded ? 'ind_rp_fork_w' : 'ind_rp_fork_e'), loaded ? IND_ART_LAYOUT.rp.forkRectW : IND_ART_LAYOUT.rp.forkRect, fx, fy);
+    if (loaded) { const [ax, ay] = P(fx - 0.95, fy + 0.25, 0.65), [cx, cy] = P(fx - 0.45, fy - 0.25, 0.12); ctx.fillStyle = '#c8a060'; ctx.fillRect(ax, ay, cx - ax, cy - ay); } }
+  // the box van reversing up to the apron
+  { const tc = (t * 0.02 + 0.3) % 1; let tv = tc < 0.25 ? 162 - (tc / 0.25) * 46 : tc < 0.65 ? 116 : tc < 0.9 ? 116 + ((tc - 0.65) / 0.25) * 46 : 999;
+    if (tv < 170 && on) { F.draw(IndArt.get('ind_mc_truck'), L.truckRect, X(128), Y(tv + 18));
+      _civText(F, [[X(122), Y(tv + 12), 1.76], [X(134), Y(tv + 12), 1.76], [X(122), Y(tv + 4), 1.76]], 'CO.', '#2d5f8c');
+      if (night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [hx, hy] = P(X(128), Y(tv + 18) - 1.5, 0.5); _anGlow(hx, hy, 0.8 * M, '255,246,208', 0.5); ctx.restore(); } }
+    const gateUp = tc < 0.08 || (tc > 0.82 && tc < 0.95), [bx, by, bz, len] = L.barrier, a = gateUp && on ? 1.2 : 0;
+    const [ax, ay] = P(bx, by, bz), [ex, ey] = P(bx - Math.cos(a) * len, by, bz + Math.sin(a) * len);
+    ctx.lineWidth = 0.1 * M; ctx.strokeStyle = '#f4f0e6'; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = '#d83a30'; ctx.setLineDash([0.3 * M, 0.3 * M]); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]);
+    _indWin(P, L.gateWin, on ? (night ? 'rgba(255,224,160,0.9)' : 'rgba(138,176,200,0.6)') : 'rgba(26,28,30,0.9)'); }
+  // car park
+  const cars = !on ? 1 : run ? 4 : 1;
+  for (let c = 0; c < cars; c++) { const [cx, cy] = P(X(22 + c * 20), Y(150), 0.06); _cmCar(cx, cy, ['#c04040', '#e8e8e4', '#3060a0', '#404448', '#e0b030'][c], TILE / 40 * 1.8, c % 2); }
+  if (on && night) { ctx.globalCompositeOperation = 'lighter'; for (const [u, v] of [[4, 100], [110, 150], [60, 112]]) { const [gx, gy] = P(X(u), Y(v), 0); _anGlow(gx, gy, 2.4 * M, '255,220,160', 0.3); } ctx.globalCompositeOperation = 'source-over'; }
+  ctx.restore();
+}
+// Aluminum Smelter: runs round the clock. The pot line glows (each pot
+// flares in turn), the tending crane works along it, the carrier runs hot
+// metal down the haul road, the furnace pours and ingots cool along the
+// conveyor to the bundles and the flatbed. Still and dark without power.
+function _indAlArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver(), night = DayNight.darkness() > 0.3, tt = on ? t : 0;
+  const seed = _cmFrac((e.col || 0) * 3.1 + (e.row || 0) * 7.3), k = L.k, X = u => (u - 80) * k, Y = v => (80 - v) * k;
+  const hot = a => `rgba(255,${Math.round(120 + 70 * a)},${Math.round(40 + 40 * a)},${(0.55 + 0.4 * a).toFixed(3)})`;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const [lx0, ly0] = P(-9, 9), [lx1, ly1] = P(9, -9);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 8 * M, lx1 - lx0, ly1 - ly0 + 8 * M); ctx.clip();
+  const pulse = 0.5 + 0.5 * Math.sin(t * 1.3);
+  // roof monitor lit from within; fume haze off the ridge
+  if (on) { _indWin(P, L.monitor, `rgba(255,140,50,${(night ? 0.55 + 0.2 * pulse : 0.28 + 0.1 * pulse).toFixed(3)})`);
+    { const [x0, x1, y, z] = L.monitor; for (let v = 0; v < 3; v++) _indSmoke(F, x0 + (x1 - x0) * (0.2 + v * 0.3), y + 0.6, z + 0.5, t + v * 2.1 + seed * 9, '226,230,236', 0.16, 0.9); } }
+  // the pot line: crust and bath, one flare at a time
+  ctx.globalCompositeOperation = 'lighter';
+  L.pots.forEach(([x, y, z, w, d], i) => { const cyc = (t * 0.07 + _cmFrac(i * 5.3 + seed * 9)) % 1, flare = on ? Math.max(0, 1 - Math.abs(cyc - 0.5) * 9) : 0;
+    const heat = on ? 0.35 + 0.18 * Math.sin(t * 1.7 + i * 1.3) + 0.45 * flare : 0; if (!on) return;
+    const [ax, ay] = P(x - w * 0.42, y - d * 0.32, z), [bx, by] = P(x + w * 0.42, y - d * 0.5, z);
+    ctx.fillStyle = `rgba(255,${Math.round(120 + 70 * heat)},${Math.round(40 + 40 * heat)},${(0.25 + 0.35 * heat).toFixed(3)})`; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    _anGlow((ax + bx) / 2, (ay + by) / 2, (flare > 0.05 ? 1.3 : 0.7) * M, '255,160,70', flare > 0.05 ? 0.45 * flare + 0.1 : night ? 0.14 : 0.05); });
+  ctx.globalCompositeOperation = 'source-over';
+  L.pots.forEach(([x, y, z, w, d], i) => { const cyc = (t * 0.07 + _cmFrac(i * 5.3 + seed * 9)) % 1, flare = on ? Math.max(0, 1 - Math.abs(cyc - 0.5) * 9) : 0;
+    if (flare > 0.05) _indSmoke(F, x, y, z + 0.3, t + i * 1.3, '230,232,236', 0.4 * flare, 0.55); });
+  // the pot-tending crane, a fresh anode on its hook
+  { const [x0, x1, y, z] = L.crane, cx = x0 + (0.5 + 0.5 * Math.sin(tt * 0.22 + seed * 6)) * (x1 - x0), [ax, ay] = P(cx + 0.3, y + 1.1, z), [bx, by] = P(cx + 0.75, y - 1.1, z);
+    ctx.fillStyle = on ? '#f0b820' : '#3a3010'; ctx.fillRect(ax, ay, bx - ax, by - ay); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(ax, by - 0.08 * M, bx - ax, 0.08 * M);
+    const [hx, hy] = P(cx + 0.5, y, z - 0.6); ctx.strokeStyle = '#3a3e44'; ctx.lineWidth = 0.04 * M; ctx.beginPath(); ctx.moveTo(hx, (ay + by) / 2); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.fillStyle = '#22262b'; ctx.fillRect(hx - 0.13 * M, hy, 0.26 * M, 0.2 * M);
+    if (on) { const [lx, ly] = P(cx, y, z + 0.1); ctx.fillStyle = Math.sin(t * 6) > 0 ? '#ffb020' : '#6a4a10'; ctx.beginPath(); ctx.arc(lx, ly, 0.07 * M, 0, Math.PI * 2); ctx.fill(); } }
+  // a worker on the walkway
+  if (on) { const [w0, w1, wy] = L.walk, [sx, sy] = P(w0 + ((t * 2.2 + seed * 40) % 100) / 100 * (w1 - w0), wy, 0.1); ctx.fillStyle = '#c9d0d6'; ctx.fillRect(sx - 0.1 * M, sy - 0.45 * M, 0.2 * M, 0.45 * M); ctx.fillStyle = '#d8b090'; ctx.beginPath(); ctx.arc(sx, sy - 0.55 * M, 0.09 * M, 0, Math.PI * 2); ctx.fill(); }
+  // hot-metal carrier on the haul road
+  { const [x0, x1, y] = L.carrier, kk = 0.5 + 0.5 * Math.sin(tt * 0.3 + seed * 3), cx = x0 + kk * (x1 - x0), east = Math.cos(tt * 0.3 + seed * 3) >= 0;
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(IndArt.get(east ? 'ind_al_car_e' : 'ind_al_car_w'), L.carRect, cx, y); ctx.filter = 'none';
+    const [ux, uy, uz] = east ? L.crucE : L.crucW, [gx, gy] = P(cx + ux, y + uy, uz); ctx.fillStyle = on ? hot(0.6 + 0.3 * Math.sin(t * 5)) : '#3a3c3e'; ctx.beginPath(); ctx.ellipse(gx, gy, 0.2 * M, 0.2 * M, 0, 0, Math.PI * 2); ctx.fill();
+    if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(gx, gy, 0.8 * M, '255,160,70', 0.4); ctx.restore(); } }
+  // the furnace door, launder and the ingots cooling along the conveyor
+  if (on) { const f = 0.6 + 0.3 * Math.sin(t * 3.1) + 0.1 * Math.sin(t * 11), [x0, x1, y, z0, z1] = L.furnace;
+    _indWin(P, [x0 + 0.2, x1 - 0.2, y, z0 + 0.3, z1 - 0.5], hot(f)); _indWin(P, [x0 + 0.5, x1 - 0.5, y - 0.01, z0 + 0.5, z1 - 0.8], `rgba(255,240,190,${(0.55 + 0.3 * f).toFixed(3)})`);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P((x0 + x1) / 2, y, (z0 + z1) / 2); _anGlow(gx, gy, (night ? 2.4 : 1.7) * M, '255,150,60', night ? 0.5 : 0.3); ctx.restore();
+    const [lx0, lx1, ly, lz] = L.launder, [ax, ay] = P(lx0, ly, lz), [bx] = P(lx1, ly, lz); ctx.fillStyle = hot(0.8); ctx.fillRect(ax, ay - 0.05 * M, bx - ax, 0.1 * M); }
+  { const [x0, x1, y, z] = L.conv; for (let i = 0; i < 9; i++) { const ph = (tt * 0.05 + i / 9) % 1, x = x0 + ph * (x1 - x0), cool = Math.min(1, ph * 1.5), [ax, ay] = P(x, y + 0.2, z + 0.12), [bx, by] = P(x + 0.56, y - 0.2, z);
+    ctx.fillStyle = on ? `rgb(${Math.round(255 - 44 * cool)},${Math.round(150 + 68 * cool)},${Math.round(70 + 152 * cool)})` : '#55585c'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    ctx.fillStyle = `rgba(255,255,255,${(0.1 + 0.25 * cool).toFixed(3)})`; ctx.fillRect(ax, ay, bx - ax, 0.06 * M); } }
+  if (on) { const [x, y, z] = L.quench; _indSmoke(F, x, y, z, t, '238,242,246', 0.36, 0.7); }
+  // bundles loading onto the flatbed; the forklift between
+  { const [bx, by, step, z] = L.bed, loaded = 1 + Math.floor(((tt * 0.012 + seed) % 1) * 3);
+    for (let q = 0; q < loaded; q++) { const yy = by + 1.2 - q * step * 1.4, [ax, ay] = P(bx - 0.62, yy + 0.3, z + 0.3), [cx, cy] = P(bx + 0.62, yy - 0.3, z); ctx.fillStyle = '#d4dbe1'; ctx.fillRect(ax, ay, cx - ax, cy - ay); ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(ax, cy - 0.06 * M, cx - ax, 0.06 * M); } }
+  if (on && IND_ART_LAYOUT.rp) { const [x0, x1, y0, y1] = L.fork, kk = 0.5 + 0.5 * Math.sin(tt * 0.5 + seed * 5);
+    F.draw(IndArt.get('ind_rp_fork_e'), IND_ART_LAYOUT.rp.forkRect, x0 + kk * (x1 - x0), y0 + kk * (y1 - y0)); }
+  // stack plume and its warning light; the rectifier bushings; the yard beacon; floodlights
+  { const [sx, sy] = P(...L.stack); _wfSmoke(sx, sy, TILE / 40 * 1.2, t, night ? '130,134,146' : '236,238,240', on, 0.42);
+    if (on && night && Math.sin(t * 2.6) > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(sx, sy - 0.1 * M, 0.5 * M, '255,64,48', 0.8); ctx.restore(); } }
+  L.bush.forEach(([x, y, z], b) => { const [bx, by] = P(x, y, z); ctx.fillStyle = on ? `rgba(190,228,255,${(0.75 + 0.2 * Math.sin(t * 2 + b)).toFixed(3)})` : '#24272b'; ctx.beginPath(); ctx.arc(bx, by, 0.1 * M, 0, Math.PI * 2); ctx.fill(); });
+  if (on) { const [wx, wy] = P(...L.warn); ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(wx, wy, 0.3 * M, '255,80,50', 0.35 + 0.65 * Math.abs(Math.sin(t * 1.6))); ctx.restore(); }
+  _civText(F, L.sign, 'ALUMINUM SMELTER', on ? (night ? '#ffd9a8' : '#f2f0ea') : 'rgba(110,104,96,0.8)');
+  if (on && night) { ctx.globalCompositeOperation = 'lighter'; L.lamps.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y, 0); _anGlow(fx, fy, 2.9 * M, '255,226,170', 0.2); _anGlow(gx, gy, 0.2 * M, '255,242,200', 0.9); }); ctx.globalCompositeOperation = 'source-over'; }
+  L.cfans.forEach(([x, y, z, r], i) => _indFan(F, x, y, z, r, tt * 8 + i, on));
+  ctx.restore();
+}
+// Ridgeline Sawmill: on the day shift logs drift across the pond, the
+// loader swings them to the jack ladder, the carriage runs them past the
+// band saw, the burner and kilns work, and the log truck comes and goes.
+function _indSmArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), night = DayNight.darkness() > 0.3, working = on && hr >= 7 && hr < 19;
+  const LOG = on ? (night ? '#3a2a1c' : '#8a6440') : '#221a12', LOG_END = on ? (night ? '#5a4a34' : '#d8b078') : '#2a2218';
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const [lx0, ly0] = P(-10, 8), [lx1, ly1] = P(10, -8);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 6 * M, lx1 - lx0, ly1 - ly0 + 6 * M); ctx.clip();
+  const log = (x, y, z, len, r) => { const [ax, ay] = P(x - len / 2, y, z), [bx] = P(x + len / 2, y, z); ctx.fillStyle = LOG; ctx.beginPath(); ctx.roundRect(ax, ay - r * M, bx - ax, 2 * r * M, r * M); ctx.fill();
+    ctx.fillStyle = LOG_END; ctx.beginPath(); ctx.ellipse(bx, ay, r * 0.6 * M, r * M, 0, 0, Math.PI * 2); ctx.fill(); };
+  // the pond and its floating logs
+  { const [x0, x1, y0, y1, z] = L.pond, [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z);
+    ctx.fillStyle = 'rgba(40,80,90,0.7)'; ctx.beginPath(); ctx.roundRect(ax, ay, bx - ax, by - ay, 0.5 * M); ctx.fill();
+    BldWater.draw(ctx, 'rr', ax, ay, bx - ax, by - ay, t, { r: 0.5 * M, murky: true });
+    for (let k = 0; k < 7; k++) { const drift = working ? ((t * 0.15 + k * 0.9) % 4) : k * 0.5, x = x0 + 0.6 + drift, y = y0 + 0.8 + (k % 3) * 1.3 + Math.sin(t * 0.8 + k) * 0.08;
+      if (x > x1 - 1.2) continue; log(x, y, z + 0.05, 1.0, 0.17); } }
+  // logs riding the jack ladder up into the mill
+  if (working) { const [a, b] = L.ladder; for (let k = 0; k < 2; k++) { const q = (t * 0.08 + k / 2) % 1; log(a[0] + (b[0] - a[0]) * q, a[1] + (b[1] - a[1]) * q, a[2] + (b[2] - a[2]) * q + 0.15, 0.9, 0.15); } }
+  // the head rig: carriage with its log and setter, sawdust off the blade, lit bay at night
+  if (working && night) _indWin(P, L.bay, 'rgba(255,214,150,0.35)');
+  { const [bx0, bx1, by0, bz0, bz1] = L.bay, [ox0, oy0] = P(bx0, by0, bz1), [ox1, oy1] = P(bx1, by0, bz0); ctx.save(); ctx.beginPath(); ctx.rect(ox0, oy0, ox1 - ox0, oy1 - oy0); ctx.clip();
+    const [x0, x1, , z] = L.carriage, y = by0 + 0.7, cpos = working ? Math.sin(t * 0.9) * 0.5 + 0.5 : 0.3, cx = x0 + cpos * (x1 - x0), [ax, ay] = P(cx, y + 0.3, z), [bx, by] = P(cx + 2.2, y - 0.3, z - 0.3);
+    ctx.fillStyle = on ? '#e0a020' : '#2a2010'; ctx.fillRect(ax, ay, bx - ax, by - ay); log(cx + 1.1, y, z + 0.3, 2.0, 0.3);
+    if (working) { const [sx, sy] = P(cx + 0.3, y - 0.1, z + 0.2); ctx.fillStyle = '#c84040'; ctx.fillRect(sx - 0.1 * M, sy - 0.5 * M, 0.2 * M, 0.5 * M); ctx.fillStyle = '#e8c8a8'; ctx.beginPath(); ctx.arc(sx, sy - 0.6 * M, 0.1 * M, 0, Math.PI * 2); ctx.fill(); }
+    const [sxw, , szw] = L.saw, syw = y; if (working && Math.abs(cx + 1.1 - sxw) < 1.4) for (let k = 0; k < 8; k++) { const q = (t * 2 + k / 8) % 1, [dx, dy] = P(sxw + 0.3 + q * 1.2, syw - 0.3, szw - 0.3 - q * 0.6 + Math.sin(k) * 0.2);
+      ctx.fillStyle = `rgba(232,200,140,${(1 - q).toFixed(3)})`; ctx.fillRect(dx, dy, 0.07 * M, 0.07 * M); }
+    ctx.restore(); }
+  if (working && night) { const [x, y0, y1, z0, z1] = L.cupola, [ax, ay] = P(x, y1, z1), [bx, by] = P(x, y0, z0); ctx.fillStyle = 'rgba(255,214,150,0.85)'; ctx.fillRect(ax - 0.04 * M, ay, 0.08 * M, by - ay); }
+  _civText(F, L.sign, 'RIDGELINE', on ? (night ? '#c8b890' : '#f0e0c0') : '#3a3428');
+  // sawdust dropping from the cyclone
+  if (working) { const [x, y, z, h] = L.cyclone; for (let k = 0; k < 6; k++) { const q = (t * 0.7 + k / 6) % 1, [dx, dy] = P(x + Math.sin(k) * 0.12, y, z - q * h * 0.8); ctx.fillStyle = `rgba(216,184,120,${(0.9 * (1 - q * 0.5)).toFixed(3)})`; ctx.fillRect(dx, dy, 0.06 * M, 0.06 * M); } }
+  // the burner: fire door, sparks at night, smoke
+  { const fire = on ? 0.6 + 0.4 * Math.sin(t * 5) * Math.sin(t * 3.3) : 0.2, [x0, x1, y, z0, z1] = L.fireDoor;
+    _indWin(P, L.fireDoor, `rgba(255,${(120 + fire * 80) | 0},40,${(0.6 + fire * 0.3).toFixed(2)})`);
+    const [bx, by] = P(...L.burner); ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [fx, fy] = P((x0 + x1) / 2, y, (z0 + z1) / 2); _anGlow(fx, fy, 1.0 * M, '255,140,40', 0.4 * fire);
+    if (night) { _anGlow(bx, by, 1.4 * M, '255,140,50', 0.5 * fire); for (let k = 0; k < 6; k++) { const q = (t * 0.6 + k / 6) % 1; ctx.fillStyle = `rgba(255,${180 - (q * 80) | 0},60,${(1 - q).toFixed(3)})`; ctx.fillRect(bx + Math.sin(k * 2 + t) * 0.4 * q * M, by - q * 2.6 * M, 0.06 * M, 0.06 * M); } }
+    ctx.restore(); _wfSmoke(bx, by, TILE / 40 * 1.1, t, night ? '120,110,110' : '170,160,150', on, 0.35); }
+  // the dry kilns
+  L.kfans.forEach(([x, y, z, r], f) => _indFan(F, x, y, z, r, on ? t * 6 + f * 1.3 : 0.4, on));
+  if (on) L.kdoors.forEach(d => _indWin(P, d, working ? '#ff9a3a' : '#5a3418'));
+  if (on) L.kvents.forEach(([x, y, z], f) => { _indSmoke(F, x, y, z, t + f * 1.7, '236,236,236', 0.32, 0.5); });
+  // the log loader swinging pond -> ladder
+  { const sw = working ? Math.sin(t * 0.5) * 0.5 + 0.5 : 0.2, kk = Math.round(sw * (L.armN - 1)), [lx, ly] = L.loader;
+    if (!on) ctx.filter = 'brightness(0.55)';
+    F.draw(IndArt.get('ind_sm_arm_' + String(kk).padStart(2, '0')), L.armRect, lx, ly); ctx.filter = 'none'; }
+  // the forklift among the lumber stacks
+  if (working && IND_ART_LAYOUT.rp) { const u = (t * 0.07) % 1, [x0, x1, y] = L.fork, east = Math.cos(u * Math.PI) > 0;
+    F.draw(IndArt.get(east ? 'ind_rp_fork_e' : 'ind_rp_fork_w'), east ? IND_ART_LAYOUT.rp.forkRect : IND_ART_LAYOUT.rp.forkRectW, x0 + Math.abs(Math.sin(u * Math.PI)) * (x1 - x0), y); }
+  // the log truck: in from the left, unloading, out to the right
+  if (working) { const u = (t / 36) % 1, tx = u < 0.25 ? -50 + _lgEase(u / 0.25) * 54 : u < 0.7 ? 4 : 4 + Math.pow((u - 0.7) / 0.3, 2) * 220;
+    const load = u < 0.3 ? 3 : u < 0.65 ? 3 - Math.floor((u - 0.3) / 0.35 * 3.99) : 0;
+    F.draw(IndArt.get('ind_sm_truck_' + Math.max(0, load)), L.truckRect, (tx - 100) * 0.1, L.truckY); }
+  if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P(...L.lamp), [fx, fy] = P(L.lamp[0], L.lamp[1] - 1.5, 0); _anGlow(fx, fy, 3.0 * M, '255,230,170', 0.3); _anGlow(gx, gy, 0.2 * M, '255,240,192', 0.9); ctx.restore(); }
+  if (!on) { const [cx, cy] = P(0, 4, 0); ctx.fillStyle = 'rgba(14,10,14,0.82)'; ctx.beginPath(); ctx.roundRect(cx - 2 * M, cy - 0.35 * M, 4 * M, 0.7 * M, 0.1 * M); ctx.fill();
+    ctx.fillStyle = 'rgba(255,90,70,0.95)'; ctx.font = `bold ${(0.35 * M).toFixed(1)}px "Courier New", monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('NO POWER', cx, cy); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; }
+  ctx.restore();
+}
+// EV Battery Factory: the day shift runs the cell line under the open
+// front of the hall (cells down the line, coating foil, robots, the dry
+// room's staff, formation charge bars, cars off the pack line), the
+// delivery train, chargers, the transporter loading and the test car.
+function _indEvArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), night = DayNight.darkness() > 0.3, shift = on && hr >= 7 && hr < 19, run = shift ? 1 : 0;
+  const VOLT = '96,255,144', k = L.k, X = u => (u - 200) * k, Y = v => (140 - v) * k;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const dot = (x, y, z, r, c) => { const [dx, dy] = P(x, y, z); ctx.fillStyle = c; ctx.beginPath(); ctx.arc(dx, dy, r * M, 0, Math.PI * 2); ctx.fill(); };
+  const [lx0, ly0] = P(-10, 7), [lx1, ly1] = P(10, -7);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 3 * M, lx1 - lx0, ly1 - ly0 + 3 * M); ctx.clip();
+  // the delivery train: arrive, unload, depart
+  if (on) { const tc = (t * 0.012) % 1, tx = tc < 0.35 ? -170 + (tc / 0.35) * 190 : tc < 0.7 ? 20 : 20 + ((tc - 0.7) / 0.3) * 420;
+    F.draw(IndArt.get('ind_ev_train'), L.trainRect, X(tx), L.rail[0]);
+    for (let c = 0; c < 5; c++) _civText(F, [[X(tx) + c * 1.4 + 0.3, L.rail[0] - 0.2, 0.75], [X(tx) + c * 1.4 + 0.95, L.rail[0] - 0.2, 0.75], [X(tx) + c * 1.4 + 0.3, L.rail[0] + 0.2, 0.75]], c % 2 ? 'Li' : 'Ni', '#e8e8e0'); }
+  ['NCM', 'GRAPH', 'LFP'].forEach((lab, s_) => _civText(F, [[L.silos[s_][0] - 0.35, L.silos[s_][1], L.silos[s_][2] - 0.1], [L.silos[s_][0] + 0.35, L.silos[s_][1], L.silos[s_][2] - 0.1], [L.silos[s_][0] - 0.35, L.silos[s_][1], L.silos[s_][2] + 0.15]], lab, on ? '#1a2a3a' : 'rgba(70,70,70,0.8)', false));
+  if (shift) { const [a, b] = L.feed; for (let q = 0; q < 4; q++) { const f = (t * 0.6 + q / 4) % 1; dot(a[0] + (b[0] - a[0]) * f, a[1], a[2] + (b[2] - a[2]) * f + 0.1, 0.06, '#2a2a2e'); } }
+  // the GRID EV roof panel
+  { const [x0, x1, y0, y1, z] = L.logo, c = on ? `rgb(${VOLT})` : '#2a3a2e', [bx, by] = P(x0 + 0.5, (y0 + y1) / 2, z);
+    ctx.strokeStyle = c; ctx.lineWidth = 0.09 * M; ctx.strokeRect(bx, by - 0.45 * M, 1.1 * M, 0.9 * M); ctx.fillStyle = c; ctx.fillRect(bx + 1.1 * M, by - 0.2 * M, 0.15 * M, 0.4 * M);
+    ctx.beginPath(); ctx.moveTo(bx + 0.65 * M, by - 0.38 * M); ctx.lineTo(bx + 0.35 * M, by + 0.04 * M); ctx.lineTo(bx + 0.55 * M, by + 0.04 * M); ctx.lineTo(bx + 0.42 * M, by + 0.38 * M); ctx.lineTo(bx + 0.78 * M, by - 0.08 * M); ctx.lineTo(bx + 0.58 * M, by - 0.08 * M); ctx.closePath(); ctx.fill();
+    _civText(F, [[x0 + 1.8, (y0 + y1) / 2 - 0.4, z], [x1 - 0.3, (y0 + y1) / 2 - 0.4, z], [x0 + 1.8, (y0 + y1) / 2 + 0.45, z]], 'GRID EV', on ? '#ffffff' : 'rgba(110,110,120,0.8)');
+    if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow((bx + P(x1, 0, z)[0]) / 2, by, 3.5 * M, VOLT, 0.16); ctx.restore(); } }
+  // the line: lit on the shift, cells moving down it
+  if (shift) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [bx0] = P(L.bays[0][0], 0, 0), [bx1] = P(L.bays[5][1], 0, 0), [, fy0] = P(0, L.line[2] + 2.9, 0), [, fy1] = P(0, L.line[2] - 0.5, 0);
+    ctx.fillStyle = night ? 'rgba(200,255,220,0.12)' : 'rgba(255,255,255,0.08)'; ctx.fillRect(bx0, fy0, bx1 - bx0, fy1 - fy0); ctx.restore(); }
+  { const [x0, x1, y, z] = L.line; if (on) for (let q = 0; q < 30; q++) { const u = ((t * 0.05 * run + q / 30) % 1), [cx, cy] = P(x0 + u * (x1 - x0), y, z);
+    ctx.fillStyle = u < 0.45 ? '#b8bcc0' : u < 0.7 ? '#3a70d8' : `rgb(${VOLT})`; ctx.fillRect(cx - 0.08 * M, cy - 0.06 * M, 0.16 * M, 0.12 * M); } }
+  L.mixers.forEach(([x, y, z, r], m) => { const a = t * 4 * run + m; ctx.strokeStyle = '#8a8e92'; ctx.lineWidth = 0.05 * M; const [ax, ay] = P(x + Math.cos(a) * r, y + Math.sin(a) * r, z), [bx, by] = P(x - Math.cos(a) * r, y - Math.sin(a) * r, z); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); });
+  if (Camera.zoom > 0.35) { const [x0, x1, y0, y1, z] = L.foil; for (const y of [y0, y1]) for (let s_ = 0; s_ < 8; s_++) { const f = ((t * 0.7 * run + s_ / 8) % 1), [dx, dy] = P(x0 + f * (x1 - x0), y, z); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(dx, dy - 0.05 * M, 0.06 * M, 0.1 * M); } }
+  if (shift) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [ox, oy] = P(...L.oven); _anGlow(ox, oy, 1.0 * M, '255,190,110', 0.25); ctx.restore(); }
+  if (shift) L.robots.forEach(([x, y, z], r) => { if (Math.sin(t * 9 + r) > 0.8) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.35 * M, '180,220,255', 0.6); ctx.restore(); } });
+  { const [x0, x1, y0, y1, z] = L.dry; _civText(F, [[x0 + 0.2, y0 + 0.6, z], [x1 - 0.2, y0 + 0.6, z], [x0 + 0.2, y0 + 1.0, z]], 'DRY ROOM', '#2a5098');
+    if (shift) for (let p = 0; p < 2; p++) { const [sx, sy] = P(x0 + 0.6 + p * 1.1 + Math.sin(t * 0.3 + p) * 0.2, (y0 + y1) / 2, 0.1); ctx.fillStyle = '#f6f8fa'; ctx.beginPath(); ctx.roundRect(sx - 0.12 * M, sy - 0.6 * M, 0.24 * M, 0.6 * M, 0.08 * M); ctx.fill(); ctx.fillStyle = '#6ab0e0'; ctx.fillRect(sx - 0.07 * M, sy - 0.57 * M, 0.14 * M, 0.06 * M); } }
+  { const [x0, y0, dx, dy, z] = L.form; for (let r = 0; r < 5; r++) for (let c = 0; c < 6; c++) { const charge = shift ? ((t * 0.12 + c * 0.13 + r * 0.29) % 1) : 0.15, [ax, ay] = P(x0 + c * dx - 0.08, y0 - r * dy, z), [bx] = P(x0 + c * dx + 0.08, 0, 0);
+    ctx.fillStyle = !on ? '#1a2a1e' : charge > 0.9 ? `rgb(${VOLT})` : `rgba(${VOLT},0.6)`; ctx.fillRect(ax, ay + 0.2 * M * (1 - charge), bx - ax, 0.2 * M * charge); } }
+  { const [x0, x1, y] = L.pack, u = (t * 0.04 * run) % 1; F.draw(IndArt.get('ind_ev_car'), L.carRect, x0 + u * (x1 - x0), y);
+    if (shift && u > 0.8) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P(x0 + u * (x1 - x0), y, 0.4); _anGlow(gx, gy, 0.8 * M, VOLT, 0.35); ctx.restore(); } }
+  ['MIX', 'COATING', 'STACK', '', 'FORMATION', 'PACK'].forEach((lab, i) => { if (!lab) return; const [x, y, z] = L.labels[i]; _civText(F, [[x - 0.8, y, z], [x + 0.8, y, z], [x - 0.8, y + 0.35, z]], lab, on ? '#3a4252' : '#2a2c30', false); });
+  // car park, chargers, the transporter loading, the test car
+  const cars = !on ? 2 : shift ? 11 : 3; { const [cx0, cy0, sx, sy] = L.carpark;
+    for (let c = 0; c < cars; c++) { const [cx, cy] = P(cx0 + (c % 6) * sx, cy0 - Math.floor(c / 6) * sy, 0.08); _cmCar(cx, cy, ['#e8e8e4', '#3060a0', '#404448', '#c04040', '#e0b030', '#40a060'][c % 6], TILE / 40 * 1.1, c % 2); } }
+  L.chargers.forEach(([x, y, z], kk) => { dot(x, y, z, 0.07, on ? `rgba(${VOLT},${(0.5 + 0.5 * Math.sin(t * 3 + kk)).toFixed(3)})` : '#1a2a1e');
+    if (on && (shift || kk < 2)) { const [cx, cy] = P(x, y - 1.2, 0.08); _cmCar(cx, cy, ['#f4f6f8', '#3a5a7a', '#c83a30', '#2a2a2e', '#40a060'][kk], TILE / 40 * 1.0, false);
+      const [ax, ay] = P(x, y, z); ctx.strokeStyle = `rgba(${VOLT},0.8)`; ctx.lineWidth = 0.03 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo(ax + 0.3 * M, (ay + cy) / 2, cx, cy - 0.15 * M); ctx.stroke(); } });
+  { const [x0, y0, y1, z, step] = L.transporter, loaded = shift ? Math.floor((t * 0.03) % 1 * 5) : 4;
+    for (let q = 0; q < 4; q++) if (q < loaded) { const [cx, cy] = P(x0 + 0.6 + q * step, q % 2 ? y1 : y0, z); _cmCar(cx, cy, ['#f4f6f8', '#3a5a7a', '#c83a30', '#40a060'][q], TILE / 40 * 1.0, false); } }
+  { const [cx, cy, rx, ry, z] = L.track; _civText(F, L.trackText, 'TEST TRACK', on ? (night ? '#b8c0c8' : '#f4f6f8') : 'rgba(70,70,70,0.8)');
+    if (shift) { const a = t * 0.9; for (let q = 1; q < 6; q++) { const b = a - q * 0.05; dot(cx + Math.cos(b) * rx, cy - Math.sin(b) * ry, z, 0.12 - q * 0.018, `rgba(${VOLT},${(0.5 - q * 0.08).toFixed(3)})`); }
+      const [px_, py_] = P(cx + Math.cos(a) * rx, cy - Math.sin(a) * ry, z + 0.1); ctx.save(); ctx.translate(px_, py_); ctx.rotate(-a + Math.PI / 2 + Math.PI); ctx.fillStyle = '#f0e040'; ctx.beginPath(); ctx.roundRect(-0.35 * M, -0.2 * M, 0.7 * M, 0.4 * M, 0.15 * M); ctx.fill(); ctx.fillStyle = '#2a2a2e'; ctx.fillRect(-0.1 * M, -0.15 * M, 0.25 * M, 0.3 * M); ctx.restore(); } }
+  if (on && night) { ctx.globalCompositeOperation = 'lighter'; L.lamps.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z), [fx, fy] = P(x, y, 0); _anGlow(fx, fy, 1.4 * M, '255,230,180', 0.3); _anGlow(gx, gy, 0.2 * M, '255,240,200', 0.9); }); ctx.globalCompositeOperation = 'source-over'; }
+  ctx.restore();
+}
+// ── Shared for the commercial sprites ──
+// A rendered car (ind_car_0..7, red, 45 deg steps) at plan (x, y) heading
+// deg (0 = east, 90 = north), tinted into one of a few paints.
+const _IND_CAR_PAINT = ['none', 'hue-rotate(205deg) saturate(1.1)', 'hue-rotate(115deg) brightness(0.9)', 'saturate(0) brightness(1.7)', 'saturate(0) brightness(0.45)', 'hue-rotate(45deg) brightness(1.35)', 'hue-rotate(265deg)'];
+function _indCar(F, x, y, deg, paint = 0, dim = false) {
+  const k = ((Math.round(deg / 45) % 8) + 8) % 8, im = IndArt.get('ind_car_' + k);
+  if (!im || !IND_ART_LAYOUT.car) return;
+  const f = _IND_CAR_PAINT[paint % _IND_CAR_PAINT.length];
+  ctx.filter = dim ? (f === 'none' ? '' : f + ' ') + 'brightness(0.55)' : f;
+  F.draw(im, IND_ART_LAYOUT.car.rect, x, y); ctx.filter = 'none';
+}
+const _indCarsReady = () => _indAll(Array.from({ length: 8 }, (_, k) => 'ind_car_' + k));
+const _IND_SKIN = ['#f1c9a5', '#e0ac7e', '#c68642', '#8d5524', '#ffdbac', '#a8714a'];
+const _IND_SHIRT = ['#3a6ec8', '#e0232a', '#40a060', '#f0c030', '#7a4ab0', '#303438', '#f4f0e6', '#e07030'];
+function _indPerson(F, x, y, shirt, skin, bob = 0) {
+  const [sx, sy] = F.P(x, y, 0.06), M = F.M;
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx + 0.05 * M, sy + 0.02 * M, 0.16 * M, 0.06 * M, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = shirt; ctx.beginPath(); ctx.roundRect(sx - 0.11 * M, sy - (0.48 + bob) * M, 0.22 * M, 0.46 * M, 0.06 * M); ctx.fill();
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(sx, sy - (0.58 + bob) * M, 0.09 * M, 0, Math.PI * 2); ctx.fill();
+}
+// Zap Burger: open 06:00-02:00 (a lull till 06:00), rush on a demand
+// spike; the drive-thru car orders at the speaker and picks up at the
+// window; the pylon's bolt, ZAP and chase bulbs; the menu board.
+function _indZbArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M, TN } = F, on = !!e.powered;
+  const S = SplitPhase.wantStatic(), A = SplitPhase.wantOver();
+  const hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && (hr >= 6 || hr < 2), lull = on && hr >= 2 && hr < 6, rush = open && !!e._spiking, lit = open || lull;
+  if (S) {
+    F.draw(base, L.rect);
+    if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect));
+  }
+  if (!A) return;
+  const [lx0, ly0] = P(-4, 4), [lx1, ly1] = P(4, -4);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 4 * M, lx1 - lx0, ly1 - ly0 + 4 * M); ctx.clip();
+  // windows by the hour; the ORDER sign in a rush
+  const winC = !on ? null : rush ? (night ? '#ffb050' : '#ff7a18') : night && lit ? (lull ? '#c87830' : '#ff9a40') : open ? '#ffe2bc' : lull ? '#5a3a20' : null;
+  if (winC) L.wins.forEach(w => _indWin(P, w, winC));
+  if (on && night && lit) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.wins.forEach(([x0, x1, y, z0, z1]) => { const [gx, gy] = P((x0 + x1) / 2, y, (z0 + z1) / 2); _anGlow(gx, gy, (rush ? 1.4 : 1.0) * M, '255,150,60', rush ? 0.5 : 0.28); }); ctx.restore(); }
+  if (rush) { const pulse = 0.55 + 0.45 * Math.sin(t * 6), [x0, x1, y, , z1] = L.wins[2]; _civText(F, [[x0, y, z1 + 0.05], [x1, y, z1 + 0.05], [x0, y, z1 + 0.3]], 'ORDER', `rgba(255,220,60,${pulse.toFixed(3)})`); }
+  if (lit) { const [x, y, z] = L.exhaust, n = rush ? 6 : lull ? 1 : 2; _indSmoke(F, x, y, z, t * (rush ? 1.8 : 1), '230,228,222', rush ? 0.6 : night ? 0.36 : 0.26, (rush ? 0.6 : 0.4) * (n > 1 ? 1 : 0.7)); }
+  // bolts: on the fries carton and the pylon; ZAP; chase bulbs
+  const boltOn = on && lit, pulse = rush ? 0.7 + 0.3 * Math.sin(t * 5) : 1;
+  const bolt = (cx, cy, z, s, col) => { const pts = [[0, 0.45], [-0.28, -0.05], [-0.09, -0.05], [-0.21, -0.48], [0.31, 0.06], [0.06, 0.06], [0.22, 0.45]];
+    ctx.fillStyle = col; ctx.beginPath(); pts.forEach(([u, v], i) => { const [qx, qy] = P(cx + u * s, cy, z + v * s); i ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); }); ctx.closePath(); ctx.fill(); };
+  const boltCol = boltOn ? (night ? `rgba(255,244,160,${pulse.toFixed(3)})` : rush ? `rgba(255,230,60,${pulse.toFixed(3)})` : '#ffe566') : '#8a6a20';
+  { const [x, y, z, s] = L.bolt; bolt(x, y, z, s * 1.6, boltCol); }
+  { const [x, y, z0, z1, w] = L.pylon; bolt(x, y, z0 + (z1 - z0) * 0.62, 1.2, boltCol);
+    _civText(F, [[x - 0.55, y, z0 + 0.12], [x + 0.55, y, z0 + 0.12], [x - 0.55, y, z0 + 0.5]], 'ZAP', boltOn ? (night ? `rgba(255,80,60,${(0.85 + 0.15 * pulse).toFixed(3)})` : rush ? '#c01820' : '#e0232a') : '#8a4038');
+    if (boltOn && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P(x, y, z0 + (z1 - z0) * 0.62); _anGlow(gx, gy, (rush ? 2.2 : 1.4) * M, '255,220,70', rush ? 0.65 : 0.38); ctx.restore(); }
+    if (Camera.zoom > 0.45) { const per = 2 * (w + (z1 - z0)), speed = rush ? 14 : 5;
+      for (let b = 0; b < 18; b++) { let d = (b / 18) * per, bx, bz;
+        if (d < w) { bx = x - w / 2 + d; bz = z1; } else if (d < w + (z1 - z0)) { bx = x + w / 2; bz = z1 - (d - w); } else if (d < 2 * w + (z1 - z0)) { bx = x + w / 2 - (d - w - (z1 - z0)); bz = z0; } else { bx = x - w / 2; bz = z0 + (d - 2 * w - (z1 - z0)); }
+        const bulb = boltOn && ((b + Math.floor(t * speed)) % (rush ? 2 : 4) === 0), [qx, qy] = P(bx, y, bz);
+        ctx.fillStyle = bulb ? '#fff6c0' : '#6a5018'; ctx.beginPath(); ctx.arc(qx, qy, (rush ? 0.08 : 0.06) * M, 0, Math.PI * 2); ctx.fill(); } } }
+  // menu rows and the speaker screen
+  { const [x0, x1, y, z0, z1] = L.menu, items = ['#f0b44a', '#ffe14a', '#f4f0e6', '#7ed04a'];
+    items.forEach((c, i) => { let rowOn = false; if (open) rowOn = rush ? ((i + Math.floor(t * 4)) % 3) !== 0 : night ? ((i + Math.floor(t * 1.2)) % 5) !== 0 : true; else if (lull) rowOn = i < 2;
+      const zz = z1 - 0.2 - i * 0.2; _indWin(P, [x0 + 0.1, x1 - 0.1, y, zz - 0.12, zz], rowOn ? c : '#3a342c'); });
+    if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = P((x0 + x1) / 2, y, (z0 + z1) / 2); _anGlow(gx, gy, 1.2 * M, '255,200,80', rush ? 0.28 : 0.12); ctx.restore(); } }
+  _indWin(P, L.speaker, on ? (night ? '#3a90ff' : '#1a4a8a') : '#101418');
+  // the drive-thru: in from the east, order, window, out to the south
+  if (_indCarsReady()) { const [ENTRY, SPK, WIN, LY] = L.lane, ease = u => u * u * (3 - 2 * u);
+    const carAt = u => { if (u < 0.14) return [ENTRY + (SPK - ENTRY) * (1 - (1 - u / 0.14) ** 2), LY, 180, 0];
+      if (u < 0.36) return [SPK, LY, 180, 1]; if (u < 0.46) return [SPK + (WIN - SPK) * ease((u - 0.36) / 0.1), LY, 180, 0]; if (u < 0.7) return [WIN, LY, 180, 2];
+      const s = (u - 0.7) / 0.3, r = 0.5; if (s < 0.45) { const phi = Math.PI / 2 + (s / 0.45) * (Math.PI / 2); return [WIN + r * Math.cos(phi), LY - r + r * Math.sin(phi), 180 + (s / 0.45) * 90, 0]; }
+      return [WIN - r, LY - r - ((s - 0.45) / 0.55) * 2.0, 270, 0]; };
+    const draw1 = (u, paint) => { const [x, y, d, st] = carAt(u); _indCar(F, x, y, d, paint);
+      if (st === 1) { const [bx, by] = P(SPK, LY + 0.6, 1.3); ctx.fillStyle = '#f4f0e6'; ctx.beginPath(); ctx.roundRect(bx - 0.35 * M, by - 0.2 * M, 0.7 * M, 0.4 * M, 0.12 * M); ctx.fill();
+        for (let k = 0; k < 3; k++) { ctx.fillStyle = (Math.floor(t * 3) % 3) === k ? '#e0232a' : '#8a8680'; ctx.beginPath(); ctx.arc(bx + (k - 1) * 0.17 * M, by, 0.055 * M, 0, Math.PI * 2); ctx.fill(); } } };
+    if (rush) { _indCar(F, SPK + 1.4, LY, 180, 2); _indCar(F, SPK, LY, 180, 1); _indCar(F, WIN, LY, 180, 0); }
+    else if (lit) { const PER = 16, cycle = Math.floor(t / PER); if (open || cycle % 3 === 0) draw1((t / PER) % 1, cycle % 7); } }
+  // the queue at the counter, eaters at the patio table by day
+  if (open) { const qn = rush ? 4 : night ? 0 : 1; for (let i = 0; i < qn; i++) { const [qx, qy] = L.queue[i]; _indPerson(F, qx + Math.sin(t * 0.8 + i * 1.7) * 0.03, qy, _IND_SHIRT[(i + 2) % 8], _IND_SKIN[i % 6]); }
+    if (!night) L.eaters.forEach(([ex, ey], i) => _indPerson(F, ex, ey, _IND_SHIRT[(i * 3 + 4) % 8], _IND_SKIN[(i + 3) % 6])); }
+  ctx.restore();
+}
+// The strip stalls share their frame and clip.
+function _indStripBegin(e, px, py, base, L) {
+  const F = _indFrame(e, px, py), on = !!e.powered;
+  if (SplitPhase.wantStatic()) { F.draw(base, L.rect); if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect)); }
+  if (!SplitPhase.wantOver()) return null;
+  const [fx0, fx1, fy0, fy1] = L.frame || [-4, 4, -4, 4], [lx0, ly0] = F.P(fx0, fy1), [lx1, ly1] = F.P(fx1, fy0);
+  ctx.save(); ctx.beginPath(); ctx.rect(lx0, ly0 - 4 * F.M, lx1 - lx0, ly1 - ly0 + 4 * F.M); ctx.clip();
+  return F;
+}
+// Corner Pharmacy: open 07:00-22:00, bright shelves and a shopper by day;
+// overnight the floor drops to night lights and the 24H hatch serves.
+function _indPhArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 7 && hr < 22, nightSvc = on && !open, rush = open && !!e._spiking;
+  const floorC = open ? (night ? '#e8fff8' : '#f4fffb') : on ? 'rgba(80,140,130,0.55)' : '#101414';
+  L.win.forEach(w => _indShopfront(F, w, floorC, open ? ['#e84a5a', '#3a7ac8', '#f4f4f0', '#28b070', '#f0c030'] : null));
+  L.door.forEach(([x0, x1, y, z0, z1]) => { _indWin(P, [x0, x1, y, z0, z1], floorC); const gap = open ? 0.18 + 0.18 * Math.max(0, Math.sin(t * 0.8)) : 0; const mid = (x0 + x1) / 2;
+    _indWin(P, [x0, mid - gap, y - 0.01, z0, z1], open ? 'rgba(180,220,214,0.35)' : 'rgba(20,26,28,0.8)'); _indWin(P, [mid + gap, x1, y - 0.01, z0, z1], open ? 'rgba(180,220,214,0.35)' : 'rgba(20,26,28,0.8)'); });
+  L.side.forEach(w => _indWin(P, w, open ? floorC : on ? 'rgba(40,70,66,0.7)' : '#101414'));
+  if (nightSvc) { _indWin(P, L.hatch, '#fff2d0'); _indGlowAt(F, (L.hatch[0] + L.hatch[1]) / 2, L.hatch[2], 0.4, 0.8, '255,240,200', 0.4); }
+  const signLit = on; _civText(F, L.sign, 'CORNER PHARMACY', signLit ? '#ffffff' : 'rgba(120,140,134,0.6)');
+  { const [x, y, z] = L.cross, [cx, cy] = P(x, y, z), g = signLit ? '#28e070' : '#1a2a24'; ctx.fillStyle = g; ctx.fillRect(cx - 0.05 * M, cy - 0.15 * M, 0.1 * M, 0.3 * M); ctx.fillRect(cx - 0.15 * M, cy - 0.05 * M, 0.3 * M, 0.1 * M);
+    if (signLit && night) _indGlowAt(F, x, y, z, 0.6, '40,224,112', 0.5); }
+  _civText(F, L.h24, '24H', nightSvc ? '#28e070' : on ? 'rgba(40,224,112,0.5)' : '#1a2a24');
+  L.up.forEach((w, i) => { if (on && night && i === 1 && hr < 23) _indWin(P, w, '#fff2d0'); });
+  if (open) { const u = (t / 11) % 1, [x0, x1, y] = L.win[0]; _indPerson(F, x0 + 0.4 + u * (x1 - x0 - 0.8), y + 0.4, _IND_SHIRT[2], _IND_SKIN[3]);
+    if (rush) for (let i = 0; i < 3; i++) _indPerson(F, (L.door[0][0] + L.door[0][1]) / 2 + 0.1 + i * 0.25, L.door[0][2] - 0.5 - i * 0.1, _IND_SHIRT[(i + 4) % 8], _IND_SKIN[(i + 1) % 6]); }
+  if (nightSvc && Math.sin(t * 0.2) > 0.6) _indPerson(F, (L.hatch[0] + L.hatch[1]) / 2, L.hatch[2] - 0.4, _IND_SHIRT[5], _IND_SKIN[0]);
+  ctx.restore();
+}
+// Fitness Gym: open 05:00-23:00. The spin studio upstairs washes through
+// colours, members on treadmills below, the heartbeat neon on the sign, the
+// rooftop condensers turning; a cleaner mops after close.
+function _indGyArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 5 && hr < 23, rush = open && !!e._spiking, cleaning = on && !open && hr >= 23;
+  const hue = (t * 12) % 360;
+  L.up.forEach(w => { _indWin(P, w, open ? `hsl(${hue.toFixed(0)},55%,${night ? 36 : 28}%)` : '#0e1218');
+    if (open) { const [x0, x1, y, z0] = w, n = rush ? 8 : 5; for (let b = 0; b < n; b++) { const bx = x0 + 0.4 + b * (x1 - x0 - 0.8) / (n - 1), bob = Math.abs(Math.sin(t * 6 + b)) * 0.04, [sx, sy] = P(bx, y - 0.01, z0 + 0.15);
+      ctx.fillStyle = '#1a1a1e'; ctx.fillRect(sx - 0.15 * M, sy - 0.15 * M, 0.3 * M, 0.08 * M); ctx.fillStyle = _IND_SHIRT[b % 8]; ctx.fillRect(sx - 0.07 * M, sy - (0.55 + bob) * M, 0.14 * M, 0.36 * M); ctx.fillStyle = _IND_SKIN[b % 6]; ctx.beginPath(); ctx.arc(sx, sy - (0.62 + bob) * M, 0.07 * M, 0, Math.PI * 2); ctx.fill(); } } });
+  L.down.forEach(w => { _indWin(P, w, open ? (night ? '#e8f0f6' : '#d6e0e6') : cleaning ? '#6a7680' : '#0e1218');
+    if (open) { const [x0, x1, y, z0] = w, n = rush ? 7 : 4; for (let b = 0; b < n; b++) { const bx = x0 + 0.5 + b * (x1 - x0 - 1.0) / (n - 1), stride = Math.sin(t * 9 + b * 1.3) * 0.04, [sx, sy] = P(bx, y - 0.01, z0 + 0.12);
+      ctx.fillStyle = '#2a2a30'; ctx.fillRect(sx - 0.25 * M, sy - 0.05 * M, 0.5 * M, 0.08 * M); ctx.fillStyle = _IND_SHIRT[(b + 3) % 8]; ctx.fillRect(sx - 0.07 * M + stride * M, sy - 0.55 * M, 0.14 * M, 0.42 * M); ctx.fillStyle = _IND_SKIN[(b + 2) % 6]; ctx.beginPath(); ctx.arc(sx + stride * M, sy - 0.62 * M, 0.07 * M, 0, Math.PI * 2); ctx.fill(); } }
+    if (cleaning) { const [x0, x1, y, z0] = w; _indPerson(F, x0 + 1 + ((t * 0.1) % 1) * (x1 - x0 - 2), y + 0.05, '#5a8ab0', _IND_SKIN[2]); } });
+  const signOn = on && (open || night); _civText(F, L.sign, 'FITNESS', signOn ? '#ffffff' : 'rgba(90,90,96,0.8)');
+  if (signOn) { const [x, y, z] = L.bell, [cx, cy] = P(x, y, z); ctx.strokeStyle = '#ff6a2a'; ctx.lineWidth = 0.05 * M; ctx.beginPath(); const ph = (t * 1.2) % 1;
+    for (let k = 0; k <= 20; k++) { const f = k / 20, beat = Math.abs(f - ph) < 0.08 ? Math.sin((f - ph) * 40) * 0.25 : 0, [qx, qy] = P(x - 0.6 + f * 1.2, y, z + beat); k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); } ctx.stroke();
+    if (night) _indGlowAt(F, x, y, z, 0.8, '255,106,42', 0.35); }
+  L.units.forEach(([x, y, z, r], i) => _indFan(F, x, y, z, r, open ? t * 8 + i : i, open));
+  if (rush) for (let i = 0; i < 3; i++) _indPerson(F, L.door[0] + i * 0.3, L.door[1], _IND_SHIRT[(i + 1) % 8], _IND_SKIN[(i + 3) % 6]);
+  if (on && !open && hr >= 4.5 && hr < 5) _indPerson(F, L.door[0], L.door[1], _IND_SHIRT[0], _IND_SKIN[1]);
+  ctx.restore();
+}
+// The Bistro: open 10:00-01:00. A warm dining room and the kitchen pass,
+// candlelit terrace diners in the evening, the waiter with plates in a
+// rush; closed, only the wine wall glows.
+function _indBiArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && (hr >= 10 || hr < 1), rush = open && !!e._spiking, evening = open && (hr >= 18 || hr < 1);
+  L.win.forEach(([x0, x1, y, z0, z1]) => { if (open) { _indShopfront(F, [x0, x1, y, z0, z1], `rgba(255,196,110,${((rush ? 0.75 : 0.62) + 0.05 * Math.sin(t * 2)).toFixed(3)})`, ['#f4ece0', '#7a1e2c', '#f4ece0', '#3a2410']);
+      const flare = Math.max(0, Math.sin(t * 0.9 + (e.row || 0)) - (rush ? 0.3 : 0.7)); if (flare > 0) _indGlowAt(F, x1 - 0.8, y, z0 + 0.6, 0.6, '255,150,50', flare); if (night) _indGlowAt(F, (x0 + x1) / 2, y, z0 + 0.6, 2.2, '255,190,110', 0.28); }
+    else _indWin(P, [x0, x1, y, z0, z1], on ? '#1a1012' : '#0e0a0a'); });
+  L.door.forEach(w => _indWin(P, w, open ? 'rgba(255,200,120,0.7)' : '#140c0c'));
+  const lit = on && (open || night); _civText(F, L.sign, 'BISTRO', lit ? '#e8c870' : 'rgba(110,90,70,0.5)');
+  _civText(F, L.sub1, 'CUISINE DE MARCHÉ', lit ? '#e8c870' : 'rgba(110,90,70,0.5)', false); _civText(F, L.sub2, 'VINS · APÉRITIFS', lit ? '#e8c870' : 'rgba(110,90,70,0.5)', false);
+  L.up.forEach((w, i) => { if (on && night && (i === 1 || (evening && i === 3))) _indWin(P, w, '#ffd890'); });
+  L.dormers.forEach((w, i) => { if (on && night && i === 2) _indWin(P, w, '#ffd890'); });
+  { const [x, y, z] = L.stack; _wfSmoke(...P(x, y, z), TILE / 40 * 0.7, t, '214,210,204', open, rush ? 0.45 : 0.25); }
+  L.tables.forEach(([x, y], k) => { if (!open || (!evening && k % 2)) return; _indPerson(F, x - 0.5, y, _IND_SHIRT[(k * 2 + 1) % 8], _IND_SKIN[(k + 1) % 6]); _indPerson(F, x + 0.5, y, _IND_SHIRT[(k * 2 + 4) % 8], _IND_SKIN[(k + 3) % 6]);
+    if (evening) { const fl = 0.6 + 0.4 * Math.sin(t * 9 + k * 1.7); _indGlowAt(F, x, y, 0.45, 0.4, '255,200,120', 0.5 * fl); } });
+  if (rush) { const u = (t * 0.15) % 1, [x0, , y] = L.tables[0], x1 = L.tables[3][0]; _indPerson(F, x0 + u * (x1 - x0), y + 0.6, '#f4f4f0', _IND_SKIN[2]); }
+  ctx.restore();
+}
+const _indGlowAt = (F, x, y, z, r, rgb, a) => { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const [gx, gy] = F.P(x, y, z); _anGlow(gx, gy, r * F.M, rgb, a); ctx.restore(); };
+// Dynamo Donuts: open 05:00-14:00. The doughnut turns like a rotor (its
+// sprinkles run round it, faster in a rush, the copper brushes spark),
+// neon round the ring in the dark, a car at the walk-up window.
+function _indDdArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M, TN } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 5 && hr < 14, rush = open && !!e._spiking;
+  const glass = !on ? '#141016' : open ? (rush ? (night ? '#ffd8a0' : '#ffe8c8') : night ? '#ffc890' : '#fff4e2') : night ? '#2a1a24' : '#5a4a52';
+  [L.case, L.door, L.hatch].forEach(w => _indWin(P, w, glass));
+  if (open && Camera.zoom > 0.45) { const [x0, x1, y, z0, z1] = L.case; for (let r = 0; r < 2; r++) for (let k = 0; k < 7; k++) { const [dx, dy] = P(x0 + 0.25 + k * (x1 - x0 - 0.5) / 6, y - 0.01, z0 + 0.25 + r * 0.35);
+    ctx.fillStyle = ['#c07a30', '#f6a8c8', '#6a3a1a', '#fff0d8'][(k + r * 3) % 4]; ctx.beginPath(); ctx.arc(dx, dy, 0.1 * M, 0, Math.PI * 2); ctx.fill(); } }
+  if (open && night) _indGlowAt(F, (L.case[0] + L.case[1]) / 2, L.case[2], 0.9, 2.0, '255,190,150', 0.35);
+  // sprinkles orbiting the turning ring; brushes sparking in a rush
+  { const [cx, y, cz, R, r] = L.ring, spin = on ? t * (rush ? 3.2 : open ? 0.8 : 0.25) : 0, cols = ['#fff066', '#66d8ff', '#ffffff', '#7ee07e', '#ff6a4a'];
+    for (let k = 0; k < 22; k++) { const a = spin + k / 22 * Math.PI * 2, rr = R + ((k * 7) % 5 - 2) / 5 * r, [sx, sy] = P(cx + Math.cos(a) * rr, y, cz + Math.sin(a) * rr);
+      ctx.save(); ctx.translate(sx, sy); ctx.rotate(a * 1.7 + k); ctx.fillStyle = cols[k % 5]; ctx.fillRect(-0.09 * M, -0.03 * M, 0.18 * M, 0.06 * M); ctx.restore(); }
+    if (on && (night || rush)) { const [ox, oy] = P(cx, y, cz); ctx.strokeStyle = `rgba(255,110,190,${open ? 0.9 : 0.35})`; ctx.lineWidth = 0.07 * M;
+      ctx.beginPath(); ctx.ellipse(ox, oy, (R + r + 0.05) * M, (R + r + 0.05) * TN * M, 0, 0, Math.PI * 2); ctx.stroke(); if (night) _indGlowAt(F, cx, y, cz, 3.0, '255,110,190', rush ? 0.42 : 0.26); }
+    if (rush && Math.sin(t * 23) > 0.2) L.brush.forEach(([bx, by, bz]) => { ctx.strokeStyle = '#fff6a0'; ctx.lineWidth = 0.03 * M; ctx.beginPath(); const [ax, ay] = P(bx, by, bz);
+      ctx.moveTo(ax, ay); for (let k = 0; k < 3; k++) { const [qx, qy] = P(bx + Math.sin(t * 31 + k * 2) * 0.3, by, bz + 0.15 + k * 0.1); ctx.lineTo(qx, qy); } ctx.stroke(); _indGlowAt(F, bx, by, bz, 0.5, '255,230,120', 0.5); }); }
+  _civText(F, L.sign, 'DYNAMO DONUTS', open ? (night ? '#ff8ac8' : '#ffffff') : on ? '#a05a7a' : '#4a3038');
+  if (on && Camera.zoom > 0.45) { const [x0, x1, y, z] = L.bulbs; for (let b = 0; b < 12; b++) { const [bx, by] = P(x0 + b * (x1 - x0) / 11, y, z), lit = open && (b + Math.floor(t * (rush ? 10 : 3))) % 3 === 0;
+    ctx.fillStyle = lit ? '#fff6c0' : '#4a3a2a'; ctx.beginPath(); ctx.arc(bx, by, 0.05 * M, 0, Math.PI * 2); ctx.fill(); } }
+  if (open) { const [x, y, z] = L.vent, n = rush ? 5 : 2; _indSmoke(F, x, y, z, t * (rush ? 1.8 : 1), '240,236,236', rush ? 0.45 : 0.3, rush ? 0.55 : 0.38); }
+  if (open && _indCarsReady()) { const PER = 14, u = (t / PER) % 1, cyc = Math.floor(t / PER), X = v => (v - 40) * 0.1, x = u < 0.25 ? 92 - u / 0.25 * 30 : u < 0.6 ? 62 : 62 - (u - 0.6) / 0.4 * 80;
+    _indCar(F, X(x), -2.8, 180, cyc % 7); if (rush) _indCar(F, X(78), -2.8, 180, (cyc + 3) % 7); }
+  if (open && !night) _indPerson(F, L.bench[0], L.bench[1], _IND_SHIRT[1], _IND_SKIN[2]);
+  if (open) for (let i = 0; i < (rush ? 3 : 1); i++) _indPerson(F, L.queue[0] - i * 0.36, L.queue[1], _IND_SHIRT[(i + 4) % 8], _IND_SKIN[(i + 1) % 6]);
+  ctx.restore();
+}
+// Coil Dog: open 11:00-03:00, its rush the after-bar crowd. The coils arc
+// at the sausage when busy, string lights along the front, COIL DOG in
+// neon after dark, the picnic table and the queue at the hatches.
+function _indCdArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && (hr >= 11 || hr < 3), rush = open && !!e._spiking;
+  L.hatches.forEach(w => _indWin(P, w, !on ? '#140a08' : open ? (night ? '#ffb070' : '#ffe0b8') : '#3a1a14'));
+  if (open) L.hatches.forEach(([x0, x1, y, z0]) => { const [hx, hy] = P((x0 + x1) / 2, y - 0.01, z0 + 0.1); ctx.fillStyle = '#f4f0e6'; ctx.fillRect(hx - 0.09 * M, hy - 0.45 * M, 0.18 * M, 0.42 * M); ctx.fillStyle = '#ffffff'; ctx.fillRect(hx - 0.1 * M, hy - 0.55 * M, 0.2 * M, 0.1 * M); });
+  if (open && night) L.hatches.forEach(([x0, x1, y]) => _indGlowAt(F, (x0 + x1) / 2, y, 1.0, 1.4, '255,170,90', 0.32));
+  // string lights along the canopy
+  if (on) { const [x0, x1, y, z] = L.lights; for (let b = 0; b < 14; b++) { const x = x0 + b * (x1 - x0) / 13, sag = Math.sin(b / 13 * Math.PI * 3) * 0.05, [bx, by] = P(x, y, z - Math.abs(sag)), lit = open && (night || rush);
+    ctx.fillStyle = lit ? ['#ffe080', '#ff8a6a', '#8ad8ff'][b % 3] : '#4a4038'; ctx.beginPath(); ctx.arc(bx, by, 0.05 * M, 0, Math.PI * 2); ctx.fill(); } }
+  // the Tesla coils arcing at the sausage
+  { const [dx, dy, dz] = L.dog, busy = open && (rush || (night && Math.sin(t * 0.7) > 0.3));
+    L.coils.forEach(([cx, cy, cz], i) => { if (on) _indGlowAt(F, cx, cy, cz, 0.45, '140,200,255', open ? 0.35 : 0.12);
+      if (busy && Math.sin(t * 19 + i * 3) > -0.2) { ctx.strokeStyle = `rgba(200,230,255,${(0.7 + 0.3 * Math.sin(t * 40)).toFixed(3)})`; ctx.lineWidth = 0.035 * M; ctx.beginPath();
+        const ex = dx + (i ? 3.3 : -3.3), [ax, ay] = P(cx, cy, cz); ctx.moveTo(ax, ay);
+        for (let k = 1; k <= 5; k++) { const f = k / 5, [qx, qy] = P(cx + (ex - cx) * f + Math.sin(t * 53 + k * 2 + i) * 0.08, cy - 0.05, cz + (dz + 0.3 - cz) * f + Math.sin(t * 47 + k) * 0.12); ctx.lineTo(qx, qy); } ctx.stroke(); _indGlowAt(F, ex, cy, dz + 0.3, 0.5, '180,220,255', 0.5); } }); }
+  _civText(F, L.sign, 'COIL DOG', open ? (night ? `rgba(120,200,255,${(0.85 + 0.15 * Math.sin(t * 5)).toFixed(3)})` : '#ffd24a') : on ? '#7a6a3a' : '#3a3028');
+  if (open && night) _indGlowAt(F, 0, L.sign[0][1], 2.1, 1.6, '120,200,255', 0.25);
+  if (open) { L.eaters.forEach(([x, y], i) => _indPerson(F, x, y, _IND_SHIRT[(i * 2 + 3) % 8], _IND_SKIN[(i + 1) % 6]));
+    L.queue.forEach(([x, y], h) => { for (let i = 0; i < (rush ? 3 : 1); i++) _indPerson(F, x + Math.sin(t * 0.9 + i) * 0.03, y - i * 0.24, _IND_SHIRT[(i + h * 3 + 1) % 8], _IND_SKIN[(i + h + 2) % 6]); }); }
+  if (on && _indCarsReady()) { const PER = 20, u = (t / PER) % 1, cyc = Math.floor(t / PER); _indCar(F, -5 + u * 10, -3.5, 0, (cyc + 2) % 7); }
+  ctx.restore();
+}
+// Ohm Slice: open from 11:00. Oven smoke from the chimney, the slice lit
+// at night, the pole sign, a queue and a car on the street.
+function _indOsArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 11, rush = open && !!e._spiking;
+  const win = !on ? '#140c08' : open ? (night ? '#ffb060' : '#ffe6c0') : '#3a2414';
+  L.wins.forEach(w => _indWin(P, w, win)); _indWin(P, L.door, win);
+  if (open && night) L.wins.forEach(([x0, x1, y]) => _indGlowAt(F, (x0 + x1) / 2, y, 0.9, 1.0, '255,170,80', 0.25));
+  { const [cx, cy] = P(...L.chimney); _wfSmoke(cx, cy, TILE / 40 * 0.8, t, '220,214,206', open, rush ? 0.5 : 0.3); }
+  if (on && night) { const [bl, br, tip] = L.slice; ctx.strokeStyle = `rgba(255,200,90,${open ? 0.85 : 0.3})`; ctx.lineWidth = 0.06 * M; ctx.beginPath();
+    [bl, br, tip].forEach((p, i) => { const [qx, qy] = P(...p); i ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); }); ctx.closePath(); ctx.stroke(); if (open) _indGlowAt(F, tip[0], tip[1] - 1.2, 3.4, 2.6, '255,190,80', 0.22); }
+  { const [x, y, zb, zd, r] = L.pole, signLit = on && (open || night);
+    _civText(F, [[x - 0.45, y - 0.01, zb - 0.15], [x + 0.45, y - 0.01, zb - 0.15], [x - 0.45, y - 0.01, zb + 0.15]], 'SLICE', signLit ? '#ffffff' : '#7a5a50');
+    _civText(F, [[x - r * 0.7, y - 0.05, zd - r * 0.6], [x + r * 0.7, y - 0.05, zd - r * 0.6], [x - r * 0.7, y - 0.05, zd + r * 0.7]], 'Ω', signLit ? (night ? `rgba(255,240,170,${(0.85 + 0.15 * Math.sin(t * 2.4)).toFixed(3)})` : '#ffffff') : '#5a4a40');
+    if (signLit && night) _indGlowAt(F, x, y, zd, 1.0, '255,230,150', 0.3); }
+  if (open) { const [qx, qy] = L.queue; for (let i = 0; i < (rush ? 4 : 1); i++) _indPerson(F, qx - i * 0.3 + Math.sin(t + i) * 0.03, qy, _IND_SHIRT[(i + 6) % 8], _IND_SKIN[(i + 2) % 6]); }
+  if (open && _indCarsReady()) { const PER = 12, u = (t / PER) % 1, cyc = Math.floor(t / PER); _indCar(F, 5 - u * 10, -2.8, 180, (cyc + 4) % 7); }
+  ctx.restore();
+}
+// A lit shopfront with a few silhouettes of stock along its sill.
+function _indShopfront(F, w, col, stock) {
+  _indWin(F.P, w, col);
+  if (!stock || Camera.zoom < 0.45) return;
+  const [x0, x1, y, z0] = w, n = Math.max(3, Math.round((x1 - x0) / 0.35));
+  for (let k = 0; k < n; k++) { const [sx, sy] = F.P(x0 + (k + 0.5) * (x1 - x0) / n, y - 0.01, z0 + 0.05); ctx.fillStyle = stock[k % stock.length]; ctx.fillRect(sx - 0.1 * F.M, sy - 0.18 * F.M, 0.2 * F.M, 0.16 * F.M); }
+}
+// The Kakery: open 07:00-19:00, ovens 05:00-09:00. Candles on the roof
+// cake, the neon name, cakes in the window, slices at the café table.
+function _indKkArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 7 && hr < 19, ovens = on && hr >= 5 && hr < 9, rush = open && !!e._spiking;
+  L.win.forEach(w => _indShopfront(F, w, open ? (night ? '#ffd8c0' : '#fff0e6') : on ? 'rgba(255,200,210,0.55)' : '#1a1216', ['#fbf8f2', '#6a3a20', '#ffb8cc', '#fff0a8', '#c8f0d8']));
+  L.door.forEach(w => _indWin(P, w, open ? (night ? '#f8d4c0' : '#fbe4dc') : '#2a2226'));
+  _civText(F, L.sign, 'THE KAKERY', on ? (night ? '#ff70a8' : '#d0406a') : '#5a3040');
+  if (on && night) _indGlowAt(F, 0, L.sign[0][1], 2.65, 2.4, '255,112,168', 0.3);
+  L.candles.forEach(([x, y, z], i) => { if (!on) return; const fl = 0.75 + 0.25 * Math.sin(t * 13 + i * 2.1) * Math.sin(t * 7 + i);
+    const [fx, fy] = P(x, y, z); ctx.fillStyle = `rgba(255,${200 + Math.round(40 * fl)},120,${fl.toFixed(3)})`; ctx.beginPath(); ctx.ellipse(fx, fy, 0.05 * M, 0.1 * M * fl, 0, 0, Math.PI * 2); ctx.fill();
+    if (night) _indGlowAt(F, x, y, z, 0.35, '255,200,120', 0.4 * fl); });
+  if (ovens || rush) { const [x, y, z] = L.vent; _indSmoke(F, x, y, z, t, '245,240,240', 0.32, 0.4); }
+  _civText(F, L.board, 'CAKE', open ? '#f4f0e6' : '#6a6060', false);
+  if (open && !night) L.eaters.forEach(([x, y], i) => _indPerson(F, x, y, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[(i + 4) % 6]));
+  if (open) { const [x, y0, , y1] = L.walk; for (let w = 0; w < (rush ? 3 : 1); w++) { const u = (t / 9 + w * 0.37) % 1; _indPerson(F, x + w * 0.3, y0 + (y1 - y0) * u, _IND_SHIRT[(w + 5) % 8], _IND_SKIN[(w + 2) % 6], Math.abs(Math.sin(t * 7 + w)) * 0.03);
+    const [bx, by] = P(x + w * 0.3 + 0.18, y0 + (y1 - y0) * u, 0.35); ctx.fillStyle = '#fbf8f2'; ctx.fillRect(bx - 0.08 * M, by - 0.08 * M, 0.16 * M, 0.14 * M); ctx.fillStyle = '#ff9ab8'; ctx.fillRect(bx - 0.08 * M, by - 0.02 * M, 0.16 * M, 0.03 * M); } }
+  ctx.restore();
+}
+// Sunrise Bakery: the bake starts at 03:00 (flue smoking, the deck oven
+// glowing through the window), the shop opens 06:00-15:00; afterwards only
+// the flat upstairs keeps its lights.
+function _indBkArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const bake = on && hr >= 3 && hr < 7, open = on && hr >= 6 && hr < 15, rush = open && !!e._spiking;
+  const warm = night || bake ? '#5a3820' : '#e8d4b0';
+  L.win.forEach(([x0, x1, y, z0, z1]) => { if (!open && !bake) { _indWin(P, [x0, x1, y, z0, z1], on ? '#3c3a36' : '#1a1815'); const [ax, ay] = P(x0, y, z1);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; for (let k = 1; k < 8; k++) { const [, sy] = P(x0, y, z1 - (z1 - z0) * k / 8); ctx.fillRect(ax, sy, P(x1, y, 0)[0] - ax, 0.03 * M); } return; }
+    _indShopfront(F, [x0, x1, y, z0, z1], warm, ['#c8904a', '#a8703a', '#e0b060', '#f4e6c8']);
+    const fire = bake ? 0.8 + 0.2 * Math.sin(t * 5) : open ? 0.4 : 0; if (fire) { _indWin(P, [x0 + (x1 - x0) * 0.58, x1 - 0.2, y - 0.01, z0 + 0.5, z0 + 0.85], `rgba(255,${(120 + 60 * fire) | 0},40,${fire.toFixed(2)})`); _indGlowAt(F, x1 - 0.8, y, z0 + 0.7, 1.0, '255,150,60', 0.35 * fire); } });
+  L.door.forEach(w => _indWin(P, w, open ? warm : '#0e0c0a')); L.side.forEach(w => _indShopfront(F, w, open ? warm : on ? '#3c3a36' : '#1a1815', open ? ['#e0b060', '#c8904a'] : null));
+  _civText(F, L.sign, 'SUNRISE BAKERY', on && (open || bake || night) ? '#fbe6b8' : 'rgba(120,104,80,0.7)');
+  const flat = on && night && hr < 23.5; L.up.forEach((w, i) => { if (flat && (i === 0 || bake)) _indWin(P, w, '#ffd890'); });
+  { const [x, y, z] = L.flue; _wfSmoke(...P(x, y, z), TILE / 40 * 0.8, t, '200,196,190', bake || open, bake ? 0.5 : 0.25); }
+  if (open && !night) _indPerson(F, L.regular[0], L.regular[1], _IND_SHIRT[0], _IND_SKIN[1]);
+  if (rush) for (let i = 0; i < 3; i++) _indPerson(F, L.queue[0] - i * 0.3, L.queue[1], _IND_SHIRT[(i + 3) % 8], _IND_SKIN[(i + 4) % 6]);
+  ctx.restore();
+}
+// Downtown Café: open 06:00-21:00, the morning queue till 10:00, warmer and
+// quieter into the evening; OPEN in neon; the flat upstairs on its own hours.
+function _indCfArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 6 && hr < 21, rush = open && hr < 10, eve = open && hr >= 17;
+  const warm = eve ? 'rgba(232,150,80,0.9)' : night ? 'rgba(255,200,130,0.9)' : 'rgba(255,230,190,0.85)';
+  L.win.forEach(w => _indShopfront(F, w, open ? warm : on ? '#141820' : '#0e0c0c', open ? ['#2a2e2a', '#6a4028', '#c8d0d4', '#fff4dc'] : null));
+  L.door.forEach(w => _indWin(P, w, open ? warm : '#141820'));
+  if (open && night) L.win.forEach(([x0, x1, y]) => _indGlowAt(F, (x0 + x1) / 2, y, 1.0, 1.4, '255,190,110', 0.3));
+  _civText(F, L.sign, 'DOWNTOWN CAFÉ', open ? '#fff4dc' : on ? '#b8ae98' : '#3a3832');
+  if (open) { const buzz = 0.85 + 0.15 * Math.sin(t * 9) * (Math.sin(t * 0.7) > 0.9 ? 1 : 0.2); _civText(F, [[L.open[0], L.open[2], L.open[3]], [L.open[1], L.open[2], L.open[3]], [L.open[0], L.open[2], L.open[4]]], 'OPEN', `rgba(255,120,160,${buzz.toFixed(2)})`); }
+  L.up.forEach((w, i) => { if (on && night && i !== 1 && hr < 23.5) _indWin(P, w, 'rgba(255,214,150,0.9)'); });
+  if (open && !night) L.tables.forEach(([x, y], i) => { _indPerson(F, x - 0.5, y, _IND_SHIRT[(i * 2 + 1) % 8], _IND_SKIN[i + 1]); if (i === 0) _indPerson(F, x + 0.5, y, _IND_SHIRT[6], _IND_SKIN[4]); });
+  if (rush) for (let i = 0; i < 3; i++) _indPerson(F, L.queue[0] + 0.2 + i * 0.3, L.queue[1], _IND_SHIRT[(i + 2) % 8], _IND_SKIN[(i + 3) % 6]);
+  ctx.restore();
+}
+// Co-working Space: open 06:00-22:00 (busy on a spike), desks and laptops
+// in the steel windows, the café below, terrace string lights and diners.
+function _indCw2Art(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.35;
+  const open = on && hr >= 6 && hr < 22, busy = open && !!e._spiking, lit = open || (on && night);
+  L.win.forEach(([x0, x1, y, z0, z1], k) => { _indWin(P, [x0, x1, y, z0, z1], lit ? (night ? 'rgba(255,226,170,0.9)' : 'rgba(220,236,240,0.7)') : '#121418');
+    if (!open) return; for (let p = 0; p < 2; p++) { const present = busy ? _cmFrac(k * 5 + p) > 0.05 : Math.sin(t * 0.3 + k * 2 + p * 3) > -0.2; if (!present) continue;
+      const hx = x0 + (x1 - x0) * (0.28 + p * 0.44), [sx, sy] = P(hx, y - 0.01, z0 + 0.6); ctx.fillStyle = _IND_SHIRT[(k * 2 + p) % 8]; ctx.fillRect(sx - 0.12 * M, sy - 0.4 * M, 0.24 * M, 0.4 * M);
+      ctx.fillStyle = _IND_SKIN[(k + p) % 6]; ctx.beginPath(); ctx.arc(sx, sy - 0.5 * M, 0.09 * M, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(160,210,255,${(0.7 + 0.2 * Math.sin(t * 3 + k + p)).toFixed(3)})`; ctx.fillRect(sx + 0.12 * M, sy - 0.12 * M, 0.2 * M, 0.12 * M); } });
+  L.cafe.forEach(w => _indShopfront(F, w, open ? (night ? 'rgba(255,200,130,0.9)' : 'rgba(255,230,190,0.85)') : '#101214', open ? ['#6a4028', '#c8d0d4', '#2a2e2a'] : null));
+  L.door.forEach(w => _indWin(P, w, open ? 'rgba(255,220,170,0.8)' : '#101214'));
+  _civText(F, L.neon, 'CO-WORK', lit ? `rgba(120,230,255,${(0.85 + 0.1 * Math.sin(t * 4)).toFixed(3)})` : 'rgba(60,80,90,0.6)');
+  if (lit && night) _indGlowAt(F, 0, L.neon[0][1], 2.0, 2.0, '120,230,255', 0.28);
+  if (on && (night || busy)) { const [x0, x1, y, z] = L.lights; for (let b = 0; b < 16; b++) { const x = x0 + b * (x1 - x0) / 15, sag = Math.abs(Math.sin(b / 15 * Math.PI * 4)) * 0.12, [bx, by] = P(x, y, z - sag);
+    ctx.fillStyle = ['#ffe080', '#ff9a6a', '#9ad8ff'][b % 3]; ctx.beginPath(); ctx.arc(bx, by, 0.06 * M, 0, Math.PI * 2); ctx.fill(); } }
+  if (open && (hr >= 12 && hr < 14 || hr >= 17)) L.terrace.forEach(([x, y], i) => { _indPerson(F, x - 0.5, y, _IND_SHIRT[(i + 3) % 8], _IND_SKIN[i + 1]); _indPerson(F, x + 0.5, y, _IND_SHIRT[(i + 6) % 8], _IND_SKIN[i + 3]); });
+  if (open) { const [x, y0, y1] = L.walk, u = (t * 0.035) % 1; _indPerson(F, x + 0.2, y0 - 0.3 - u * (y0 - y1 - 0.5), _IND_SHIRT[5], _IND_SKIN[2], Math.abs(Math.sin(t * 7)) * 0.03); }
+  ctx.restore();
+}
+// Harbor & Whitlock: open 08:00-19:00; clerks at the windows by day, a
+// couple of banker's lamps working late upstairs, the gas lamp at the step
+// after dark, a partner's car at the kerb.
+function _indLwArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 8 && hr < 19, late = on && hr >= 19 && hr < 23;
+  L.win.forEach(([x0, x1, y, z0, z1, row, k]) => { const lamp = (late && row === 2 && (k === 1 || k === 2)) || (on && night && open);
+    if (lamp) { _indWin(P, [x0, x1, y, z0, z1], '#ffd890'); if (late) { const [lx, ly] = P((x0 + x1) / 2, y - 0.01, z0 + 0.35); ctx.fillStyle = '#2a8a4a'; ctx.fillRect(lx - 0.1 * M, ly - 0.06 * M, 0.2 * M, 0.08 * M); } }
+    else if (open && row > 0 && Math.sin(t * 0.25 + k * 2 + row) > 0.2) { const [sx, sy] = P((x0 + x1) / 2, y - 0.01, z0 + 0.1); ctx.fillStyle = 'rgba(30,34,44,0.75)'; ctx.fillRect(sx - 0.1 * M, sy - 0.5 * M, 0.2 * M, 0.5 * M); ctx.fillStyle = 'rgba(200,170,140,0.8)'; ctx.beginPath(); ctx.arc(sx, sy - 0.6 * M, 0.08 * M, 0, Math.PI * 2); ctx.fill(); } });
+  if (on && night) L.dormers.forEach((w, i) => { if (i === 0 && hr < 23) _indWin(P, w, '#ffd890'); });
+  _indWin(P, [L.door[0], L.door[1], L.door[2], L.fan[2] - 0.05, L.fan[2] + 0.2], open || (on && night) ? 'rgba(255,214,150,0.85)' : 'rgba(40,50,60,0.8)');
+  _civText(F, L.plaque, 'HARBOR & WHITLOCK', '#2a1e10', false);
+  if (on && night) { _indGlowAt(F, ...L.lamp, 1.6, '255,214,140', 0.5); const [lx, ly] = P(...L.lamp); ctx.fillStyle = '#ffe6a8'; ctx.beginPath(); ctx.arc(lx, ly, 0.1 * M, 0, Math.PI * 2); ctx.fill(); }
+  if (on && (open || late) && _indCarsReady()) _indCar(F, L.car[0], L.car[1], 0, 4);
+  if (open) { const u = (t / 13) % 1, [dx] = [(L.door[0] + L.door[1]) / 2]; _indPerson(F, dx + 0.3, L.door[2] - 0.8 - Math.abs(u - 0.5) * 3.4, _IND_SHIRT[(Math.floor(t / 13) * 3) % 8], _IND_SKIN[Math.floor(t / 13) % 6]); }
+  ctx.restore();
+}
+// Cornerstone Savings & Loan: banking hours 09:00-17:00, tellers behind the
+// glass, cars at the drive-thru tube kiosks, the ATM screen always on.
+function _indSlArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = typeof _bankOpen === 'function' ? _bankOpen('savingsloan', on) : on && hr >= 9 && hr < 17;
+  const glass = open ? (night ? 'rgba(255,226,170,0.9)' : 'rgba(220,236,244,0.75)') : on ? 'rgba(40,60,80,0.7)' : '#101418';
+  L.wins.forEach(w => _indShopfront(F, w, glass, open ? ['#2a3a48', '#c8d8e0', '#3a6ab8'] : null)); L.door.forEach(w => _indWin(P, w, open ? glass : '#141a20'));
+  _civText(F, L.sign, 'CORNERSTONE S&L', on ? '#ffffff' : 'rgba(120,130,140,0.5)');
+  if (on && night) _indGlowAt(F, (L.sign[0][0] + L.sign[1][0]) / 2, L.sign[0][1], L.sign[0][2] + 0.4, 2.8, '160,200,255', 0.22);
+  { const [x0, x1, y, z0, z1] = L.atm; _indWin(P, [x0 + 0.15, x1 - 0.15, y, z0, z1], on ? `rgba(120,235,190,${(0.55 + 0.2 * Math.sin(t * 3.1)).toFixed(2)})` : '#101410'); }
+  L.kiosks.forEach(([x, y, z], i) => { const [kx, ky] = P(x, y, z); ctx.fillStyle = open ? '#a8e0f0' : '#2a3440'; ctx.fillRect(kx - 0.15 * M, ky - 0.08 * M, 0.3 * M, 0.16 * M); });
+  if (open && _indCarsReady()) { const [yIn, yOut] = L.laneY; L.lanes.forEach((x, i) => { const u = (t * 0.05 + i * 0.5) % 1, y = u < 0.25 ? yIn - 3 + u / 0.25 * 3 : u < 0.6 ? yIn : yIn + (u - 0.6) / 0.4 * (yOut - yIn + 3);
+    _indCar(F, x - 0.9, y, 90, (Math.floor(t * 0.05 + i * 0.5) + i * 3) % 7);
+    if (u >= 0.3 && u < 0.55) { const f = (u - 0.3) / 0.25, [tx, ty] = P(x - 0.4, yIn + 0.6 + Math.sin(f * Math.PI) * 0.3, 2.4 - f * 1.5); ctx.fillStyle = '#e0e8f0'; ctx.fillRect(tx - 0.05 * M, ty - 0.08 * M, 0.1 * M, 0.16 * M); } }); }
+  if (open && _indCarsReady()) [0, 1].forEach(i => _indCar(F, -4 + i * 2.6, L.lot[0], 90, i + 2));
+  ctx.restore();
+}
+// First Trust Bank: banking hours light the hall windows (tellers at the
+// counter) and the revolving door turns; the lantern and lamps by night.
+function _indBnkArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = typeof _bankOpen === 'function' ? _bankOpen('bank', on) : on && hr >= 9 && hr < 17;
+  const hall = open ? (night ? '#ffd890' : '#f0d898') : on ? 'rgba(60,50,30,0.8)' : '#120f0a';
+  L.win.forEach(([x0, x1, y, z0, z1], k) => { _indWin(P, [x0, x1, y, z0, z1 - (x1 - x0) / 2], hall); const [ax, ay] = P((x0 + x1) / 2, y, z1 - (x1 - x0) / 2);
+    ctx.fillStyle = hall; ctx.beginPath(); ctx.ellipse(ax, ay, (x1 - x0) / 2 * M, (x1 - x0) / 2 * F.TN * M, 0, Math.PI, 0); ctx.fill();
+    if (open) { const [cx, cy] = P((x0 + x1) / 2, y - 0.01, z0 + 0.5); ctx.fillStyle = '#6a4a2a'; ctx.fillRect(cx - 0.4 * M, cy - 0.06 * M, 0.8 * M, 0.08 * M);
+      ctx.fillStyle = _IND_SHIRT[(k * 3) % 8]; ctx.fillRect(cx - 0.08 * M, cy - 0.45 * M, 0.16 * M, 0.38 * M); ctx.fillStyle = _IND_SKIN[k % 6]; ctx.beginPath(); ctx.arc(cx, cy - 0.53 * M, 0.08 * M, 0, Math.PI * 2); ctx.fill(); } });
+  _indWin(P, L.transom, hall);
+  { const [x0, x1, y, z0, z1] = L.door, a = open ? (t / 1.8) * Math.PI / 2 : 0; _indWin(P, L.door, open ? 'rgba(255,220,150,0.5)' : '#14100a');
+    for (let k = 0; k < 4; k++) { const ang = a + k * Math.PI / 2, s = Math.cos(ang), [qx, qy] = P((x0 + x1) / 2 + s * (x1 - x0) / 2 * 0.9, y - 0.02, z0); const [, ty] = P(0, y, z1);
+      ctx.fillStyle = 'rgba(200,170,90,0.85)'; ctx.fillRect(qx - 0.03 * M, ty, 0.06 * M, qy - ty); } }
+  _civText(F, L.sign, 'FIRST TRUST BANK', on ? '#3a2e18' : 'rgba(40,36,28,0.7)');
+  if (on && night) { _indGlowAt(F, ...L.lantern, 1.0, '255,214,120', 0.6); L.lamps.forEach(l => _indGlowAt(F, ...l, 1.6, '255,224,160', 0.4)); }
+  if (open) { const [x0, x1, y] = L.plaza; for (let w = 0; w < 3; w++) { const u = (t / 14 + w * 0.33) % 1; _indPerson(F, x0 + (x1 - x0) * Math.abs(u * 2 - 1), y - 0.6 * w, _IND_SHIRT[(w * 3 + 2) % 8], _IND_SKIN[(w + 1) % 6], Math.abs(Math.sin(t * 7 + w)) * 0.03); } }
+  ctx.restore();
+}
+// Tech Office (GRIDTECH): open 08:00-20:00, floors glow screen-blue; after
+// hours a few late floors, the logo and the mast beacon; people on the
+// podium terrace at lunch, an EV charging in the bay.
+function _indToArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 8 && hr < 20;
+  { const [x0, x1, y, z0, fh, floors, cols] = L.floors, cw = (x1 - x0) / cols;
+    for (let f = 0; f < floors; f++) for (let c = 0; c < cols; c++) { const seed = _cmFrac(f * 13 + c * 7 + (e.col || 0)), lit = open ? seed > 0.15 : on && night && seed > 0.88;
+      if (!lit) continue; const zz = z0 + f * fh; _indWin(P, [x0 + c * cw + 0.06, x0 + (c + 1) * cw - 0.06, y, zz - fh + 0.08, zz - 0.05], open ? `rgba(150,215,255,${(0.35 + 0.25 * seed).toFixed(3)})` : 'rgba(255,224,170,0.75)'); } }
+  _civText(F, L.logo, 'GRIDTECH', on ? '#ffffff' : 'rgba(90,96,104,0.8)');
+  { const [x, y, z] = L.hex, [hx, hy] = P(x, y, z); ctx.fillStyle = on ? '#38d0ff' : '#1a2a30'; ctx.beginPath(); for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3 + Math.PI / 6; const qx = hx + Math.cos(a) * 0.2 * M, qy = hy + Math.sin(a) * 0.2 * M; k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy); } ctx.fill(); }
+  if (on && night) _indGlowAt(F, L.logo[0][0] + 1.5, L.logo[0][1], L.logo[0][2] + 0.2, 2.0, '56,208,255', 0.3);
+  if (on) { const b = Math.sin(t * 2.6) > 0; if (b) _indGlowAt(F, ...L.beacon, 0.4, '255,60,40', 0.9); }
+  _indWin(P, L.lobby, open ? (night ? '#ffe6b8' : 'rgba(223,232,238,0.85)') : on && night ? 'rgba(255,230,184,0.4)' : '#14171a');
+  L.pod.forEach(w => _indWin(P, w, open ? (night ? 'rgba(255,226,170,0.85)' : 'rgba(200,230,245,0.6)') : '#101418'));
+  if (open && hr >= 12 && hr < 14) L.terrace.forEach(([x, y, z], i) => { const [sx, sy] = P(x, y, z); [[-0.4, 3], [0.4, 6]].forEach(([dx, c]) => { const [qx] = P(x + dx, y, z); ctx.fillStyle = _IND_SHIRT[(c + i) % 8]; ctx.fillRect(qx - 0.09 * M, sy - 0.45 * M, 0.18 * M, 0.42 * M); ctx.fillStyle = _IND_SKIN[(c + i) % 6]; ctx.beginPath(); ctx.arc(qx, sy - 0.53 * M, 0.08 * M, 0, Math.PI * 2); ctx.fill(); }); });
+  if (on && _indCarsReady()) { _indCar(F, L.ev[0], L.ev[1], 90, 3); const [cx, cy] = P(...L.charger); ctx.fillStyle = `rgba(48,176,112,${(0.6 + 0.4 * Math.sin(t * 3)).toFixed(3)})`; ctx.fillRect(cx - 0.06 * M, cy - 0.06 * M, 0.12 * M, 0.12 * M); }
+  if (open) for (let w = 0; w < 2; w++) { const u = (t / 12 + w * 0.5) % 1; _indPerson(F, -5 + u * 10, L.plazaY[0] - 0.3 - w * 0.4, _IND_SHIRT[(w + 1) % 8], _IND_SKIN[(w + 3) % 6], Math.abs(Math.sin(t * 7 + w)) * 0.03); }
+  ctx.restore();
+}
+// Starlite Motor Inn: never closes. Rooms light up through the evening,
+// the office glows, the pool shimmers, the sign's star turns and its arrow
+// chases, VACANCY in neon; guests' cars fill the lot at night.
+function _indMoArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const eve = hr >= 18 || hr < 7;
+  L.rooms.forEach((w, i) => { const lit = on && eve && _cmFrac(i * 7 + Math.floor(hr)) > 0.35; if (lit) _indWin(P, w, '#ffd98a'); });
+  _indWin(P, L.office, on ? (night ? '#ffe2a0' : 'rgba(184,212,224,0.6)') : '#101418');
+  { const [x0, x1, y0, y1, z] = L.pool, [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z); ctx.fillStyle = on ? (night ? 'rgba(26,168,200,0.9)' : 'rgba(58,192,224,0.85)') : '#14303a';
+    ctx.beginPath(); ctx.roundRect(ax, ay, bx - ax, by - ay, 0.3 * M); ctx.fill(); BldWater.draw(ctx, 'rr', ax, ay, bx - ax, by - ay, t, { r: 0.3 * M, still: !on, glow: on && night ? '120,210,240' : null }); }
+  if (on) { const [x, y, z] = L.star, [sx, sy] = P(x, y, z); ctx.strokeStyle = night ? '#fff4b0' : '#f0d040'; ctx.lineWidth = 0.05 * M; ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + t * 0.3; ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(a) * 0.5 * M, sy + Math.sin(a) * 0.5 * M); } ctx.stroke(); if (night) _indGlowAt(F, x, y, z, 1.0, '255,240,160', 0.4); }
+  _civText(F, L.panel, 'MOTOR INN', on ? (night ? '#ffe9a8' : '#ffffff') : '#4a4a52');
+  { const [x0, x1, y, z] = L.arrow; for (let i = 0; i < 8; i++) { const lit = on && (Math.floor(t * 8) + i) % 3 === 0, [bx, by] = P(x0 + 0.1 + i * (x1 - x0 - 0.3) / 7 * 0.9, y, z);
+    ctx.fillStyle = lit ? '#fff4c0' : '#5a3a3a'; ctx.beginPath(); ctx.arc(bx, by, 0.06 * M, 0, Math.PI * 2); ctx.fill(); } }
+  _civText(F, L.vac, 'VACANCY', on ? `rgba(255,70,90,${(night ? 0.95 : 0.75).toFixed(2)})` : '#3a1a1c');
+  if (on && night) _indGlowAt(F, L.vac[0][0] + 0.8, L.vac[0][1], 2.6, 1.4, '255,70,90', 0.35);
+  if (_indCarsReady()) { const [x0, x1, y] = L.lot, n = !on ? 2 : eve ? 5 : 2; for (let k = 0; k < n; k++) { const slot = Math.floor(_cmFrac(k * 3.7 + 1) * 6); _indCar(F, x0 + 0.72 + slot * 1.45, y, 90, (k * 3 + 1) % 7, !on); } }
+  ctx.restore();
+}
+// Ace Auto Repair: trade hours 07:00-19:00. Bays open on a car up on the
+// lift, a hood-up job, a mechanic, sparks off the wrench in a rush; the
+// tow truck's amber light turns; shutters down and a wall-pack after hours.
+function _indArArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 7 && hr < 19, rush = open && !!e._spiking;
+  L.bays.forEach(([x0, x1, y, z0, z1], bi) => {
+    if (!open) { _indWin(P, [x0, x1, y, z0, z1], on ? '#6a6e74' : '#2a2c2e'); const [ax] = P(x0, y, 0), [bx] = P(x1, y, 0);
+      for (let k = 1; k < 10; k++) { const [, sy] = P(x0, y, z1 - (z1 - z0) * k / 10); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.fillRect(ax, sy, bx - ax, 0.03 * M); } return; }
+    _indWin(P, [x0, x1, y, z0, z1], night ? '#5a4a38' : '#6a6458');
+    const [lx] = P(x0 + 0.3, y, 0); _indWin(P, [x0 + 0.3, x1 - 0.3, y - 0.01, z1 - 0.12, z1 - 0.06], `rgba(255,250,224,${(0.75 + 0.15 * Math.sin(t * 2.4 + bi)).toFixed(3)})`);
+    if (bi === 0 || (bi === 1 && rush)) { const lift = bi === 0 ? 1.0 : 0.2, [cx, cy] = P((x0 + x1) / 2, y - 0.02, lift + 0.3), bw = (x1 - x0) * 0.7 * M;
+      ctx.fillStyle = ['#3a6ec8', '#c84a3a', '#e0c040'][bi]; ctx.beginPath(); ctx.roundRect(cx - bw / 2, cy - 0.35 * M, bw, 0.45 * M, 0.12 * M); ctx.fill(); ctx.fillStyle = '#16181c'; ctx.fillRect(cx - bw / 2 + 0.1 * M, cy + 0.05 * M, 0.25 * M, 0.12 * M); ctx.fillRect(cx + bw / 2 - 0.35 * M, cy + 0.05 * M, 0.25 * M, 0.12 * M);
+      if (bi === 0) { const [mx, my] = P((x0 + x1) / 2 + 0.3, y - 0.02, 0.05); ctx.fillStyle = '#3a5a8a'; ctx.fillRect(mx - 0.1 * M, my - 0.5 * M, 0.2 * M, 0.5 * M); if (rush && Math.sin(t * 17) > 0.3) _indGlowAt(F, (x0 + x1) / 2 + 0.3, y, 1.0, 0.3, '255,210,120', 0.8); } }
+    if (bi === 2) { const [cx, cy] = P((x0 + x1) / 2, y - 0.02, 0.35), bw = (x1 - x0) * 0.7 * M; ctx.fillStyle = '#40a060'; ctx.beginPath(); ctx.roundRect(cx - bw / 2, cy - 0.35 * M, bw, 0.4 * M, 0.12 * M); ctx.fill(); ctx.fillStyle = '#2a8a4a'; ctx.fillRect(cx - bw / 2, cy - 0.75 * M, bw * 0.5, 0.4 * M); _indPerson(F, (x0 + x1) / 2 + 0.4, y + 0.1, '#3a5a8a', _IND_SKIN[2]); } });
+  _civText(F, L.sign, 'ACE AUTO REPAIR', open ? '#fff4dc' : on ? '#c8a898' : '#4a3a34');
+  _indWin(P, L.vend, on ? 'rgba(255,230,230,0.85)' : '#1a1416'); if (on && night) _indGlowAt(F, (L.vend[0] + L.vend[1]) / 2, L.vend[2], 1.0, 0.7, '255,120,120', 0.35);
+  if (on && !open && night) _indGlowAt(F, L.wallpack[0], L.wallpack[1] - 1.0, 0.0, 2.2, '255,240,200', 0.22);
+  if (_indCarsReady()) { if (open) _indCar(F, L.custCar[0], L.custCar[1], 0, 5);
+    const tow = IndArt.get('ind_ar_tow'); if (tow) { if (!on) ctx.filter = 'brightness(0.55)'; F.draw(tow, L.towRect, L.tow[0], L.tow[1]); ctx.filter = 'none';
+      if (on && (open || night)) { const [bx, by] = P(L.tow[0] + 0.7, L.tow[1], 1.3), a = Math.sin(t * 6); _indGlowAt(F, L.tow[0] + 0.7, L.tow[1], 1.3, 0.5, '255,170,40', 0.4 + 0.5 * Math.max(0, a)); } } }
+  ctx.restore();
+}
+// City Clinic: open around the clock. Most windows lit, the lobby and
+// waiting room glowing, the bay canopy lit; now and then an ambulance in
+// the bay with its lights going.
+function _indClArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, night = DayNight.darkness() > 0.3;
+  L.wins.forEach((w, i) => _indWin(P, w, on && Math.sin(i * 2.1 + t * 0.7) > -0.55 ? `rgba(210,240,255,${(0.55 + 0.18 * Math.sin(t * 1.4 + i)).toFixed(3)})` : on ? 'rgba(120,150,170,0.35)' : '#141b21'));
+  L.lobby.forEach(w => _indWin(P, w, on ? (night ? 'rgba(255,236,200,0.9)' : 'rgba(225,240,250,0.75)') : '#141b21'));
+  L.wait.forEach(w => _indShopfront(F, w, on ? (night ? 'rgba(255,240,210,0.85)' : 'rgba(225,240,250,0.7)') : '#141b21', on ? ['#3fa5c9', '#e0e8ec', '#3fa5c9'] : null));
+  if (on && night) { _indGlowAt(F, ...L.canopy, 1.6, '230,245,255', 0.4); L.lobby.forEach(([x0, x1, y]) => _indGlowAt(F, (x0 + x1) / 2, y, 0.5, 1.0, '255,236,200', 0.35)); }
+  { const [x, y, z] = L.pole, [cx, cy] = P(x, y, z); ctx.fillStyle = on ? '#e0302a' : '#3a1a1a'; ctx.fillRect(cx - 0.04 * M, cy - 0.16 * M, 0.08 * M, 0.32 * M); ctx.fillRect(cx - 0.16 * M, cy - 0.04 * M, 0.32 * M, 0.08 * M); }
+  const amb = IndArt.get('ind_cl_amb'), inBay = on && ((t / 40) % 1) < 0.45;
+  if (amb && inBay) { F.draw(amb, L.ambRect, L.amb[0], L.amb[1]); const fl = Math.sin(t * 10) > 0; _indGlowAt(F, L.amb[0] + (fl ? -0.15 : 0.15), L.amb[1], 1.15, 0.5, fl ? '255,40,40' : '60,120,255', 0.8); }
+  ctx.restore();
+}
+// Grocery Store: open 07:00-22:00. Aisles lit behind the glass, the doors
+// part for shoppers, GROCERY on the parapet, produce out front (tarped after
+// close), the car park filling for the evening peak, the lot lamp at night.
+function _indGrArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 7 && hr < 22, rush = open && (!!e._spiking || (hr >= 17 && hr < 19));
+  const floorC = open ? (night ? '#fff2d0' : 'rgba(206,230,220,0.85)') : on ? 'rgba(90,120,100,0.55)' : '#101412';
+  L.glass.forEach(w => _indShopfront(F, w, floorC, open ? ['#e84a3a', '#f0c030', '#40a060', '#f4f0e6', '#e07030', '#7a4ab0'] : null));
+  L.door.forEach(([x0, x1, y, z0, z1]) => { _indWin(P, [x0, x1, y, z0, z1], floorC); const mid = (x0 + x1) / 2, gap = open ? 0.35 * Math.max(0, Math.sin(t * (rush ? 1.6 : 0.9))) : 0;
+    _indWin(P, [x0, mid - gap, y - 0.01, z0, z1], open ? 'rgba(180,214,200,0.35)' : 'rgba(20,26,24,0.85)'); _indWin(P, [mid + gap, x1, y - 0.01, z0, z1], open ? 'rgba(180,214,200,0.35)' : 'rgba(20,26,24,0.85)'); });
+  if (on && night && open) L.glass.forEach(([x0, x1, y]) => _indGlowAt(F, (x0 + x1) / 2, y - 0.6, 0.2, 2.4, '255,240,200', 0.22));
+  _civText(F, L.sign, 'GROCERY', on ? '#ffffff' : 'rgba(110,130,115,0.6)');
+  if (on && night) _indGlowAt(F, (L.sign[0][0] + L.sign[1][0]) / 2, L.sign[0][1], L.sign[0][2] + 0.3, 2.2, '120,240,120', 0.3);
+  const fruit = ['#e84a3a', '#f0a020', '#7ac040', '#f0d040', '#c03060'];
+  L.crates.forEach(([x, y, z], i) => { const [cx, cy] = P(x, y, z);
+    if (open) { for (let k = 0; k < 4; k++) { ctx.fillStyle = fruit[(i + k) % 5]; ctx.beginPath(); ctx.arc(cx + (k - 1.5) * 0.17 * M, cy + (k % 2) * 0.05 * M, 0.09 * M, 0, Math.PI * 2); ctx.fill(); } }
+    else { ctx.fillStyle = on ? '#3a6a8a' : '#1e2a30'; ctx.fillRect(cx - 0.42 * M, cy - 0.08 * M, 0.84 * M, 0.2 * M); } });
+  L.hvac.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * 8 + k : k, on));
+  if (_indCarsReady()) { const [x0, step, y] = L.lot, n = !on || !open ? 1 : rush ? 8 : night ? 3 : 5, used = new Set();
+    for (let k = 0; k < 24 && used.size < n; k++) { const slot = Math.floor(_cmFrac(k * 4.3 + 2) * 12); if (used.has(slot)) continue; used.add(slot); _indCar(F, x0 + 0.5 + slot * step * 0.95, y, 90, (k * 5 + 2) % 7, !on); } }
+  if (open) { const shoppers = rush ? 5 : 2; for (let i = 0; i < shoppers; i++) { const u = (t / 14 + i / shoppers) % 1, [dx0, dx1, dy] = L.door[0];
+    _indPerson(F, (dx0 + dx1) / 2 + (u - 0.5) * 8, dy - 1.0 - (i % 2) * 0.4, _IND_SHIRT[(i + 1) % 8], _IND_SKIN[(i * 2) % 6], Math.abs(Math.sin(t * 6 + i)) * 0.03); } }
+  if (on && night) { const [x, y, z] = L.lamp; _indGlowAt(F, x, y - 0.4, 0, 2.6, '255,236,190', 0.25); _indGlowAt(F, x, y, z, 0.3, '255,240,200', 0.9); }
+  ctx.restore();
+}
+// Cold Storage: round the clock. Condenser fans turning, dock lights over
+// the doors, cold mist out of the open door, the forklift shuttling
+// pallets, staff cars by the office. In an outage the fans stop.
+function _indCsArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, night = DayNight.darkness() > 0.3;
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * (9 + (k % 3)) + k : k, on));
+  _indWin(P, L.office, on ? (night ? '#ffe2a8' : 'rgba(190,214,226,0.7)') : '#101418');
+  const openDoor = on ? 1 + Math.floor(t / 20) % 2 : -1;   // door 0 has the reefer backed in
+  L.doors.forEach(([x0, x1, y, z0, z1], i) => { if (i !== openDoor) return;
+    _indWin(P, [x0 + 0.05, x1 - 0.05, y, z0, z1 * 0.85], 'rgba(30,48,60,0.9)');
+    for (let k = 0; k < 4; k++) { const p = (t * 0.3 + k / 4) % 1, [mx, my] = P((x0 + x1) / 2 + Math.sin(k * 2 + t) * 0.3, y - p * 1.2, 0.2 + p * 0.3);
+      ctx.fillStyle = `rgba(225,240,250,${(0.2 * (1 - p)).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(mx, my, (0.3 + p * 0.45) * M, (0.12 + p * 0.18) * M, 0, 0, Math.PI * 2); ctx.fill(); } });
+  L.lights.forEach(([x, y, z], i) => { const [lx, ly] = P(x, y, z), busy = on && (i === 0 || i === openDoor); ctx.fillStyle = !on ? '#2a2420' : busy ? '#ffb030' : '#5a8a40';
+    ctx.beginPath(); ctx.arc(lx, ly, 0.08 * M, 0, Math.PI * 2); ctx.fill(); if (on && night) _indGlowAt(F, x, y - 0.6, 0.2, 1.2, '255,220,160', 0.25); });
+  if (_indCarsReady()) L.staff.forEach(([x, y], k) => _indCar(F, x, y, 90, k * 3 + 1, !on));
+  if (on) { const [x0, x1, y] = L.fork, u = (t / 9) % 1, k = u < 0.5 ? u * 2 : 2 - u * 2, fx = x0 + (x1 - x0) * k, [qx, qy] = P(fx, y, 0.1);
+    ctx.fillStyle = '#e8a018'; ctx.fillRect(qx - 0.28 * M, qy - 0.3 * M, 0.56 * M, 0.3 * M); ctx.fillStyle = '#1a1a1c'; ctx.fillRect(qx - 0.12 * M, qy - 0.55 * M, 0.24 * M, 0.25 * M);
+    if (u < 0.5) { ctx.fillStyle = '#b08a50'; ctx.fillRect(qx + 0.28 * M, qy - 0.35 * M, 0.35 * M, 0.3 * M); } }
+  ctx.restore();
+}
+// Data Center: rooftop condenser fans, the lobby glow, the guard booth. In
+// an outage the gensets kick in (exhaust, amber panels), the fans slow and
+// the lobby drops to amber emergency light.
+function _indDcArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, night = DayNight.darkness() > 0.3;
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, t * (on ? 11 + (k % 4) : 4) + k, true));
+  _indWin(P, L.entrance, on ? (night ? 'rgba(170,200,255,0.9)' : 'rgba(150,180,220,0.6)') : `rgba(255,150,40,${(0.5 + 0.3 * Math.sin(t * 3)).toFixed(3)})`);
+  if (night || !on) _indGlowAt(F, (L.entrance[0] + L.entrance[1]) / 2, L.entrance[2], 0.6, 1.4, on ? '80,120,255' : '255,150,40', 0.3);
+  { const [x0, x1, y, , z1] = L.entrance; _civText(F, [[x0 - 0.2, y, z1 + 0.12], [x1 + 0.2, y, z1 + 0.12], [x0 - 0.2, y, z1 + 0.4]], 'DATA CENTER', on ? '#cfe0ff' : 'rgba(120,120,130,0.6)'); }
+  L.gens.forEach(([ex, ey, ez, gx, gy, gz], i) => { const [lx, ly] = P(gx, gy, gz); ctx.fillStyle = on ? '#40c060' : (Math.sin(t * 6 + i) > 0 ? '#ffb020' : '#5a3a10'); ctx.fillRect(lx - 0.05 * M, ly - 0.05 * M, 0.1 * M, 0.1 * M);
+    if (!on) _indSmoke(F, ex, ey, ez, t * 1.4 + i * 2, '70,68,66', 0.5, 0.45); });
+  L.xf.forEach(([x, y, z], i) => { if (on && Math.sin(t * 2 + i * 3) > 0.7) _indGlowAt(F, x, y, z, 0.25, '150,200,255', 0.5); });
+  { const [x, y, z] = L.gate; _indGlowAt(F, x, y, z, night ? 0.7 : 0.3, '255,230,170', on ? 0.45 : 0.15); }
+  ctx.restore();
+}
+// WGRD 98.7 FM: on the air round the clock. Rings off the mast, beacons
+// blinking, ON AIR in red, the presenter and level meters in the studio
+// window, the call letters glowing after dark.
+function _indRdArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, night = DayNight.darkness() > 0.3;
+  L.studio.forEach(w => { _indWin(P, w, on ? (night ? '#ffd8a0' : 'rgba(200,222,230,0.75)') : '#101418');
+    if (on) { const [x0, x1, y, z0] = w, [sx, sy] = P(x0 + (x1 - x0) * 0.35, y - 0.01, z0 + 0.1), bob = Math.sin(t * 2) * 0.02;
+      ctx.fillStyle = '#3a3e44'; ctx.fillRect(sx - 0.5 * M, sy - 0.25 * M, 1.6 * M, 0.08 * M);
+      ctx.fillStyle = _IND_SHIRT[4]; ctx.fillRect(sx - 0.1 * M, sy - (0.65 + bob) * M, 0.2 * M, 0.4 * M); ctx.fillStyle = _IND_SKIN[2]; ctx.beginPath(); ctx.arc(sx, sy - (0.74 + bob) * M, 0.08 * M, 0, Math.PI * 2); ctx.fill();
+      for (let k = 0; k < 6; k++) { const lv = 0.5 + 0.5 * Math.abs(Math.sin(t * 7 + k * 1.3)), [mx, my] = P(x0 + (x1 - x0) * (0.62 + k * 0.05), y - 0.01, z0 + 0.2);
+        ctx.fillStyle = k > 3 ? '#ff5040' : '#50e080'; ctx.fillRect(mx, my - lv * 0.4 * M, 0.06 * M, lv * 0.4 * M); } } });
+  L.door.forEach(w => _indWin(P, w, on && night ? '#ffe2b0' : '#1e2a2c'));
+  _civText(F, L.band, 'WGRD 98.7', !on ? '#3c3432' : night ? '#ffa040' : '#f4f0e6');
+  if (on && night) _indGlowAt(F, (L.band[0][0] + L.band[1][0]) / 2, L.band[0][1], L.band[0][2] + 0.2, 2.4, '255,150,60', 0.25);
+  _civText(F, L.onair, 'ON AIR', on ? `rgba(255,50,40,${(0.8 + 0.2 * Math.sin(t * 4)).toFixed(3)})` : '#3a1a1a');
+  if (on && night) _indGlowAt(F, L.onair[0][0] + 0.4, L.onair[0][1], 2.3, 0.8, '255,60,50', 0.4);
+  { const [x, y, z] = L.mast, bl = on && Math.sin(t * 3) > 0, [bx, by] = P(x, y, z);
+    ctx.fillStyle = bl ? '#ff3a2a' : '#5a1a14'; ctx.beginPath(); ctx.arc(bx, by, 0.12 * M, 0, Math.PI * 2); ctx.fill(); if (bl) _indGlowAt(F, x, y, z, night ? 1.2 : 0.6, '255,60,40', 0.7);
+    L.lights.forEach(([lx, ly, lz]) => { const [qx, qy] = P(lx, ly, lz); ctx.fillStyle = on ? '#ff5040' : '#3a2020'; ctx.beginPath(); ctx.arc(qx, qy, 0.07 * M, 0, Math.PI * 2); ctx.fill(); if (on && night) _indGlowAt(F, lx, ly, lz, 0.5, '255,70,50', 0.45); });
+    if (on) { ctx.save(); if (night) ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 0.05 * M;
+      for (let k = 0; k < 4; k++) { const q = (t * 0.4 + k / 4) % 1, r = (0.4 + q * 3.2) * M; ctx.strokeStyle = `rgba(255,${night ? 170 : 120},60,${((night ? 0.75 : 0.55) * (1 - q)).toFixed(2)})`;
+        ctx.beginPath(); ctx.arc(bx, by, r, -0.75, 0.75); ctx.stroke(); ctx.beginPath(); ctx.arc(bx, by, r, Math.PI - 0.75, Math.PI + 0.75); ctx.stroke(); }
+      ctx.restore(); } }
+  if (on && Camera.zoom > 0.45) { const [x, y, z] = L.notes; ctx.font = `bold ${(0.4 * M).toFixed(1)}px Arial`;
+    for (let k = 0; k < 3; k++) { const p = (t * 0.25 + k / 3) % 1, [nx, ny] = P(x + Math.sin(p * 6 + k) * 0.4, y, z + p * 1.6);
+      ctx.fillStyle = `rgba(255,${night ? 220 : 140},80,${(1 - p).toFixed(3)})`; ctx.fillText(k % 2 ? '♪' : '♫', nx, ny); } }
+  ctx.restore();
+}
+// The Morning Ledger: the newsroom works 07:00-22:00, the presses run
+// 22:00-04:00 behind the arched windows, the vans load 02:00-06:00 and the
+// dawn bundles sit by the door till 09:00. The tower clock keeps game time,
+// the ticker scrolls the headlines, the flag flies.
+function _indNwArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const press = on && (hr >= 22 || hr < 4), vans = on && hr >= 2 && hr < 6, desks = on && hr >= 7 && hr < 22;
+  L.up.forEach((w, i) => { const k = _cmFrac(i * 3 + (e.col || 0)), lit = on && (desks ? (night || k > 0.25) : night && k > 0.72);
+    _indWin(P, w, lit ? (night ? '#ffe2a0' : '#e8f0d8') : on ? 'rgba(94,138,168,0.35)' : '#16181c');
+    if (lit && k > 0.5 && Camera.zoom > 0.45) { const [x0, x1, y, z0] = w; _indPerson(F, (x0 + x1) / 2, y + 0.05, _IND_SHIRT[(i + 2) % 8], _IND_SKIN[i % 6]); } });
+  const INK = ['#22b8d8', '#e0409a', '#f2d030', '#2a2a30'];
+  L.press.forEach(([x0, x1, y, z0, z1], wi) => {
+    _indWin(P, [x0, x1, y, z0, z1], press ? '#4a3620' : on ? (night ? 'rgba(21,19,27,0.85)' : 'rgba(44,46,56,0.6)') : '#101012');
+    if (!on) return;
+    for (let i = 0; i < 3; i++) { const tx = x0 + (x1 - x0) * (0.12 + i * 0.3), [ax, ay] = P(tx, y, z0 + 2.6), [bx, by] = P(tx + (x1 - x0) * 0.2, y, z0 + 0.1);
+      ctx.fillStyle = press ? '#3f7466' : '#2c3a44'; ctx.fillRect(ax, ay, bx - ax, by - ay); ctx.fillStyle = INK[(i + wi) % 4]; ctx.fillRect(ax, ay, bx - ax, 0.12 * M); }
+    { const [ax, ay] = P(x0, y, z0 + 1.2), [bx] = P(x1, y, z0 + 1.2); ctx.fillStyle = press ? '#fbf8ee' : '#8a887e'; ctx.fillRect(ax, ay, bx - ax, 0.1 * M);
+      if (press) for (let k = 0; k < 7; k++) { const [cx] = P(x0 + ((t * 2.2 + k * 0.7) % (x1 - x0)), y, 0); ctx.fillStyle = '#55555c'; ctx.fillRect(cx, ay + 0.02 * M, 0.15 * M, 0.06 * M); } }
+    if (press) { _indGlowAt(F, (x0 + x1) / 2, y, (z0 + z1) / 2, 2.6, '255,200,120', night ? 0.35 : 0.2);
+      for (let c = 0; c < 6; c++) { const [cx, cy] = P(x0 + ((t * 1.1 + c * 0.8) % (x1 - x0)), y, z1 - 0.6); ctx.fillStyle = '#f8f4e8'; ctx.fillRect(cx, cy, 0.3 * M, 0.15 * M); } } });
+  // the ticker: headlines scrolling right to left
+  { const [x0, x1, y, z0, z1] = L.ticker, [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+    ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, bx - ax, by - ay); ctx.clip();
+    if (on) { const HEAD = ['GRID HOLDS THROUGH THE STORM', 'COUNCIL BACKS NEW SUBSTATION', 'LIGHTS ON: CITY GROWS AGAIN', 'RECORD DEMAND, NO BLACKOUTS'], h = HEAD[Math.floor(t / 18) % 4];
+      ctx.font = `bold ${((by - ay) * 0.62).toFixed(1)}px Courier New`; ctx.textBaseline = 'middle'; ctx.fillStyle = night ? '#ffb040' : '#ff9a20';
+      const w = ctx.measureText(h).width, off = ((t * 1.6 * M) % (w + (bx - ax))); ctx.fillText(h, bx - off, (ay + by) / 2); ctx.textBaseline = 'alphabetic'; }
+    ctx.restore(); }
+  _indWin(P, L.door[0], on ? (night ? '#f6dca0' : 'rgba(60,76,92,0.8)') : '#141418');
+  // the tower clock on game time; the flag
+  { const [x, y, z, r] = L.clock, [cx, cy] = P(x, y, z), ha = (hr % 12) / 12 * Math.PI * 2 - Math.PI / 2, ma = (hr % 1) * Math.PI * 2 - Math.PI / 2;
+    if (on && night) { ctx.fillStyle = 'rgba(255,242,200,0.9)'; ctx.beginPath(); ctx.ellipse(cx, cy, r * 0.95 * M, r * 0.95 * M * 0.98, 0, 0, Math.PI * 2); ctx.fill(); _indGlowAt(F, x, y, z, 1.8, '255,236,180', 0.35); }
+    ctx.strokeStyle = '#2a1c14'; ctx.lineCap = 'round';
+    ctx.lineWidth = 0.12 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ha) * r * 0.5 * M, cy + Math.sin(ha) * r * 0.5 * M); ctx.stroke();
+    ctx.lineWidth = 0.07 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ma) * r * 0.8 * M, cy + Math.sin(ma) * r * 0.8 * M); ctx.stroke(); ctx.lineCap = 'butt';
+    const [fx, fy] = P(...L.flag), fw = Math.sin(t * 3) * 0.12; ctx.fillStyle = on ? '#c8382a' : '#5a2420';
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + 0.9 * M, fy + (0.1 + fw) * M); ctx.lineTo(fx + 0.9 * M, fy + (0.6 + fw) * M); ctx.lineTo(fx, fy + 0.5 * M); ctx.closePath(); ctx.fill(); }
+  _civText(F, [[L.ticker[0], L.ticker[2], L.ticker[4] + 0.5], [L.ticker[1], L.ticker[2], L.ticker[4] + 0.5], [L.ticker[0], L.ticker[2], L.ticker[4] + 1.2]], 'THE LEDGER', on ? (night ? '#ffe9b8' : '#f8f2e2') : '#4a4440');
+  // dispatch: the door up, bundles inside, the loader walking them to the van
+  { const [x0, x1, y, z0, z1] = L.dispatch;
+    if (vans) { _indWin(P, [x0, x1, y, z0, z1 * 0.95], '#f0d9a4'); for (let b = 0; b < 6; b++) { const [bx, by] = P(x0 + 0.4 + (b % 3) * 0.7, y, 0.3 + Math.floor(b / 3) * 0.5); ctx.fillStyle = '#f6f2e6'; ctx.fillRect(bx, by - 0.4 * M, 0.55 * M, 0.4 * M); ctx.fillStyle = '#b04030'; ctx.fillRect(bx, by - 0.22 * M, 0.55 * M, 0.05 * M); }
+      const u = (t / 6) % 1, back = u > 0.5, q = back ? (1 - u) * 2 : u * 2; _indPerson(F, L.van[0] - 1.2 + q * 0.2, y - 0.3 - q * 1.2, '#4a6a9a', _IND_SKIN[2]); }
+    if (on && night) _indGlowAt(F, (x0 + x1) / 2, y - 0.8, 0.2, 2.0, '255,230,170', vans ? 0.4 : 0.15); }
+  if (on && hr >= 4 && hr < 9) { const [bx0, by] = L.bundles; for (let b = 0; b < 3; b++) { const [sx, sy] = P(bx0 + b * 0.9, by, 0.1); ctx.fillStyle = '#f6f2e6'; ctx.fillRect(sx, sy - (0.45 + (b % 2) * 0.4) * M, 0.75 * M, (0.45 + (b % 2) * 0.4) * M); ctx.fillStyle = '#b04030'; ctx.fillRect(sx, sy - 0.25 * M, 0.75 * M, 0.06 * M); } }
+  if (press) { const [x, y, z] = L.stack; _indSmoke(F, x, y, z, t, '232,232,236', 0.45, 0.8); }
+  L.vents.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * 6 + k : k, on));
+  if (desks && Camera.zoom > 0.45) for (let i = 0; i < 4; i++) { const u = (t * 0.02 + i / 4) % 1; _indPerson(F, i % 2 ? -11 + u * 22 : 11 - u * 22, -9.2 - (i % 2) * 0.3, _IND_SHIRT[(i * 3) % 8], _IND_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); }
+  if (on && night) L.lamps.forEach(([x, y, z]) => { _indGlowAt(F, x, y - 0.3, 0, 2.6, '255,236,190', 0.25); _indGlowAt(F, x, y, z, 0.3, '255,240,200', 0.9); });
+  ctx.restore();
+}
+// Frostline Ice Rink: open 10:00-22:00. Skaters circle the ice behind the
+// glass, the floodlights over the rink, FROSTLINE in neon on the vault,
+// the resurfacer out between sessions; the chiller fans work harder (and
+// the icicles drip) on hot days, and the board shows the temperature.
+function _indIrArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && hr >= 10 && hr < 22;
+  const temp = typeof WeatherEventSystem !== 'undefined' ? WeatherEventSystem.getTemperature() : 18;
+  const hot = typeof DemandCurves !== 'undefined' && DemandCurves.rinkHeat ? DemandCurves.rinkHeat() : 0;
+  { const [x0, x1, y, z0, z1] = L.rink, [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+    ctx.fillStyle = open ? '#b4d4e6' : on ? '#17222e' : '#0f1114'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    ctx.fillStyle = open ? '#33485e' : '#141b24'; ctx.fillRect(ax, ay + (by - ay) * 0.12, bx - ax, (by - ay) * 0.14);   // the stands
+    if (open) for (let i = 0; i < 6; i++) { ctx.fillStyle = '#ffffff'; ctx.fillRect(ax + (bx - ax) * (0.06 + i * 0.16), ay + 0.05 * M, (bx - ax) * 0.08, 0.06 * M); }
+    { const cols = ['#e8483a', '#2a78b8', '#f0c030', '#40b060', '#d060c0', '#ff8a30', '#30b0b0']; ctx.fillStyle = on ? '#f4f6f8' : '#3a3c40'; ctx.fillRect(ax + (bx - ax) * 0.2, ay + (by - ay) * 0.28, (bx - ax) * 0.6, 0.1 * M);
+      if (on) cols.forEach((c, a) => { ctx.fillStyle = c; ctx.fillRect(ax + (bx - ax) * (0.21 + a * 0.085), ay + (by - ay) * 0.285, (bx - ax) * 0.06, 0.06 * M); }); }
+    ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, bx - ax, by - ay); ctx.clip();
+    if (open) { const resurf = (t / 60) % 1 > 0.85;
+      if (resurf) { const u = ((t / 60) % 1 - 0.85) / 0.15, zx = x0 + 0.6 + u * (x1 - x0 - 1.2), [zx_, zy_] = P(zx, y + 0.2, z0 + 0.2);
+        ctx.fillStyle = 'rgba(255,255,255,0.4)'; ctx.fillRect(ax, zy_ - 0.05 * M, zx_ - ax, 0.12 * M); ctx.fillStyle = '#2a78b8'; ctx.beginPath(); ctx.roundRect(zx_ - 0.45 * M, zy_ - 0.5 * M, 0.9 * M, 0.5 * M, 0.08 * M); ctx.fill(); ctx.fillStyle = '#f4f6f8'; ctx.fillRect(zx_ - 0.45 * M, zy_ - 0.2 * M, 0.9 * M, 0.08 * M); }
+      else { const n = night ? 12 : 8; for (let k = 0; k < n; k++) { const a = t * 0.5 * (k % 3 === 0 ? 1.3 : 1) + k * Math.PI * 2 / n, sx = (x0 + x1) / 2 + Math.cos(a) * (x1 - x0) * 0.38, dz = 0.35 + 0.3 * (1 + Math.sin(a)) / 2;
+        _indPerson(F, sx, y + 0.1 + (1 - Math.sin(a)) * 0.05, _IND_SHIRT[k % 8], _IND_SKIN[k % 6], dz - 0.3 + Math.abs(Math.sin(t * 4 + k)) * 0.03); } } }
+    ctx.restore();
+    for (let m = 0; m <= 6; m++) { const [mx] = P(x0 + m * (x1 - x0) / 6, y, 0); ctx.fillStyle = on && night ? '#5a6676' : '#f4f7f9'; ctx.fillRect(mx - 0.06 * M, ay, 0.12 * M, by - ay); }
+    if (open && night) _indGlowAt(F, (x0 + x1) / 2, y - 0.8, 0.4, 5.0, '200,230,255', 0.25); }
+  _civText(F, L.sign, 'FROSTLINE', on ? (night ? `rgba(120,220,255,${(0.85 + 0.15 * Math.sin(t * 2)).toFixed(3)})` : '#bfefff') : '#2a3a44');
+  if (on && night) _indGlowAt(F, (L.sign[0][0] + L.sign[1][0]) / 2, L.sign[0][1], L.sign[0][2] + 0.4, 3.0, '100,210,255', 0.35);
+  L.hire.forEach(w => _indWin(P, w, on ? (night ? '#ffe6b0' : '#cfe4f0') : '#16181c'));
+  _civText(F, L.hireSign, 'SKATE HIRE', on ? '#bfefff' : '#3a4650');
+  L.door.forEach(w => _indWin(P, w, on ? (night ? '#ffe6b0' : 'rgba(168,212,232,0.85)') : '#121418'));
+  // icicles along the eave, shorter and dripping when it's hot
+  if (Camera.zoom > 0.4) { const [x0, x1, y, z] = L.eave; for (let i = 0; i < 40; i++) { const ix = x0 + 0.3 + i * (x1 - x0 - 0.6) / 39, len = (0.15 + _cmFrac(i * 3 + 1) * 0.35) * (1 - hot * 0.7), [qx, qy] = P(ix, y, z), [, ry] = P(ix, y, z - len);
+    ctx.fillStyle = 'rgba(210,240,255,0.85)'; ctx.beginPath(); ctx.moveTo(qx - 0.05 * M, qy); ctx.lineTo(qx + 0.05 * M, qy); ctx.lineTo(qx, ry); ctx.closePath(); ctx.fill();
+    if (hot > 0.05 && i % 3 === 0) { const q = (t * 0.9 + _cmFrac(i)) % 1, [, dy] = P(ix, y, (z - len) * (1 - q * q)); ctx.fillStyle = `rgba(170,220,255,${(0.9 * (1 - q)).toFixed(2)})`; ctx.fillRect(qx - 0.02 * M, dy, 0.04 * M, 0.06 * M); } } }
+  // chiller: fans and plumes harder in the heat; status LEDs; the board
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * (4 + hot * 20) + k : 0.4 + k, on));
+  if (on) L.plume.forEach(([x, y, z], u) => { _indSmoke(F, x, y, z, t * (1 + hot) + u * 2.3, '236,246,252', 0.22 + hot * 0.3, 0.55 + hot * 0.3); });
+  { const [x0, x1, y, z0, z1] = L.temp, col = !on ? '#3a4046' : temp < 22 ? '#7fe0ff' : temp < 30 ? '#ffc050' : '#ff5a40';
+    _indWin(P, [x0 + 0.05, x1 - 0.05, y, z0 + 0.05, z1 - 0.05], on ? '#14242e' : '#141618');
+    _civText(F, [[x0 + 0.15, y - 0.01, z0 + 0.35], [x1 - 0.15, y - 0.01, z0 + 0.35], [x0 + 0.15, y - 0.01, z1 - 0.15]], on ? `${Math.round(temp)}°` : '--', col);
+    if (on) { const [ax, ay] = P(x0 + 0.15, y - 0.01, z0 + 0.2), [bx] = P(x1 - 0.15, y, 0); ctx.fillStyle = col; ctx.fillRect(ax, ay, (bx - ax) * Math.max(0.05, Math.min(1, temp / 40)), 0.08 * M); } }
+  if (open && Camera.zoom > 0.45) for (let i = 0; i < 5; i++) { const u = (t * 0.025 + i / 5) % 1; _indPerson(F, i % 2 ? -10.5 + u * 21 : 10.5 - u * 21, -6.4 - (i % 2) * 0.3, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); }
+  ctx.restore();
+}
+// A lit round-headed window: the rect [x0, x1, y, z0, z1] and its arch.
+function _indArchWin(P, [x0, x1, y, z0, z1], col, M) {
+  _indWin(P, [x0, x1, y, z0, z1], col);
+  const [cx, cy] = P((x0 + x1) / 2, y, z1), r = (x1 - x0) / 2 * M;
+  ctx.fillStyle = col; ctx.beginPath(); ctx.ellipse(cx, cy, r, r * Math.tan(Math.PI / 6) + 0.001, 0, Math.PI, 0); ctx.fill();
+}
+// Is room i lit? Guests come and go every few minutes; most rooms dark by
+// day, most lit in the evening, a few night owls after midnight.
+function _indRoomLit(e, i, t, on, hr) {
+  if (!on) return false;
+  const f = _cmFrac(i * 31 + (e.col || 0) * 7 + Math.floor(t / 9 + _cmFrac(i) * 3));
+  return hr >= 17 && hr < 24 ? f > 0.3 : hr < 6 ? f > 0.8 : DayNight.darkness() > 0.3 ? f > 0.5 : f > 0.88;
+}
+// The Harbourside: rooms light up through the evening, the lobby bar glows,
+// the canopy's gold name, a doorman and luggage cart, a taxi pulling up
+// 17:00-23:00, and the rooftop bar busy under festoon lights 17:00-01:00.
+function _indHbArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  L.rooms.forEach((w, i) => { if (_indRoomLit(e, i, t, on, hr)) { _indArchWin(P, w, '#ffd98a', M); if (night) _indGlowAt(F, (w[0] + w[1]) / 2, w[2], (w[3] + w[4]) / 2, 0.9, '255,214,140', 0.2); } });
+  L.lobby.forEach(w => _indWin(P, w, on ? (night ? '#ffd890' : 'rgba(168,196,208,0.85)') : '#101418'));
+  _indWin(P, L.door[0], on ? (night ? '#ffe2a8' : 'rgba(200,220,228,0.85)') : '#101418');
+  if (on && night) _indGlowAt(F, 0, L.door[0][2] - 0.6, 1.2, 3.2, '255,214,140', 0.3);
+  _civText(F, L.canopy, 'THE HARBOURSIDE', on ? '#e8c868' : '#4a4020');
+  { const [x, y, z] = L.ghost; ctx.save(); const [gx, gy] = P(x, y, z); ctx.translate(gx, gy); ctx.rotate(-Math.PI / 2); ctx.font = `bold ${(0.55 * M).toFixed(1)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(160,60,40,0.55)'; ctx.fillText('HARBOUR STORES', 0, 0); ctx.restore(); }
+  if (on) { const [dx, dy] = L.door2; _indPerson(F, dx, dy, '#1a3a2a', _IND_SKIN[3]);
+    const [cx, cy] = P(dx + 2.6, dy, 0.1); ctx.fillStyle = '#c8a840'; ctx.fillRect(cx, cy - 0.5 * M, 0.6 * M, 0.06 * M); ctx.fillRect(cx, cy - 0.5 * M, 0.05 * M, 0.5 * M); ctx.fillRect(cx + 0.55 * M, cy - 0.5 * M, 0.05 * M, 0.5 * M);
+    ctx.fillStyle = '#3a5a8a'; ctx.fillRect(cx + 0.08 * M, cy - 0.35 * M, 0.25 * M, 0.3 * M); ctx.fillStyle = '#8a3a3a'; ctx.fillRect(cx + 0.34 * M, cy - 0.28 * M, 0.18 * M, 0.23 * M); }
+  if (on && hr >= 17 && hr < 23 && _indCarsReady()) { const [x0, x1, y] = L.taxi, u = (t * 0.04) % 1, x = u < 0.4 ? x1 - u / 0.4 * (x1 - 0.5) : u < 0.8 ? 0.5 : 0.5 - (u - 0.8) / 0.2 * (0.5 - x0); _indCar(F, x, y, 180, 5); }
+  // the rooftop bar
+  const barBusy = on && (hr >= 17 || hr < 1);
+  if (on) L.festoon.forEach(([x0, x1, y, z], s) => { for (let i = 0; i <= 8; i++) { const f = i / 8, [bx, by] = P(x0 + f * (x1 - x0), y, z - Math.sin(f * Math.PI) * 0.4);
+    ctx.fillStyle = night ? ((i + s) % 2 ? '#ffe9a8' : '#fff6d8') : '#d8c890'; ctx.beginPath(); ctx.arc(bx, by, 0.07 * M, 0, Math.PI * 2); ctx.fill(); }
+    if (night) _indGlowAt(F, (x0 + x1) / 2, y, z - 0.3, 1.8, '255,224,150', 0.22); });
+  if (barBusy) { const [x0, x1, y, z] = L.deck; for (let i = 0; i < 7; i++) { const [bx, by] = P(x0 + (i + 0.5) * (x1 - x0) / 7 + Math.sin(t * 0.5 + i) * 0.15, y + (i % 3) * 0.6, z);
+    ctx.fillStyle = _IND_SHIRT[i % 8]; ctx.fillRect(bx - 0.1 * M, by - 0.46 * M, 0.2 * M, 0.42 * M); ctx.fillStyle = _IND_SKIN[i % 6]; ctx.beginPath(); ctx.arc(bx, by - 0.55 * M, 0.08 * M, 0, Math.PI * 2); ctx.fill(); }
+    const [x, y2, z2] = [(L.bar[0] + L.bar[1]) / 2, L.bar[2], L.bar[3]]; _indGlowAt(F, x, y2, z2 + 0.6, 1.2, '255,180,90', night ? 0.35 : 0.1); }
+  ctx.restore();
+}
+// Grand Hotel: rooms light through the evening, the podium arches glow,
+// HOTEL flickers down the blade sign, floodlights wash the crown after dark,
+// string lights on the terrace, the beacon blinks, flags fly and a black
+// car runs the drive loop under the porte-cochere.
+function _indGhArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  if (SplitPhase.wantStatic()) { F.draw(base, L.rect); if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect)); }
+  if (!SplitPhase.wantOver()) return;
+  ctx.save();
+  const hr = DayNight.hour(), dark = DayNight.darkness(), night = dark > 0.35;
+  L.tw.forEach((w, i) => { if (_indRoomLit(e, i, t, on, hr)) _indWin(P, w, i % 7 === 3 ? '#ffb880' : '#ffd890'); });
+  L.set.forEach((w, i) => { if (_indRoomLit(e, i + 80, t, on, hr)) _indWin(P, w, '#ffd890'); });
+  L.arches.forEach(w => _indArchWin(P, w, on && (night || dark > 0.15) ? 'rgba(255,214,150,0.9)' : on ? 'rgba(106,136,168,0.5)' : '#16181c', M));
+  _indWin(P, L.door[0], on ? 'rgba(255,220,160,0.85)' : '#2a2a30');
+  if (on && night) L.arches.forEach(([x0, x1, y]) => _indGlowAt(F, (x0 + x1) / 2, y - 0.4, 0.5, 1.2, '255,214,150', 0.2));
+  _civText(F, L.canopy, 'GRAND HOTEL', on ? (night ? '#ffe6a0' : '#e8c868') : '#4a4020');
+  { const [x, y, z0, z1] = L.blade, letters = 'HOTEL'; ctx.font = `bold ${(0.95 * M).toFixed(1)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < 5; i++) { const flick = on && (night || dark > 0.1) ? (Math.sin(t * 7 + i * 1.3) > -0.92 ? 1 : 0.3) : 0.35, [lx, ly] = P(x, y, z1 - (i + 0.5) * (z1 - z0) / 5);
+      ctx.fillStyle = on ? `rgba(255,${120 + i * 10},90,${flick})` : '#5a4a40'; if (on && flick === 1 && night) { ctx.shadowColor = '#ff6040'; ctx.shadowBlur = 0.4 * M; } ctx.fillText(letters[i], lx, ly); ctx.shadowBlur = 0; }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; if (on && night) _indGlowAt(F, x, y, (z0 + z1) / 2, 2.0, '255,110,80', 0.25); }
+  if (on && night) { L.crown.forEach(([x, y, z]) => { const [ax, ay] = P(x, y, z), [bx, by] = P(x * 1.6, y, z + 6); const g = ctx.createLinearGradient(ax, ay, bx, by); g.addColorStop(0, 'rgba(255,220,150,0.45)'); g.addColorStop(1, 'rgba(255,220,150,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(ax - 0.1 * M, ay); ctx.lineTo(ax + 0.1 * M, ay); ctx.lineTo(bx + (x < 0 ? -0.4 : 0.4) * M, by); ctx.lineTo(bx - (x < 0 ? -0.4 : 0.4) * M, by); ctx.closePath(); ctx.fill(); });
+    const [x0, x1, y, z] = L.terrace; for (let k = 0; k < 14; k++) { const [lx, ly] = P(x0 + (x1 - x0) * k / 13, y, z + 0.4); ctx.fillStyle = `rgba(255,220,150,${(0.6 + 0.4 * Math.sin(t * 4 + k)).toFixed(3)})`; ctx.beginPath(); ctx.arc(lx, ly, 0.07 * M, 0, Math.PI * 2); ctx.fill(); } }
+  { const [x, y, z] = L.beacon, bl = Math.sin(t * 3) > 0.2, [bx, by] = P(x, y, z); ctx.fillStyle = bl && on ? '#ff3020' : '#501810'; ctx.beginPath(); ctx.arc(bx, by, 0.15 * M, 0, Math.PI * 2); ctx.fill(); if (bl && on) _indGlowAt(F, x, y, z, 0.6, '255,60,40', 0.5); }
+  L.flags.forEach(([x, y, z], i) => { const [fx, fy] = P(x, y, z), w = Math.sin(t * 3 + i) * 0.1; ctx.fillStyle = i ? '#b02030' : '#1a3a8a';
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(fx + (i ? -0.5 : 0.5) * M, fy + (0.1 + w) * M, fx + (i ? -1.0 : 1.0) * M, fy + (0.2 + w) * M); ctx.lineTo(fx, fy + 0.6 * M); ctx.closePath(); ctx.fill(); });
+  if (_indCarsReady()) { const [cx, cy, rx, ry] = L.loop, a = -t * 0.75, deg = Math.atan2(-Math.cos(a) * ry, Math.sin(a) * rx) * 180 / Math.PI; _indCar(F, cx + Math.cos(a) * rx, cy + Math.sin(a) * ry, deg, 4, !on); }
+  if (on) { _indPerson(F, -0.6, L.door[0][2] - 0.6, '#7a1a20', _IND_SKIN[1]); if (night) _indGlowAt(F, 0, L.canopy[0][1], 2.9, 2.6, '255,220,160', 0.3); }
+  ctx.restore();
+}
+// Trading hours from DemandCurves where it has them, else 09:00-21:00.
+function _indShopOpen(sub, on) {
+  if (!on) return false;
+  if (typeof _bankOpen === 'function') return _bankOpen(sub, on);
+  const hr = DayNight.hour(); return hr >= 9 && hr < 21;
+}
+// Shoppers' cars in a row of stalls: fuller when open, a few after hours.
+function _indLotCars(F, e, stalls, y, open, on, night, seed = 0) {
+  if (!_indCarsReady()) return;
+  stalls.forEach((x, i) => { if (_cmFrac(i * 7.3 + seed + (e.col || 0)) < (open ? 0.7 : night ? 0.1 : 0.2)) _indCar(F, x, y, 90, (i * 3 + seed) % 7, !on); });
+}
+// Shopping Mall: STYLE and SALE in neon on the anchors, mannequins in the
+// display windows, eight shop units lit in their own colours, the atrium
+// glowing with fairy lights after dark, the fountain playing, the car park
+// filling through the day.
+function _indMlArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, night = DayNight.darkness() > 0.3, open = _indShopOpen('mall', on), lit = on && (open || night);
+  const HUES = ['#ffcf60', '#7ae0a0', '#ff8a70', '#a0b8ff', '#ffa0e0', '#80e8e8', '#e0e070', '#ffb080'];
+  L.shops.forEach((w, i) => _indShopfront(F, w, open ? HUES[i % 8] : on ? 'rgba(60,70,90,0.6)' : '#101216', open ? ['#f4f0e6', '#3a3a40', '#e84a5a', '#3a7ac8'] : null));
+  L.display.forEach((w, i) => { _indWin(P, w, open ? (night ? '#fff0d0' : '#f4f6f8') : on ? 'rgba(70,80,100,0.6)' : '#101216');
+    if (open && Camera.zoom > 0.45) { const [x0, x1, y, z0] = w; for (let m = 0; m < 2; m++) _indPerson(F, x0 + (m + 0.5) * (x1 - x0) / 2, y + 0.05, ['#e84a8a', '#2a6ac8', '#f0c030', '#303438'][(i + m) % 4], '#e8e0d8'); } });
+  L.adoor.forEach(w => _indWin(P, w, open ? 'rgba(255,236,200,0.9)' : '#1a1c22'));
+  [['STYLE', '#ff5aa8', '255,90,168'], ['SALE', '#4a9aff', '74,154,255']].forEach(([txt, col, rgb], i) => { _civText(F, L.anchors[i], txt, lit ? (night ? col : '#ffffff') : '#3a3a40'); if (lit && night) _indGlowAt(F, (L.anchors[i][0][0] + L.anchors[i][1][0]) / 2, L.anchors[i][0][1], 6.4, 2.6, rgb, 0.35); });
+  { const [x0, x1, y, z0, z1] = L.atrium; _indWin(P, [x0, x1, y, z0, z1], lit ? 'rgba(255,230,180,0.55)' : on ? 'rgba(120,170,200,0.25)' : 'rgba(10,12,16,0.6)');
+    if (lit && night) { for (let k = 0; k < 16; k++) { const [fx, fy] = P(x0 + (x1 - x0) * k / 15, y, z1 + 0.2 + Math.sin(k / 15 * Math.PI) * 1.2); ctx.fillStyle = `rgba(255,230,160,${(0.6 + 0.4 * Math.sin(t * 3 + k)).toFixed(3)})`; ctx.beginPath(); ctx.arc(fx, fy, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
+      _indGlowAt(F, 0, y, 4.5, 4.0, '255,214,150', 0.25); } }
+  _indWin(P, L.door[0], open ? 'rgba(255,240,200,0.95)' : '#4a5462');
+  _civText(F, L.plate, 'SHOPPING MALL', lit ? '#e8d8ff' : '#4a4650');
+  { const [x, y, z] = L.fountain, [cx, cy] = P(x, y, z); if (on) for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + t * 0.3, h = 0.5 + 0.2 * Math.sin(t * 2 + k), [tx, ty] = P(x + Math.cos(a) * 0.35, y + Math.sin(a) * 0.2, z + h);
+    ctx.strokeStyle = night ? 'rgba(180,220,255,0.7)' : 'rgba(230,245,255,0.75)'; ctx.lineWidth = 0.04 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.quadraticCurveTo(cx, ty - 0.1 * M, tx, ty + 0.15 * M); ctx.stroke(); } }
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * 7 + k : k, on));
+  _indLotCars(F, e, L.stalls, L.lotY, open, on, night, 1);
+  if (open && Camera.zoom > 0.45) for (let i = 0; i < 6; i++) { const u = (t * 0.03 + i / 6) % 1; _indPerson(F, i % 2 ? -9 + u * 18 : 9 - u * 18, L.fountain[1] - 0.3 + (i % 3) * 0.25, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); }
+  if (on && night) L.lamps.forEach(([x, y, z]) => { _indGlowAt(F, x, y, 0, 2.6, '255,236,190', 0.25); _indGlowAt(F, x, y, z, 0.3, '255,240,200', 0.9); });
+  ctx.restore();
+}
+// Aurora Galleria: the aurora rolls along the floor-edge LED ribbons
+// (green, teal, violet), the shops glow through the glass, the video
+// billboard cycles its ads, AURORA lights up on the roof truss after dark,
+// the dome glows, and the reflecting pool doubles the colours.
+function _indGlArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, night = DayNight.darkness() > 0.3, open = _indShopOpen('galleria', on), lit = on && (open || night);
+  const aurora = (x, a) => { const w = 0.5 + 0.5 * Math.sin(x * 0.4 - t * 0.7), w2 = 0.5 + 0.5 * Math.sin(x * 0.15 + t * 0.31); return `hsla(${(140 + w * 70 + w2 * 60).toFixed(0)},90%,60%,${a})`; };
+  const TINT = ['255,214,150', '255,190,200', '190,230,255', '210,255,200', '255,236,170', '230,200,255'];
+  L.shops.forEach((w, i) => _indWin(P, w, open ? `rgba(${TINT[i % 6]},${night ? 0.85 : 0.55})` : on && night ? 'rgba(40,50,80,0.5)' : 'rgba(0,0,0,0)'));
+  if (lit) L.floors.forEach(([x0, x1, y, z]) => { for (let x = x0; x < x1; x += 0.25) { const [ax, ay] = P(x, y, z); ctx.fillStyle = aurora(x, night ? 0.95 : 0.6); ctx.fillRect(ax, ay - 0.05 * M, 0.26 * M, 0.1 * M); }
+    if (night) _indGlowAt(F, (x0 + x1) / 2, y, z, 3.6, '120,255,200', 0.08); });
+  { const [x0, x1, y0, y1, z] = L.pool, [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z); ctx.fillStyle = on ? (night ? 'rgba(14,26,42,0.95)' : 'rgba(90,156,192,0.9)') : '#14181e'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    BldWater.draw(ctx, 'rr', ax, ay, bx - ax, by - ay, t, { r: 0.1 * M, still: !on });
+    if (lit) for (let x = x0; x < x1; x += 0.3) { const [rx, ry] = P(x, (y0 + y1) / 2 + Math.sin(x * 3 + t * 2) * 0.03, z); ctx.fillStyle = aurora(x, night ? 0.7 : 0.25); ctx.fillRect(rx, ry, 0.22 * M, 0.06 * M); } }
+  { const [x0, x1, y, z0, z1] = L.screen;
+    if (on) { const ADS = [['#ff3a7a', '#ff9a3a', 'MEGA SALE', '50% OFF'], ['#1a3aff', '#40d8ff', 'NEW IN', 'SPRING'], ['#10a060', '#b8ff60', 'FOOD HALL', 'LEVEL 3'], ['#6a20c0', '#ff50d0', 'LATE', 'TIL 11PM']], ad = ADS[Math.floor(t / 6) % 4], fade = Math.min(1, (t % 6) / 0.4);
+      const [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0), g = ctx.createLinearGradient(0, ay, 0, by); g.addColorStop(0, ad[0]); g.addColorStop(1, ad[1]);
+      ctx.globalAlpha = (night ? 1 : 0.85) * fade; ctx.fillStyle = g; ctx.fillRect(ax, ay, bx - ax, by - ay);
+      ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.beginPath(); ctx.arc((ax + bx) / 2 + Math.sin(t * 1.2) * 0.6 * M, ay + (by - ay) * 0.35, 0.6 * M, 0, Math.PI * 2); ctx.fill();
+      _civText(F, [[x0 + 0.3, y, z0 + 1.4], [x1 - 0.3, y, z0 + 1.4], [x0 + 0.3, y, z0 + 2.2]], ad[2], '#ffffff'); _civText(F, [[x0 + 0.6, y, z0 + 0.6], [x1 - 0.6, y, z0 + 0.6], [x0 + 0.6, y, z0 + 1.1]], ad[3], '#ffffff', false);
+      ctx.globalAlpha = 1; if (night) _indGlowAt(F, (x0 + x1) / 2, y, (z0 + z1) / 2, 3.0, '200,120,255', 0.14 * fade); }
+    else _indWin(P, L.screen, '#0c0e12'); }
+  _civText(F, L.sign, 'AURORA', lit ? (night ? aurora(0, 1) : '#1e3a5a') : '#3a3e46');
+  _civText(F, L.sign2, 'GALLERIA', lit ? (night ? 'rgba(230,240,255,0.95)' : '#3aa890') : '#3a3e46', false);
+  if (lit && night) _indGlowAt(F, -0.6, L.sign[0][1], 12.4, 4, '120,255,200', 0.2);
+  if (lit) _indGlowAt(F, L.dome[0], L.dome[1], L.dome[2], 2.4, '255,210,150', night ? 0.35 : 0.1);
+  _indWin(P, L.door[0], open ? 'rgba(255,236,190,0.9)' : lit ? 'rgba(140,160,200,0.35)' : '#1a1c20');
+  if (lit) { const [x0, x1, y, z] = L.canopy; for (let x = x0; x < x1; x += 0.15) { const [cx, cy] = P(x, y, z); ctx.fillStyle = aurora(x, night ? 0.9 : 0.5); ctx.fillRect(cx, cy - 0.04 * M, 0.14 * M, 0.08 * M); }
+    if (night) _indGlowAt(F, 0, y, 0.2, 2.4, '255,224,170', 0.35); }
+  _indLotCars(F, e, L.stalls, L.lotY, open, on, night, 2);
+  if (open && Camera.zoom > 0.45) for (let i = 0; i < 6; i++) { const u = (t * 0.03 + i / 6) % 1; _indPerson(F, i % 2 ? -9 + u * 18 : 9 - u * 18, -4.1 + (i % 2) * 0.3, _IND_SHIRT[(i * 3 + 2) % 8], _IND_SKIN[(i + 1) % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); }
+  if (on && night) L.lamps.forEach(([x, y, z]) => { _indGlowAt(F, x, y, 0, 2.6, '255,236,190', 0.25); _indGlowAt(F, x, y, z, 0.3, '255,240,200', 0.9); });
+  ctx.restore();
+}
+// The Grand Arcade: the great arch glows down the arcade, the shopfronts
+// lit with their gilded trades, rooms upstairs lit after dark, the clock on
+// game time, the carousel turning with its bulbs chasing, gas lamps and the
+// string lights over the square.
+function _indAr2Art(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, open = _indShopOpen('arcade', on);
+  const TRADES = ['TEA', 'HATS', 'BOOKS', 'TOYS', 'SWEETS', 'CLOCKS', 'SHOES', 'LACE'], GOODS = ['#b83a3a', '#2a6a4a', '#2a4a8a', '#c8902a', '#7a3a7a', '#1a7a8a', '#b84a6a', '#4a6a2a'];
+  L.shops.forEach((w, i) => { const so = open && _cmFrac(i + 3 + (e.col || 0)) > 0.08; _indShopfront(F, w, so ? (night ? '#ffd890' : '#f6e8c8') : on ? 'rgba(60,64,72,0.6)' : '#121416', so ? [GOODS[i % 8], GOODS[(i + 3) % 8], '#f4eee0'] : null); });
+  L.trades.forEach((pts, i) => _civText(F, pts, TRADES[i % 8], on ? '#e8c050' : '#5a4a20'));
+  L.up.forEach((w, i) => { if (on && night && _cmFrac(i + 70 + (e.col || 0)) < 0.6) _indArchWin(P, w, '#ffd890', M); });
+  { const [x0, x1, y, z0, z1] = L.arch;
+    if (on) { const [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0), g = ctx.createLinearGradient(0, ay, 0, by); g.addColorStop(0, open ? (night ? '#6a5030' : '#c8d8e0') : '#1e2026'); g.addColorStop(1, open ? (night ? '#ffd890' : '#f6e8c8') : '#2a2c30');
+      ctx.save(); ctx.beginPath(); const r = (x1 - x0) / 2 * M; ctx.rect(ax, ay, bx - ax, by - ay); ctx.ellipse((ax + bx) / 2, ay, r, r * Math.tan(Math.PI / 6), 0, Math.PI, 0); ctx.fillStyle = g; ctx.fill();
+      ctx.clip(); for (let d = 0; d < 5; d++) { const f = 1 - d / 6.5, hw = (x1 - x0) / 2 * 0.9 * f; for (const sd of [-1, 1]) { const [sx, sy] = P(sd * hw, y, z0 + 0.6 * f); ctx.fillStyle = open ? `rgba(${sd < 0 ? '255,200,140' : '255,170,190'},${(0.8 * f).toFixed(2)})` : 'rgba(60,60,70,0.5)'; ctx.fillRect(sx - 0.1 * M * f, sy - 2.2 * M * f, 0.2 * M * f, 2.2 * M * f); } }
+      if (open) for (let q = 0; q < 5; q++) { const d = (t * 0.05 + q / 5) % 1, f = 1 - d * 0.8, [sx, sy] = P((q % 2 ? -0.3 : 0.3) * f, y, z0 + 0.1); ctx.fillStyle = _IND_SHIRT[q % 8]; ctx.fillRect(sx - 0.08 * M * f, sy - 0.5 * M * f, 0.16 * M * f, 0.45 * M * f); }
+      ctx.restore(); if (night) _indGlowAt(F, 0, y - 0.8, 0.5, 3.2, '255,214,140', open ? 0.4 : 0.15); } }
+  _civText(F, L.name, 'THE GRAND ARCADE', on ? (night ? '#ffe6a0' : '#e8c868') : '#4a4020');
+  { const [x, y, z, r] = L.clock, [cx, cy] = P(x, y, z), ha = (hr % 12) / 12 * Math.PI * 2 - Math.PI / 2, ma = (hr % 1) * Math.PI * 2 - Math.PI / 2;
+    if (on && night) { ctx.fillStyle = '#fff4d0'; ctx.beginPath(); ctx.arc(cx, cy, r * 0.95 * M, 0, Math.PI * 2); ctx.fill(); _indGlowAt(F, x, y, z, 1.2, '255,236,180', 0.3); }
+    ctx.strokeStyle = '#2a1c14'; ctx.lineCap = 'round'; ctx.lineWidth = 0.09 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ha) * r * 0.5 * M, cy + Math.sin(ha) * r * 0.5 * M); ctx.stroke();
+    ctx.lineWidth = 0.05 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ma) * r * 0.8 * M, cy + Math.sin(ma) * r * 0.8 * M); ctx.stroke(); ctx.lineCap = 'butt'; }
+  // carousel: horses rising and falling as it turns, bulbs chasing round the canopy
+  { const [x, y, z, r, zc] = L.carousel, spin = open ? t * 0.6 : 0;
+    for (let i = 0; i < 8; i++) { const a = spin + i * Math.PI / 4, s = Math.sin(a); if (s < 0) continue; const [hx, hy] = P(x + Math.cos(a) * r * 0.85, y - s * r * 0.4, 0.5 + (open ? Math.sin(t * 2 + i) * 0.15 : 0));
+      ctx.fillStyle = ['#f4eee0', '#3a2a20', '#c8902a', '#f4eee0'][i % 4]; ctx.beginPath(); ctx.ellipse(hx, hy, 0.22 * M, 0.12 * M, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(hx + 0.12 * M, hy - 0.2 * M, 0.07 * M, 0.18 * M); }
+    if (on) for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, lit = open ? (k + Math.floor(t * 6)) % 3 === 0 : night, [bx, by] = P(x + Math.cos(a) * 1.55, y + Math.sin(a) * 0.45, zc);
+      ctx.fillStyle = lit ? '#fff4c0' : '#8a7a50'; ctx.beginPath(); ctx.arc(bx, by, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
+    if (on && night) _indGlowAt(F, x, y, z, 2.0, '255,220,150', 0.3); }
+  // string lights from the pavilion to the gas lamps, the lamps themselves
+  if (on && night) { L.lamps.forEach(([x, y, z], i) => { const [lx, ly] = P(x, y, z), [px0, py0] = P(i < 2 ? -2.1 : 2.1, -3.3, 6.0); ctx.strokeStyle = 'rgba(40,30,20,0.6)'; ctx.lineWidth = 0.02 * M; ctx.beginPath(); ctx.moveTo(px0, py0); ctx.quadraticCurveTo((px0 + lx) / 2, Math.max(py0, ly) + 0.6 * M, lx, ly); ctx.stroke();
+      for (let k = 1; k < 8; k++) { const f = k / 8, qx = (1 - f) * (1 - f) * px0 + 2 * f * (1 - f) * (px0 + lx) / 2 + f * f * lx, qy = (1 - f) * (1 - f) * py0 + 2 * f * (1 - f) * (Math.max(py0, ly) + 0.6 * M) + f * f * ly; ctx.fillStyle = (k + i) % 2 ? '#ffe9a8' : '#fff6d8'; ctx.beginPath(); ctx.arc(qx, qy, 0.05 * M, 0, Math.PI * 2); ctx.fill(); }
+      _indGlowAt(F, x, y, 0, 2.2, '255,220,150', 0.25); _indGlowAt(F, x, y, z, 0.3, '255,236,180', 0.9); }); }
+  if (open && Camera.zoom > 0.45) for (let i = 0; i < 6; i++) { const u = (t * 0.025 + i / 6) % 1; _indPerson(F, i % 2 ? -9 + u * 18 : 9 - u * 18, -5.2 - (i % 3) * 0.4, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); }
+  ctx.restore();
+}
+// Movie Theater (the Palace): open 11:00-01:00, busiest 17:00-23:00. The
+// day's films page across the marquee board and play in the two auditorium
+// windows; PALACE runs down the blade sign; the marquee bulbs chase; a queue
+// on the carpet; searchlights sweep after dark, and on a premiere night the
+// flashbulbs pop.
+function _indMtArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), dark = DayNight.darkness(), night = dark > 0.3;
+  const open = on && (hr >= 11 || hr < 1), peak = open && hr >= 17 && hr < 23, lit = on && (open || night);
+  const day = typeof DayNight.day === 'function' ? DayNight.day() : 0;
+  const lineup = typeof _mtLineup === 'function' ? _mtLineup(e, day) : [{ title: 'NOW SHOWING', bg: '#1a1a2a', fg: '#ffd890' }];
+  const premiere = open && day % 4 === 2 && hr >= 18 && hr < 23;
+  const showing = s => { const h = ((hr - 11 - s * 1.25) % 24 + 24) % 24; return { film: lineup[(Math.floor(h / 2.5) + s * 2) % lineup.length], u: (h % 2.5) / 2.5 }; };
+  if (lit && night) L.searchlights.forEach(([x, y, z], i) => { const a = Math.sin(t * 0.5 + i * 2) * 0.5 + (i ? 0.25 : -0.25), [sx, sy] = P(x, y, z), len = 9 * M;
+    const g = ctx.createLinearGradient(sx, sy, sx + Math.sin(a) * len, sy - Math.cos(a) * len); g.addColorStop(0, 'rgba(255,245,210,0.35)'); g.addColorStop(1, 'rgba(255,245,210,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(sx - 0.2 * M, sy); ctx.lineTo(sx + 0.2 * M, sy); ctx.lineTo(sx + Math.sin(a + 0.08) * len, sy - Math.cos(a + 0.08) * len); ctx.lineTo(sx + Math.sin(a - 0.08) * len, sy - Math.cos(a - 0.08) * len); ctx.closePath(); ctx.fill(); });
+  L.screens.forEach((w, s) => { const { film, u } = showing(s), playing = open && u > 0.04 && u < 0.96;
+    _indWin(P, w, playing ? film.bg : on ? '#2a0c14' : '#0a0a0a');
+    if (playing) { const [x0, x1, y, z0, z1] = w; for (let k = 0; k < 3; k++) { const [bx, by] = P(x0 + (x1 - x0) * (0.2 + 0.3 * k + 0.05 * Math.sin(t * 0.7 + k)), y, z0 + (z1 - z0) * (0.35 + 0.2 * Math.sin(t * 0.9 + k * 2)));
+      ctx.fillStyle = film.fg; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.arc(bx, by, (0.2 + 0.1 * k) * M, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+      _indGlowAt(F, (x0 + x1) / 2, y, (z0 + z1) / 2, 1.4, '255,230,200', night ? 0.2 : 0.06); }
+    else if (on) { const [x0, x1, y, z0, z1] = w, op = open ? Math.min(1, Math.abs(u - 0.5) * 2) : 0; _indWin(P, [x0, x0 + (x1 - x0) * 0.5 * (1 - op * 0.2), y - 0.01, z0, z1], '#8a1424'); _indWin(P, [x1 - (x1 - x0) * 0.5 * (1 - op * 0.2), x1, y - 0.01, z0, z1], '#8a1424'); } });
+  L.posters.forEach((w, i) => { const f = lineup[i % lineup.length]; _indWin(P, w, on ? f.bg : '#121014'); if (on) { const [x0, x1, y, z0, z1] = w; _indWin(P, [x0 + 0.1, x1 - 0.1, y - 0.01, z0 + 0.6, z1 - 0.15], f.fg); } });
+  _indWin(P, L.door[0], open ? (night ? '#ffd890' : 'rgba(255,230,190,0.75)') : on ? '#3a2a20' : '#121010');
+  if (open) { const [x0, x1, y, z0] = L.door[0]; const [cx, cy] = P(x0 + 0.6, y, z0 + 0.7); ctx.fillStyle = '#fff6d8'; ctx.fillRect(cx, cy, 0.9 * M, 0.35 * M); ctx.fillStyle = '#e02030'; ctx.fillRect(cx, cy + 0.3 * M, 0.9 * M, 0.1 * M); }
+  // the marquee: the line-up paging through, or the gala on a premiere night; chasing bulbs
+  { const [x0, x1, y, z0, z1] = L.board, page = Math.floor(t / 5) % lineup.length, txt = premiere ? 'GALA PREMIERE' : lit ? (lineup[page].title || 'NOW SHOWING') : 'CLOSED';
+    _civText(F, [[x0 + 0.2, y, z0 + 0.2], [x1 - 0.2, y, z0 + 0.2], [x0 + 0.2, y, z1 - 0.15]], txt, on ? '#1a1a1e' : '#5a5a5a');
+    const [bx0, bx1, by, bz1, bz0] = L.bulbs; for (const bz of [bz1, bz0]) for (let k = 0; k < 24; k++) { const [qx, qy] = P(bx0 + (k + 0.5) * (bx1 - bx0) / 24, by, bz), b = lit && ((k + Math.floor(t * 7)) % 3 !== 0);
+      ctx.fillStyle = b ? '#ffe8a0' : '#6a5a40'; ctx.beginPath(); ctx.arc(qx, qy, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
+    if (lit && night) _indGlowAt(F, 0, y, (z0 + z1) / 2, 3.6, '255,220,140', 0.35); }
+  { const [x, y, z0, z1] = L.blade, word = 'PALACE'; ctx.font = `bold ${(0.8 * M).toFixed(1)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < 6; i++) { const on3 = lit && (!peak || Math.sin(t * 4 - i * 0.9) > -0.6), [lx, ly] = P(x, y, z1 - (i + 0.5) * (z1 - z0) / 6); ctx.fillStyle = on3 ? (night ? '#ff6a8a' : '#ffe0e8') : 'rgba(110,60,70,0.8)';
+      if (on3 && night) { ctx.shadowColor = '#ff4a6a'; ctx.shadowBlur = 0.4 * M; } ctx.fillText(word[i], lx, ly); ctx.shadowBlur = 0; }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; if (lit && night) _indGlowAt(F, x, y, (z0 + z1) / 2, 2.6, '255,70,110', 0.22); }
+  _indWin(P, L.booth, open ? '#ffe2a8' : '#1a1416');
+  L.fans.forEach(([x, y, z, r], k) => _indFan(F, x, y, z, r, on ? t * 7 + k : k, on));
+  if (open && Camera.zoom > 0.45) { const [qx, qy] = L.queue, n = premiere ? 0 : peak ? 8 : hr < 17 ? 3 : 5; for (let i = 0; i < n; i++) _indPerson(F, qx - 0.1 - (i % 2) * 0.25, qy + 0.5 - Math.floor(i / 2) * 0.35 + 0.9, _IND_SHIRT[(i * 3 + 2) % 8], _IND_SKIN[i % 6], Math.sin(t + i) * 0.01); }
+  if (premiere) { for (let i = 0; i < 6; i++) { const sx = (i % 2 ? 1 : -1) * (1.4 + Math.floor(i / 2) * 0.5); _indPerson(F, sx, -4.0, '#202024', _IND_SKIN[(i + 2) % 6]); if (Math.sin(t * 9 + i * 2.7) > 0.93) _indGlowAt(F, sx, -4.0, 1.4, 0.6, '255,255,255', 0.9); }
+    const u = (t / 10) % 1; _indPerson(F, 0, -4.6 + u * 1.0, '#c8a040', _IND_SKIN[1]); }
+  if (on && night) L.lamps.forEach(([x, y, z]) => { _indGlowAt(F, x, y, 0, 2.2, '255,236,190', 0.25); _indGlowAt(F, x, y, z, 0.3, '255,240,200', 0.9); });
+  ctx.restore();
+}
+// Concert Hall: show nights 18:00-01:00. Tonight's act (or a guest band)
+// sets the colours: the lobby glass floods with them, the LED ribbon along
+// the roof edge chases, the screen plays the visuals and the bill, the fly
+// tower's copper fins catch the light, moving heads sweep from the roof and
+// searchlights fan behind; the crowd queues on the plaza before the doors.
+function _indChArt(e, px, py, t, L, base) {
+  const F = _indFrame(e, px, py), { P, M } = F, on = !!e.powered;
+  if (SplitPhase.wantStatic()) { F.draw(base, L.rect); if (!on) dimPainted('rgba(8,6,4,0.45)', ...F.rectPx(L.rect)); }
+  if (!SplitPhase.wantOver()) return;
+  ctx.save();
+  const hr = DayNight.hour(), dark = DayNight.darkness(), show = on && (hr >= 18 || hr < 1), lit = on && (show || dark > 0.35), night = dark > 0.35;
+  const nightNo = (DayNight.day?.() || 1) - (hr < 1 ? 1 : 0);
+  const SH = typeof _CH_SHOWS !== 'undefined' ? _CH_SHOWS : [{ name: 'LIVE TONIGHT', a: [255, 90, 210], b: [80, 220, 255], bpm: 8 }];
+  const act = SH[Math.floor(_cmFrac(nightNo * 7.31 + (e.col || 0) * 1.7 + (e.row || 0) * 3.1) * SH.length)];
+  const band = typeof _CH_BANDS !== 'undefined' ? _CH_BANDS[Math.floor(_cmFrac(nightNo * 5.77 + (e.col || 0) * 2.3 + (e.row || 0) * 0.9 + 41) / 0.125)] || null : null;
+  const song = Math.floor(t / 24), between = show && t % 24 < 1.4, bass = show && !between ? 0.5 + 0.5 * Math.sin(t * act.bpm) : 0;
+  const A = act.a, B = act.b, rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`, mix = f => [0, 1, 2].map(i => Math.round(A[i] + (B[i] - A[i]) * f));
+  // searchlights behind, in the act's colours
+  if (show && night) for (let i = 0; i < 3; i++) { const [sx, sy] = P(-6 + i * 6, 4, 9), a = Math.sin(t * 0.4 + i * 2.1) * 0.6, len = 12 * M, c = i % 2 ? A : B, g = ctx.createLinearGradient(sx, sy, sx + Math.sin(a) * len, sy - Math.cos(a) * len);
+    g.addColorStop(0, rgba(c, 0.3)); g.addColorStop(1, rgba(c, 0)); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.sin(a + 0.07) * len, sy - Math.cos(a + 0.07) * len); ctx.lineTo(sx + Math.sin(a - 0.07) * len, sy - Math.cos(a - 0.07) * len); ctx.closePath(); ctx.fill(); }
+  // the lobby glass under the wave
+  { const G = L.glass, [gx0, gy0] = P(G[0][0], G[0][1], 0); ctx.beginPath(); ctx.moveTo(gx0, gy0); G.forEach(([x, y, z]) => { const [qx, qy] = P(x, y, z - 0.05); ctx.lineTo(qx, qy); }); const [ex, ey] = P(G[G.length - 1][0], G[0][1], 0); ctx.lineTo(ex, ey); ctx.closePath();
+    if (show) { const g = ctx.createLinearGradient(gx0, 0, ex, 0); g.addColorStop(0, rgba(A, 0.45 + 0.25 * bass)); g.addColorStop(0.5, 'rgba(255,230,190,0.6)'); g.addColorStop(1, rgba(B, 0.45 + 0.25 * bass)); ctx.fillStyle = g; ctx.fill(); }
+    else if (lit) { ctx.fillStyle = 'rgba(255,224,170,0.45)'; ctx.fill(); }
+    if (show || lit) { ctx.save(); ctx.clip(); for (let k = 0; k < 14; k++) { const u = (k + 0.5) / 14, [hx, hy] = P(G[0][0] + u * (G[G.length - 1][0] - G[0][0]), G[0][1] + 0.1, 0.05), bob = show ? Math.abs(Math.sin(t * act.bpm * 0.5 + k)) * 0.06 : 0;
+      ctx.fillStyle = 'rgba(20,16,24,0.55)'; ctx.fillRect(hx - 0.1 * M, hy - (0.5 + bob) * M, 0.2 * M, 0.45 * M); ctx.beginPath(); ctx.arc(hx, hy - (0.58 + bob) * M, 0.08 * M, 0, Math.PI * 2); ctx.fill(); } ctx.restore(); }
+    if (show && night) _indGlowAt(F, 0, G[0][1], 1.5, 6, rgba(mix(0.5), 1).slice(5, -3), 0.25); }
+  // the LED ribbon along the roof edge
+  { const E = L.edge; for (let i = 0; i < E.length; i++) { const [x, y, z] = E[i], [qx, qy] = P(x, y, z); let c;
+    if (!on) c = '#2a2a30'; else if (!show) c = lit ? 'rgba(220,230,255,0.55)' : 'rgba(160,170,190,0.4)';
+    else { const pat = Math.floor(_cmFrac(song * 3.7 + nightNo) * 4); c = pat === 0 ? ((i + Math.floor(t * 10)) % 6 < 2 ? rgba(A, 1) : rgba(B, 0.4)) : pat === 1 ? rgba(mix(i / E.length), 0.4 + 0.6 * bass) : pat === 2 ? (i < E.length / 2 ? rgba(A, 0.9) : rgba(B, 0.9)) : `hsl(${((i * 12 + t * 90) % 360).toFixed(0)},90%,60%)`; }
+    ctx.fillStyle = c; ctx.fillRect(qx - 0.15 * M, qy - 0.06 * M, 0.32 * M, 0.12 * M); } }
+  // the fly tower fins pick up the act; the aircraft lamp
+  { const [x0, x1, y, z0, z1, step] = L.fins; if (show) for (let x = x0, k = 0; x < x1; x += step, k++) { const [ax, ay] = P(x, y, z1), [, by] = P(x, y, z0); ctx.fillStyle = rgba(k % 2 ? A : B, 0.35 + 0.35 * Math.max(0, Math.sin(t * 2 + k * 0.6))); ctx.fillRect(ax - 0.05 * M, ay, 0.1 * M, by - ay); }
+    const [lx, ly] = P(...L.lamp), bl = on && Math.sin(t * 3) > 0.3; ctx.fillStyle = bl ? '#ff3020' : '#501810'; ctx.beginPath(); ctx.arc(lx, ly, 0.1 * M, 0, Math.PI * 2); ctx.fill(); }
+  // moving heads on the ridge
+  L.rig.forEach(([x, y, z], i) => { const [hx, hy] = P(x, y, z); ctx.fillStyle = show ? rgba(i % 2 ? A : B, 0.95) : '#3a3a40'; ctx.beginPath(); ctx.arc(hx, hy, 0.12 * M, 0, Math.PI * 2); ctx.fill();
+    if (show && night && !between) { const a = Math.sin(t * 0.9 + i * 1.7) * 0.7 + (i - 1) * 0.3, len = 8 * M, g = ctx.createLinearGradient(hx, hy, hx + Math.sin(a) * len, hy - Math.cos(a) * len); g.addColorStop(0, rgba(i % 2 ? A : B, 0.45)); g.addColorStop(1, rgba(i % 2 ? A : B, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(hx + Math.sin(a + 0.05) * len, hy - Math.cos(a + 0.05) * len); ctx.lineTo(hx + Math.sin(a - 0.05) * len, hy - Math.cos(a - 0.05) * len); ctx.closePath(); ctx.fill(); } });
+  // the LED screen: visuals in the show, the bill otherwise
+  { const [x0, x1, y, z0, z1] = L.screen;
+    if (on) { const [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0), g = ctx.createLinearGradient(ax, 0, bx, 0); g.addColorStop(0, rgba(A, show ? 0.95 : 0.6)); g.addColorStop(1, rgba(B, show ? 0.95 : 0.6)); ctx.fillStyle = g; ctx.fillRect(ax, ay, bx - ax, by - ay);
+      if (show) for (let k = 0; k < 8; k++) { const h = (0.2 + 0.8 * Math.abs(Math.sin(t * act.bpm * 0.5 + k * 0.9))) * (by - ay) * 0.8; ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(ax + (bx - ax) * (k + 0.2) / 8, by - h, (bx - ax) * 0.08, h); }
+      const title = show ? (song % 2 ? (band || 'LIVE TONIGHT') : act.name) : (band || act.name);
+      _civText(F, [[x0 + 0.3, y - 0.01, z0 + 0.6], [x1 - 0.3, y - 0.01, z0 + 0.6], [x0 + 0.3, y - 0.01, z0 + 1.4]], title, '#ffffff');
+      if (night) _indGlowAt(F, (x0 + x1) / 2, y, (z0 + z1) / 2, 2.6, rgba(mix(0.5), 1).slice(5, -3), 0.2); }
+    else _indWin(P, L.screen, '#0a0a10'); }
+  // canopy bulbs chasing in the act's colours; doors; kiosks
+  { const [x0, x1, y, z] = L.canopy; for (let k = 0; k < 16; k++) { const [qx, qy] = P(x0 + (k + 0.5) * (x1 - x0) / 16, y, z), b = lit && ((k + Math.floor(t * (show ? 8 : 3))) % 3 === 0);
+    ctx.fillStyle = b ? (show ? rgba(k % 2 ? A : B, 1) : '#ffe8a0') : '#5a4a3a'; ctx.beginPath(); ctx.arc(qx, qy, 0.07 * M, 0, Math.PI * 2); ctx.fill(); } }
+  _indWin(P, L.doors, on ? (show || night ? 'rgba(255,224,170,0.85)' : 'rgba(170,200,220,0.6)') : '#121418');
+  L.kiosks.forEach(([x0, x1, y, z0, z1], i) => _indWin(P, [x0, x1, y, z0, z1], on ? rgba(i ? B : A, night ? 0.9 : 0.7) : '#1a1a1e'));
+  if (on && (show || hr >= 16) && Camera.zoom > 0.45) { const [x0, x1, y0, y1] = L.plaza, n = show ? (between ? 4 : 2) : 10; for (let i = 0; i < n; i++) { const u = (t * 0.02 + i / n) % 1; _indPerson(F, i % 2 ? x0 + u * (x1 - x0) * 0.4 : x1 - u * (x1 - x0) * 0.4, y0 - (i % 3) * 0.35, _IND_SHIRT[(i * 3) % 8], _IND_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); } }
+  ctx.restore();
+}
+// Emberstone Hot Springs: open 07:00-23:00. The paper screens glow warm,
+// lanterns along the eave, bathers in both pools, the fall running, steam
+// rising (more on a cold day, little with the pumps off), the valve wheel
+// turning, the stone lanterns lit at night, the bamboo spout tipping.
+function _indHsArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, open = on && hr >= 7 && hr < 23;
+  const cold = typeof WeatherEventSystem !== 'undefined' && WeatherEventSystem.getTemperatureDelta ? Math.max(0, Math.min(1, -WeatherEventSystem.getTemperatureDelta() / 14)) : 0;
+  L.screens.forEach(w => _indWin(P, w, on ? (night ? 'rgba(255,206,130,0.85)' : open ? 'rgba(255,244,220,0.55)' : 'rgba(0,0,0,0)') : 'rgba(20,16,12,0.5)'));
+  _indWin(P, L.door, on ? (night ? '#f8c880' : '#3a2a20') : '#141210');
+  { const [x0, x1, y, z0, z1] = L.noren; for (let k = 0; k < 3; k++) { const fl = Math.sin(t * 1.6 + k * 1.3) * 0.04, [ax, ay] = P(x0 + k * (x1 - x0) / 3 + 0.03, y, z1), [bx, by] = P(x0 + (k + 1) * (x1 - x0) / 3 - 0.03 + fl, y, z0); ctx.fillStyle = '#22407a'; ctx.fillRect(ax, ay, bx - ax, by - ay); } }
+  _civText(F, L.board, 'EMBERSTONE HOT SPRINGS', on ? (night ? '#ffd890' : '#f0d8a0') : '#4a443c');
+  L.lanterns.forEach(([x, y, z], i) => { const sw = Math.sin(t * 1.1 + i) * 0.03, [lx, ly] = P(x + sw, y, z); ctx.fillStyle = on ? (night ? '#ff9a50' : '#e8583a') : '#4a2a20'; ctx.beginPath(); ctx.ellipse(lx, ly, 0.16 * M, 0.22 * M, 0, 0, Math.PI * 2); ctx.fill();
+    if (on && night) _indGlowAt(F, x, y, z, 0.9, '255,150,80', 0.5); });
+  // the pools: water, ripples, bathers, the fall, steam
+  const WATER = on ? (night ? 'rgba(28,127,140,0.92)' : 'rgba(88,208,208,0.88)') : 'rgba(60,90,92,0.9)';
+  L.pools.forEach(([cx, cy, rx, ry, z], pi) => { const [ax, ay] = P(cx - rx, cy + ry, z), [bx, by] = P(cx + rx, cy - ry, z);
+    ctx.fillStyle = WATER; ctx.beginPath(); ctx.ellipse((ax + bx) / 2, (ay + by) / 2, (bx - ax) / 2 * 0.97, (by - ay) / 2 * 0.95, 0, 0, Math.PI * 2); ctx.fill();
+    BldWater.draw(ctx, 'ell', ax, ay, bx - ax, by - ay, t, { depth: 0.45, still: !on, glow: on ? '60,230,220' : null });
+    if (on && night) _indGlowAt(F, cx, cy, z, rx * 1.1, '60,230,220', 0.3); });
+  if (open && Camera.zoom > 0.4) L.bathers.forEach(([x, y], i) => { if (_cmFrac(i * 3 + Math.floor(t / 40)) < (night ? 0.75 : 0.55)) { const z = i < 2 ? L.pools[0][4] : L.pools[1][4], [bx, by] = P(x, y, z), bob = Math.sin(t * 0.8 + i) * 0.02 * M;
+    ctx.fillStyle = _IND_SKIN[i % 6]; ctx.fillRect(bx - 0.12 * M, by - 0.18 * M + bob, 0.24 * M, 0.16 * M); ctx.beginPath(); ctx.arc(bx, by - 0.26 * M + bob, 0.1 * M, 0, Math.PI * 2); ctx.fill();
+    if (i % 2) { ctx.fillStyle = '#f4f0e6'; ctx.fillRect(bx - 0.1 * M, by - 0.38 * M + bob, 0.2 * M, 0.06 * M); } } });
+  { const [x0, x1, y, z0, z1] = L.fall; _indWin(P, [x0, x1, y, z0, z1], on ? 'rgba(170,240,238,0.85)' : 'rgba(110,140,140,0.6)');
+    if (on) for (let k = 0; k < 6; k++) { const q = (t * 1.1 + k / 6) % 1, [fx, fy] = P(x0 + 0.1 + (k % 3) * 0.3, y, z1 - q * (z1 - z0)); ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(fx, fy, 0.05 * M, 0.14 * M); } }
+  { const n = on ? 4 + Math.round(cold * 6) : 1; L.pools.forEach(([cx, cy, rx, ry, z], pi) => { for (let k = 0; k < Math.min(n, 4); k++) _indSmoke(F, cx + (_cmFrac(k * 5 + pi) - 0.5) * rx * 1.2, cy + (_cmFrac(k * 9 + pi) - 0.5) * ry, z, t * 0.6 + k * 3.1 + pi, '245,248,250', on ? 0.24 + cold * 0.2 : 0.08, 0.9); }); }
+  { const [x, y, z, r] = L.valve, a = on ? t * 0.6 : 0, [vx, vy] = P(x, y, z); ctx.strokeStyle = '#2a1c14'; ctx.lineWidth = 0.04 * M; ctx.beginPath(); ctx.moveTo(vx - Math.cos(a) * r * M, vy - Math.sin(a) * r * M); ctx.lineTo(vx + Math.cos(a) * r * M, vy + Math.sin(a) * r * M); ctx.stroke(); }
+  L.tourou.forEach(([x, y, z]) => { const [lx, ly] = P(x, y, z); ctx.fillStyle = on && night ? '#ffd890' : '#3a3630'; ctx.fillRect(lx - 0.12 * M, ly - 0.12 * M, 0.24 * M, 0.2 * M); if (on && night) _indGlowAt(F, x, y, z, 1.4, '255,206,130', 0.5); });
+  { const [x, y, z, len] = L.spout, cyc = (t * 0.22) % 1, tip = cyc > 0.8 ? Math.sin((cyc - 0.8) / 0.2 * Math.PI) * 0.7 : 0, [sx, sy] = P(x, y, z);
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(-0.35 + tip); ctx.fillStyle = '#b8b060'; ctx.fillRect(-len / 2 * M, -0.08 * M, len * M, 0.16 * M); ctx.restore(); }
+  { const [mx, my, mz] = L.maple; if (!night && Camera.zoom > 0.45) for (let lf = 0; lf < 5; lf++) { const q = (t * 0.12 + lf / 5) % 1, [lx, ly] = P(mx - 0.8 + lf * 0.4 + Math.sin(q * 8 + lf) * 0.3, my - q * 2, mz * (1 - q)); ctx.fillStyle = `rgba(232,96,44,${(0.9 * (1 - q)).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(lx, ly, 0.1 * M, 0.06 * M, q * 6, 0, Math.PI * 2); ctx.fill(); } }
+  ctx.restore();
+}
+// ── Parks and amenities (renderPark, render_world_civic.js) ──
+// Same sprites and layout as the commercial ones; keyed by entity type.
+// Types listed in ArtFootprints.type reach renderPark inside renderEntityAt's
+// stretch from their old art size: that stretch is cancelled here, as in
+// _indArtTry. A Tree-Lined Street turned on end has its own sprite.
+const _PARK_ART_KEY = { smallpark: 'spk', communitygarden: 'cg', treedstreet: 'tst', fountain: 'fn', farmersmarket: 'fm', basketballcourt: 'bb' };
+function _parkArtTry(e, px, py, t) {
+  if (typeof IND_ART_LAYOUT === 'undefined' || e._ghost || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  let key = _PARK_ART_KEY[e.type]; if (!key) return false;
+  const def = EntityDefs[e.type] || {}, fw = e.width || 1, fh = e.height || 1, art = typeof ArtFootprints !== 'undefined' ? ArtFootprints.type[e.type] : null;
+  let W = def.width || 1, H = def.height || 1, kx = 1, ky = 1;
+  if (key === 'tst' && fw === H && fh === W && W !== H) { key = 'tstv'; [W, H] = [H, W]; }
+  else if (fw === W && fh === H) { /* its own size */ }
+  else if (art && fw === art[0] && fh === art[1]) { kx = art[0] / W; ky = art[1] / H; }
+  else return false;
+  const L = IND_ART_LAYOUT[key], base = IndArt.get('ind_' + key), fn = _IND_ART_FN[key];
+  if (!L || !base || !fn || !fn.ready()) return false;
+  ctx.save(); ctx.translate(px, py); ctx.scale(kx, ky); ctx.translate(-px, -py);
+  e.width = W; e.height = H;
+  try { fn.draw(e, px, py, t, L, base); } finally { ctx.restore(); e.width = fw; e.height = fh; }
+  return true;
+}
+const _parkHash = (e, k) => _cmFrac((e.col || 0) * 7.13 + (e.row || 0) * 3.71 + k * 1.37);
+// Fireflies over a patch after dark.
+function _parkFireflies(F, t, x0, x1, y0, y1, n) {
+  for (let k = 0; k < n; k++) { const a = t * 0.4 + k * 2.3, x = x0 + (x1 - x0) * (0.5 + 0.45 * Math.sin(a * 0.7 + k)), y = y0 + (y1 - y0) * (0.5 + 0.45 * Math.cos(a * 0.5 + k * 1.7)), b = 0.5 + 0.5 * Math.sin(t * 3 + k * 4.1);
+    if (b > 0.35) _indGlowAt(F, x, y, 0.6 + 0.2 * Math.sin(a), 0.18, '220,255,120', b * 0.8); }
+}
+function _parkLamp(F, x, y, z, night) { if (night) { _indGlowAt(F, x, y, 0, 1.8, '255,236,190', 0.28); _indGlowAt(F, x, y, z, 0.3, '255,240,200', 0.9); } }
+function _parkWater(F, cx, cy, rx, ry, z, t) {
+  const [ax, ay] = F.P(cx - rx, cy + ry, z), [bx, by] = F.P(cx + rx, cy - ry, z);
+  ctx.fillStyle = 'rgba(40,110,130,0.9)'; ctx.beginPath(); ctx.ellipse((ax + bx) / 2, (ay + by) / 2, (bx - ax) / 2 * 0.95, (by - ay) / 2 * 0.93, 0, 0, Math.PI * 2); ctx.fill();
+  BldWater.draw(ctx, 'ell', ax, ay, bx - ax, by - ay, t, { depth: 0.4 });
+}
+// Small Park: a reader on the bench by day, a dog walker doing laps of the
+// path, a mallard on the pond; the lamp and fireflies after dark.
+function _indSpkArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, day = hr >= 7 && hr < 20;
+  { const [cx, cy, rx, ry, z] = L.pond; _parkWater(F, cx, cy, rx, ry, z, t);
+    const a = t * 0.25, dx = cx + Math.cos(a) * rx * 0.55, dy = cy + Math.sin(a) * ry * 0.5, [qx, qy] = P(dx, dy, z + 0.05);
+    ctx.fillStyle = '#5a3a20'; ctx.beginPath(); ctx.ellipse(qx, qy, 0.16 * M, 0.09 * M, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#1e6a3a'; ctx.beginPath(); ctx.arc(qx + Math.cos(a + Math.PI / 2) * 0.12 * M, qy - 0.06 * M, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
+  if (day) { const [bx, by] = L.bench; _indPerson(F, bx + 0.25, by + 0.05, _IND_SHIRT[(_parkHash(e, 1) * 8) | 0], _IND_SKIN[(_parkHash(e, 2) * 6) | 0]);
+    const pts = L.path, u = (t / 26) % 1, seg = u * (pts.length - 1), i = Math.min(pts.length - 2, Math.floor(seg)), f = seg - i, wx = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f, wy = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f;
+    _indPerson(F, wx, wy, _IND_SHIRT[(_parkHash(e, 3) * 8) | 0], _IND_SKIN[(_parkHash(e, 4) * 6) | 0], Math.abs(Math.sin(t * 6)) * 0.03);
+    const [dx, dy] = P(wx + 0.4, wy - 0.1, 0.12); ctx.fillStyle = '#8a5a30'; ctx.beginPath(); ctx.ellipse(dx, dy, 0.18 * M, 0.08 * M, 0, 0, Math.PI * 2); ctx.fill(); }
+  _parkLamp(F, ...L.lamp, night);
+  if (night) _parkFireflies(F, t, 0.6, 2.6, 0.2, 1.6, 5);
+  ctx.restore();
+}
+// Community Garden: a gardener walks the path with a watering can by day,
+// bees round the sunflowers; the shed lantern and fireflies after dark.
+function _indCgArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, day = hr >= 7 && hr < 19;
+  if (day) { const u = (t / 30) % 1, k = u < 0.5 ? u * 2 : 2 - u * 2, x = 0.15, y = -2.6 + k * 4.6; _indPerson(F, x, y, '#3a7a4a', _IND_SKIN[(_parkHash(e, 5) * 6) | 0], Math.abs(Math.sin(t * 5)) * 0.03);
+    const [cx, cy] = P(x + 0.2, y, 0.35); ctx.fillStyle = '#5a8a9a'; ctx.fillRect(cx, cy - 0.1 * M, 0.18 * M, 0.14 * M);
+    if (Math.sin(t * 0.7) > 0.4) { const bed = Object.values(L.beds)[Math.floor(t / 9) % 3]; for (let d = 0; d < 4; d++) { const q = (t * 2 + d / 4) % 1, [sx, sy] = P(x + 0.35 + q * 0.4, y, 0.4 - q * 0.3); ctx.fillStyle = 'rgba(140,200,255,0.8)'; ctx.fillRect(sx, sy, 0.03 * M, 0.06 * M); } }
+    L.sunflowers.forEach(([sx, sy, sz], i) => { if (i % 2) return; const a = t * 3 + i, [bx, by] = P(sx + Math.cos(a) * 0.2, sy - 0.1, sz + Math.sin(a * 1.3) * 0.15); ctx.fillStyle = '#f0c020'; ctx.beginPath(); ctx.arc(bx, by, 0.035 * M, 0, Math.PI * 2); ctx.fill(); }); }
+  if (night) { _indWin(P, L.shedWin, '#ffcf80'); _indGlowAt(F, (L.shedWin[0] + L.shedWin[1]) / 2, L.shedWin[2], 1.1, 0.8, '255,200,120', 0.4); _parkFireflies(F, t, -2.5, 2.5, -2.5, 2.5, 7); }
+  ctx.restore();
+}
+// Tree-Lined Street: people strolling the pavement by day, lamp light
+// pooled on it after dark. Same for the street turned on end.
+function _indTstArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  if (hr >= 7 && hr < 21) { const [[x0, y0], [x1, y1]] = L.walk; for (let i = 0; i < 3; i++) { const u = (t / 20 + i / 3 + _parkHash(e, i)) % 1, dir = i % 2, f = dir ? 1 - u : u;
+    _indPerson(F, x0 + (x1 - x0) * f + (y0 === y1 ? 0 : (i - 1) * 0.15), y0 + (y1 - y0) * f + (y0 === y1 ? (i - 1) * 0.15 : 0), _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[(i + 2) % 6], Math.abs(Math.sin(t * 6 + i)) * 0.03); } }
+  L.lamps.forEach(l => _parkLamp(F, ...l, night));
+  ctx.restore();
+}
+// Fountain plaza: water in the basin and the upper tier, the spray from
+// the jet falling into both, people on the benches, pigeons.
+function _indFnArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  { const [x, y, z, r] = L.basin; _parkWater(F, x, y, r, r, z, t); }
+  { const [x, y, z, r] = L.tier; _parkWater(F, x, y, r, r, z, t + 3); }
+  { const [x, y, z] = L.jet, [jx, jy] = P(x, y, z); ctx.strokeStyle = night ? 'rgba(200,230,255,0.75)' : 'rgba(235,248,255,0.85)'; ctx.lineWidth = 0.04 * M;
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2 + t * 0.2, r = 0.42, [ex, ey] = P(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.9, 1.32); ctx.beginPath(); ctx.moveTo(jx, jy); ctx.quadraticCurveTo((jx + ex) / 2, jy - 0.5 * M, ex, ey); ctx.stroke(); }
+    for (let k = 0; k < 12; k++) { const a = k / 12 * Math.PI * 2, [sx, sy] = P(x + Math.cos(a) * 0.5, y + Math.sin(a) * 0.45, 1.25), [ex, ey] = P(x + Math.cos(a) * 0.95, y + Math.sin(a) * 0.85, 0.46); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + (ex - sx) * 0.4, sy, ex, ey); ctx.stroke(); }
+    const [gx, gy] = P(x, y, 1.6); ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.beginPath(); ctx.arc(gx, gy, (0.1 + 0.03 * Math.sin(t * 9)) * M, 0, Math.PI * 2); ctx.fill();
+    if (night) _indGlowAt(F, x, y, 0.6, 1.4, '140,200,255', 0.3); }
+  if (hr >= 8 && hr < 21) L.benches.forEach(([bx, by], i) => { if (_parkHash(e, i + 10) > 0.4) _indPerson(F, bx + (i % 2 ? 0.3 : -0.3), by + 0.05, _IND_SHIRT[(i * 3 + 2) % 8], _IND_SKIN[(i + 1) % 6]); });
+  if (!night) for (let k = 0; k < 4; k++) { const a = t * 0.15 + k * 1.6, [qx, qy] = P(Math.cos(a) * 1.6, Math.sin(a) * 1.5, 0.12); ctx.fillStyle = '#7a7e86'; ctx.beginPath(); ctx.ellipse(qx, qy, 0.09 * M, 0.06 * M, 0, 0, Math.PI * 2); ctx.fill(); }
+  L.lamps.forEach(l => _parkLamp(F, ...l, night));
+  ctx.restore();
+}
+// Farmers Market: market hours 07:00-18:00, vendors at the counters and
+// shoppers with baskets along the aisle; tarps over the stalls after; the
+// bunting overhead, its string lights on after dark.
+function _indFmArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, open = hr >= 7 && hr < 18;
+  L.stalls.forEach(([x0, x1, y, z], i) => { if (open) _indPerson(F, (x0 + x1) / 2, y + 0.55, ['#c83a3a', '#e0e0d8', '#3a7a4a', '#f0b030'][i], _IND_SKIN[(i * 2 + 1) % 6]);
+    else { const [ax, ay] = P(x0, y - 0.05, z + 0.15), [bx] = P(x1, y, 0); ctx.fillStyle = ['#2a5a8a', '#3a6a3a', '#5a4a7a', '#7a5a2a'][i]; ctx.fillRect(ax, ay, bx - ax, 0.3 * M); } });
+  if (open) { const busy = hr < 12 ? 6 : 4, [x0, x1, y] = L.aisle; for (let i = 0; i < busy; i++) { const u = (t * 0.015 + i / busy + _parkHash(e, i)) % 1, f = i % 2 ? u : 1 - u;
+    _indPerson(F, x0 + (x1 - x0) * f, y + (i % 3 - 1) * 0.25, _IND_SHIRT[(i * 3 + 4) % 8], _IND_SKIN[i % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03);
+    const [bx, by] = P(x0 + (x1 - x0) * f + 0.15, y + (i % 3 - 1) * 0.25, 0.3); ctx.fillStyle = '#a8783a'; ctx.fillRect(bx, by - 0.08 * M, 0.14 * M, 0.1 * M); } }
+  { const [x0, x1, y, z] = L.bunting, COLS = ['#e0402a', '#f0c030', '#3a8ad0', '#40b060', '#e060a0'];
+    for (let k = 0; k < 22; k++) { const f = (k + 0.5) / 22, sag = Math.sin(f * Math.PI) * 0.35, [bx, by] = P(x0 + (x1 - x0) * f, y, z - sag);
+      ctx.fillStyle = COLS[k % 5]; ctx.beginPath(); ctx.moveTo(bx - 0.08 * M, by); ctx.lineTo(bx + 0.08 * M, by); ctx.lineTo(bx, by + 0.18 * M); ctx.closePath(); ctx.fill();
+      if (night && k % 2) { ctx.fillStyle = '#fff0b0'; ctx.beginPath(); ctx.arc(bx, by - 0.02 * M, 0.04 * M, 0, Math.PI * 2); ctx.fill(); } }
+    if (night) _indGlowAt(F, (x0 + x1) / 2, y, z - 0.3, 3.2, '255,224,150', 0.2); }
+  ctx.restore();
+}
+// Basketball Court: a lone shooter in the morning, three on three
+// 10:00-22:30 (under the floodlights after dark), the ball moving between
+// them and up to the rims; the scoreboard keeps the score of the game.
+function _indBbArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const game = hr >= 10 && hr < 22.5, solo = hr >= 7 && hr < 10, [x0, x1, y0, y1] = L.court;
+  const poss = Math.floor(t / 11), u = (t % 11) / 11, side = poss % 2 ? 1 : -1;
+  const wander = (i, a) => [Math.sin(t * 0.37 + i * 2.1 + a) * 0.9 + Math.sin(t * 0.23 + i * 1.3) * 0.5, Math.cos(t * 0.31 + i * 1.7) * 0.8];
+  let ball = null;
+  if (game) { const pts = []; for (let i = 0; i < 6; i++) { const team = i < 3 ? side : -side, [wx, wy] = wander(i, team), adv = Math.min(1, u * 1.6);
+      pts.push([team * -1 * (1 - adv) * 2 + side * adv * 2.4 + wx, (y0 + y1) / 2 + (i % 3 - 1) * 1.2 + wy, i < 3 ? '#e0402a' : '#f4f4f0']); }
+    const holder = Math.floor(u * 4) % 3; ball = u < 0.8 ? [pts[holder][0] + 0.15, pts[holder][1] - 0.05, 0.8 + Math.abs(Math.sin(t * 9)) * 0.4] : (() => { const s = (u - 0.8) / 0.2, [hx, hy, hz] = L.hoops[side > 0 ? 1 : 0]; return [pts[holder][0] + (hx - pts[holder][0]) * s, pts[holder][1] + (hy - pts[holder][1]) * s, 1.2 + Math.sin(s * Math.PI) * 2 + (hz - 1.2) * s]; })();
+    pts.sort((a, b) => b[1] - a[1]).forEach(([x, y, c], i) => _indPerson(F, x, y, c, _IND_SKIN[i % 6], Math.abs(Math.sin(t * 7 + i)) * 0.04)); }
+  else if (solo) { const a = t * 0.12, [hx, hy] = L.hoops[1], x = hx - 2 + Math.cos(a) * 1.2, y = hy + Math.sin(a) * 1.5, s = (t % 4) / 4; _indPerson(F, x, y, '#3a6ac8', _IND_SKIN[2]); ball = s < 0.6 ? [x + 0.15, y, 0.8 + Math.abs(Math.sin(t * 9)) * 0.4] : [x + (hx - x) * (s - 0.6) / 0.4, y, 1.2 + Math.sin((s - 0.6) / 0.4 * Math.PI) * 1.8 + 1.6 * (s - 0.6) / 0.4]; }
+  else { const [bx, by] = L.benches[0]; ball = [bx + 0.9, by + 0.2, 0.12]; }
+  if (ball) { const [bx, by] = P(ball[0], ball[1], ball[2]), [sx, sy] = P(ball[0], ball[1], 0.05); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx, sy, 0.1 * M, 0.04 * M, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#e07020'; ctx.beginPath(); ctx.arc(bx, by, 0.1 * M, 0, Math.PI * 2); ctx.fill(); }
+  { const [sx0, sx1, sy, z0, z1] = L.score, g = poss % 24, home = Math.floor(_cmFrac(g * 1.7) * 2 * g) % 22, away = Math.floor(_cmFrac(g * 2.9) * 2 * g) % 22;
+    _civText(F, [[sx0 + 0.05, sy, z0 + 0.1], [sx1 - 0.05, sy, z0 + 0.1], [sx0 + 0.05, sy, z1 - 0.05]], game ? `${home}-${away}` : '0-0', game ? '#ffb030' : '#5a4020'); }
+  if (night && game) L.lights.forEach(([x, y, z]) => { _indGlowAt(F, x, y, z, 0.4, '255,250,230', 0.9); _indGlowAt(F, x * 0.6, y * 0.6, 0, 3.2, '255,250,230', 0.16); });
+  ctx.restore();
+}
+Object.assign(_PARK_ART_KEY, { playground: 'pg', splashpad: 'sp', baseballfield: 'bf', allotments: 'alt', dogpark: 'dp' });
+// Playground: kids on the swings, the merry-go-round turning with one
+// pushing, the see-saw tipping, others running between, through the day;
+// home at dusk or in the rain; a parent on the bench.
+function _indPgArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), raining = typeof WeatherEventSystem !== 'undefined' && WeatherEventSystem.isRaining?.(), play = hr >= 8 && hr < 19 && !raining;
+  const kid = (x, y, z, c, s) => { const [sx, sy] = P(x, y, 0.05), [bx, by] = P(x, y, z); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(sx, sy, 0.12 * M, 0.05 * M, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = c; ctx.fillRect(bx - 0.08 * M, by - 0.32 * M, 0.16 * M, 0.3 * M); ctx.fillStyle = s; ctx.beginPath(); ctx.arc(bx, by - 0.4 * M, 0.07 * M, 0, Math.PI * 2); ctx.fill(); };
+  // the swings (seats drawn live, swinging fore and aft)
+  L.swings.forEach(([x, y, z], i) => { const a = play && i !== 1 ? Math.sin(t * 2.2 + i * 1.3) * 0.7 : 0, sy = y - Math.sin(a) * 1.4, sz = z - Math.cos(a) * 1.6, [tx, ty] = P(x, y, z), [qx, qy] = P(x, sy, sz);
+    ctx.strokeStyle = '#3a3a40'; ctx.lineWidth = 0.025 * M; ctx.beginPath(); ctx.moveTo(tx - 0.12 * M, ty); ctx.lineTo(qx - 0.12 * M, qy); ctx.moveTo(tx + 0.12 * M, ty); ctx.lineTo(qx + 0.12 * M, qy); ctx.stroke();
+    ctx.fillStyle = '#202024'; ctx.fillRect(qx - 0.16 * M, qy - 0.03 * M, 0.32 * M, 0.06 * M); if (play && i !== 1) kid(x, sy, sz - 0.05, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[i % 6]); });
+  { const [x, y, z, r] = L.merry, a = play ? t * 1.2 : 0, [cx, cy] = P(x, y, z); ctx.strokeStyle = '#f0c020'; ctx.lineWidth = 0.05 * M;
+    for (let k = 0; k < 4; k++) { const b = a + k * Math.PI / 2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(b) * r * M, cy + Math.sin(b) * r * 0.9 * M); ctx.stroke(); }
+    if (play) { for (let k = 0; k < 2; k++) { const b = a + k * Math.PI; kid(x + Math.cos(b) * r * 0.6, y + Math.sin(b) * r * 0.55, z, _IND_SHIRT[(k + 4) % 8], _IND_SKIN[(k + 2) % 6]); }
+      const b = a + Math.PI / 2; kid(x + Math.cos(b) * (r + 0.25), y + Math.sin(b) * (r + 0.2), 0.05, _IND_SHIRT[6], _IND_SKIN[4]); } }
+  { const [x, y, z, h] = L.seesaw, tilt = play ? Math.sin(t * 1.6) * 0.35 : 0.3, [ax, ay] = P(x - h, y, z + tilt), [bx, by] = P(x + h, y, z - tilt);
+    ctx.strokeStyle = '#2a6ac8'; ctx.lineWidth = 0.12 * M; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    if (play) { kid(x - h + 0.15, y, z + tilt * 0.9, _IND_SHIRT[2], _IND_SKIN[1]); kid(x + h - 0.15, y, z - tilt * 0.9, _IND_SHIRT[7], _IND_SKIN[3]); } }
+  if (play) { for (let i = 0; i < 3; i++) { const u = t * 0.3 + i * 2.1, x = Math.sin(u) * 2.2 - 0.5, y = Math.cos(u * 0.8) * 1.6 - 0.2; kid(x, y, 0.05 + Math.abs(Math.sin(t * 8 + i)) * 0.06, _IND_SHIRT[(i * 2 + 3) % 8], _IND_SKIN[(i + 3) % 6]); }
+    const [bx, by] = L.bench; _indPerson(F, bx - 0.3, by + 0.05, _IND_SHIRT[5], _IND_SKIN[0]); }
+  ctx.restore();
+}
+// Splash Pad: the ring of jets arcs inward and the geyser surges while it
+// runs (powered, 09:00-20:00, warm days busiest), kids run through it, the
+// pad glistens; the pump lamp green, or flashing red with no power.
+function _indSpArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), on = e.powered !== false, run = on && hr >= 9 && hr < 20, want = hr >= 9 && hr < 20;
+  if (run) { const [x, y, z, r] = L.pad, [ax, ay] = P(x - r, y + r, z), [bx, by] = P(x + r, y - r, z); ctx.fillStyle = 'rgba(160,210,235,0.22)'; ctx.beginPath(); ctx.ellipse((ax + bx) / 2, (ay + by) / 2, (bx - ax) / 2, (by - ay) / 2, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(225,245,255,0.85)'; ctx.lineWidth = 0.035 * M;
+    L.jets.forEach(([jx, jy, jz], k) => { const on2 = Math.sin(t * 1.3 + k * 0.9) > -0.4; if (!on2) return; const [sx, sy] = P(jx, jy, jz), [ex, ey] = P(jx * 0.45, jy * 0.45, 0.1), [cx, cy] = P(jx * 0.75, jy * 0.75, 1.6);
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(cx, cy, ex, ey); ctx.stroke(); });
+    const surge = Math.max(0, Math.sin(t * 0.9)), [gx, gy] = P(...L.geyser), h = (0.6 + surge * 2.2) * M; ctx.fillStyle = 'rgba(230,248,255,0.7)'; ctx.beginPath(); ctx.ellipse(gx, gy - h / 2, 0.12 * M, h / 2, 0, 0, Math.PI * 2); ctx.fill();
+    for (let k = 0; k < 5; k++) { const a = t * 0.5 + k * 1.3, x2 = Math.cos(a) * (1.2 + k * 0.3), y2 = Math.sin(a * 1.2) * (1.0 + k * 0.25); _indPerson(F, x2, y2, _IND_SHIRT[(k * 3 + 1) % 8], _IND_SKIN[k % 6], Math.abs(Math.sin(t * 8 + k)) * 0.05); }
+    L.benches.forEach(([bx, by], i) => _indPerson(F, bx + 0.3, by + 0.05, _IND_SHIRT[(i + 5) % 8], _IND_SKIN[(i + 2) % 6])); }
+  { const [x, y, z] = L.pump, [lx, ly] = P(x, y, z); ctx.fillStyle = run ? '#40e070' : !on && want && Math.sin(t * 6) > 0 ? '#ff3a2a' : '#3a2a2a'; ctx.beginPath(); ctx.arc(lx, ly, 0.07 * M, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+// Baseball Field: a game in the afternoon and under the lights in the
+// evening (14:00-22:00): fielders at their positions, the pitch, a batter,
+// runners going round, the crowd in the stands, the scoreboard keeping the
+// score; the concession stand open; floodlights after dark.
+function _indBfArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, game = hr >= 14 && hr < 22;
+  const [hx, hy] = L.home, B = L.bases;
+  if (game) {
+    const pitch = Math.floor(t / 6), u = (t % 6) / 6, hit = _cmFrac(pitch * 3.1) > 0.7;
+    const field = [[hx, hy + 3.0], [hx + 3.6, hy + 3.6], [hx + 1.6, hy + 5.6], [hx - 1.6, hy + 5.6], [hx - 3.6, hy + 3.6], [hx - 5.5, hy + 10], [hx, hy + 12], [hx + 5.5, hy + 10], [hx, hy - 0.8]];
+    field.forEach(([x, y], i) => _indPerson(F, x + Math.sin(t * 0.5 + i) * 0.1, y, i === 8 ? '#2a2a30' : '#f4f4f0', _IND_SKIN[i % 6]));
+    _indPerson(F, hx - 0.5, hy + 0.1, '#c83a3a', _IND_SKIN[(pitch % 6)]);
+    let bx, by, bz;
+    if (u < 0.35) { const s = u / 0.35; bx = hx; by = hy + 3.0 - s * 3.0; bz = 1.2 - s * 0.4; }
+    else if (hit) { const s = (u - 0.35) / 0.65, dir = (_cmFrac(pitch * 7.7) - 0.5) * 1.4; bx = hx + Math.sin(dir) * s * 11; by = hy + Math.cos(dir) * s * 11; bz = 0.9 + Math.sin(s * Math.PI) * 6;
+      const k = Math.min(3, Math.floor(s * 3)), f = s * 3 - k; _indPerson(F, B[k][0] + (B[(k + 1) % 4][0] - B[k][0]) * f, B[k][1] + (B[(k + 1) % 4][1] - B[k][1]) * f, '#c83a3a', _IND_SKIN[2], Math.abs(Math.sin(t * 9)) * 0.04); }
+    else { bx = hx; by = hy - 0.6; bz = 0.8; }
+    const [qx, qy] = P(bx, by, bz); ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(qx, qy, 0.07 * M, 0, Math.PI * 2); ctx.fill();
+    L.stands.forEach(([x, y, z], s) => { for (let k = 0; k < 10; k++) { const f = k / 9, [cx, cy] = P(x + (s ? 1 : -1) * (f - 0.5) * 2.6 - (s ? 1 : -1) * 0.3, y + (f - 0.5) * 2.6 * (s ? -1 : 1) * -1, z + (k % 3) * 0.35 + (hit && u > 0.5 ? Math.abs(Math.sin(t * 8 + k)) * 0.1 : 0));
+      ctx.fillStyle = _IND_SHIRT[(k + s * 3) % 8]; ctx.fillRect(cx - 0.08 * M, cy - 0.2 * M, 0.16 * M, 0.2 * M); } });
+    const inn = Math.min(9, 1 + Math.floor(((hr - 14) / 8) * 9)), home = Math.floor(_cmFrac(pitch * 0.013 + (e.col || 0)) * inn * 1.2), away = Math.floor(_cmFrac(pitch * 0.017 + 3) * inn);
+    const [x0, x1, y, z0, z1] = L.board; _civText(F, [[x0 + 0.2, y - 0.2, z0 + 0.3], [x1 - 0.2, y - 0.2, z0 + 0.3], [x0 + 0.2, y - 0.2, z1 - 0.2]], `${home} - ${away}  ${inn}`, '#ffd040');
+  }
+  _indWin(F.P, L.stand, game ? (night ? '#ffe0a0' : 'rgba(255,240,210,0.85)') : '#1a1414');
+  if (night && game) L.lights.forEach(([x, y, z]) => { _indGlowAt(F, x, y, z, 0.6, '255,250,235', 0.9); _indGlowAt(F, x * 0.5, y * 0.5 + 1, 0, 6, '255,250,235', 0.12); });
+  ctx.restore();
+}
+// Allotments: a plot-holder or two tending the beds by day, bees round the
+// hives, the glasshouse lit at dusk; fireflies after dark.
+function _indAltArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, day = hr >= 7 && hr < 19;
+  if (day) { L.plots.forEach(([x, y], i) => { if (_parkHash(e, i + 30) < 0.5) _indPerson(F, x + Math.sin(t * 0.2 + i) * 0.6, y - 1.5, _IND_SHIRT[(i * 3 + 2) % 8], _IND_SKIN[(i + 1) % 6], Math.abs(Math.sin(t * 2 + i)) * 0.02); });
+    const u = (t / 24) % 1, k = u < 0.5 ? u * 2 : 2 - u * 2; _indPerson(F, 0.1, -4.4 + k * 8, '#6a4a2a', _IND_SKIN[3]);
+    L.hives.forEach(([x, y, z]) => { for (let b = 0; b < 4; b++) { const a = t * 3 + b * 1.6, [qx, qy] = P(x + Math.cos(a) * 0.5, y + Math.sin(a * 1.3) * 0.4, z + Math.sin(a) * 0.2); ctx.fillStyle = '#f0c020'; ctx.beginPath(); ctx.arc(qx, qy, 0.03 * M, 0, Math.PI * 2); ctx.fill(); } }); }
+  if (hr >= 17 && hr < 21) { const [x, y, z] = L.glasshouse; _indGlowAt(F, x, y, z, 1.6, '255,214,150', 0.3); }
+  if (night) _parkFireflies(F, t, -5, 5, -4, 4, 8);
+  ctx.restore();
+}
+// Dog Park: dogs chasing round the field and a ball being thrown, small
+// dogs in their own run and the paddling pool, owners on the benches.
+function _indDpArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), open = hr >= 6 && hr < 21;
+  { const [x, y, z, r] = L.pool; _parkWater(F, x, y, r, r, z, t); }
+  if (open) { const dog = (x, y, a, s, c) => { const [dx, dy] = P(x, y, 0.15); ctx.fillStyle = c; ctx.save(); ctx.translate(dx, dy); ctx.rotate(a); ctx.beginPath(); ctx.ellipse(0, 0, 0.22 * s * M, 0.09 * s * M, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(0.2 * s * M, -0.03 * M, 0.07 * s * M, 0, Math.PI * 2); ctx.fill(); ctx.restore(); };
+    const [fx, fy, rx, ry] = L.field, COLS = ['#8a5a30', '#f0e6d0', '#2a2420', '#c8903a'];
+    for (let i = 0; i < 4; i++) { const a = t * (0.8 + i * 0.15) + i * 1.6, x = fx + Math.cos(a) * rx * (0.5 + 0.3 * Math.sin(t * 0.3 + i)), y = fy + Math.sin(a) * ry * 0.7; dog(x, y, a + Math.PI / 2, 1, COLS[i]); }
+    const [rx0, ry0, rw, rh] = L.run; for (let i = 0; i < 2; i++) { const a = t * 0.9 + i * 2.5; dog(rx0 + Math.cos(a) * rw * 0.6, ry0 + Math.sin(a) * rh * 0.6, a + Math.PI / 2, 0.6, COLS[(i + 1) % 4]); }
+    const th = (t % 5) / 5, [bx, by] = P(fx - 1.5 + th * 3, fy, 0.2 + Math.sin(th * Math.PI) * 1.5); ctx.fillStyle = '#d8e040'; ctx.beginPath(); ctx.arc(bx, by, 0.06 * M, 0, Math.PI * 2); ctx.fill();
+    L.benches.forEach(([x, y], i) => _indPerson(F, x + (i ? 0.3 : -0.3), y + 0.05, _IND_SHIRT[(i * 4 + 1) % 8], _IND_SKIN[(i + 4) % 6])); _indPerson(F, fx - 1.7, fy, '#3a6a8a', _IND_SKIN[2]); }
+  ctx.restore();
+}
+Object.assign(_PARK_ART_KEY, { communitycenter: 'cc2', greenhouse: 'gh2', farm: 'fa' });
+// Corner Store: drawn from renderCornerStore (render_cornerstore.js), for
+// the park-menu store and the 2x2 house-request one alike; four facades,
+// chosen as the painted store chooses its own.
+function _cornerArtTry(e, px, py, W, H, t) {
+  if (typeof IND_ART_LAYOUT === 'undefined' || e._ghost || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  if (Math.round(W / TILE) !== 2 || Math.round(H / TILE) !== 2) return false;
+  const v = typeof _cornerStoreHash === 'function' ? Math.floor(_cornerStoreHash(e, 2) * 4) % 4 : 0, key = 'cst' + v;
+  const L = IND_ART_LAYOUT[key], base = IndArt.get('ind_' + key); if (!L || !base) return false;
+  const fw = e.width, fh = e.height; e.width = 2; e.height = 2;
+  try { _indCstArt(e, px, py, t, L, base); } finally { e.width = fw; e.height = fh; }
+  return true;
+}
+function _indCstArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+  const open = on && (typeof cornerStoreOpen === 'function' ? cornerStoreOpen(hr) : hr >= 7 && hr < 23);
+  L.win.forEach(w => _indShopfront(F, w, open ? (night ? '#fff0c8' : 'rgba(240,248,240,0.85)') : on ? 'rgba(60,70,80,0.6)' : '#101214', open ? ['#e84a3a', '#f0c030', '#3a7ac8', '#40a060', '#f4f0e6'] : null));
+  L.door.forEach(w => _indWin(P, w, open ? (night ? '#ffe2a8' : 'rgba(220,235,240,0.8)') : '#1a1c20'));
+  _civText(F, L.sign, typeof cornerStoreName === 'function' ? cornerStoreName(e) : 'CORNER STORE', on ? (night ? '#ffe9b0' : '#ffffff') : '#5a5a5a');
+  L.up.forEach((w, i) => { if (on && night && _cmFrac(i + (e.col || 0)) > 0.3) _indWin(P, w, '#ffd890'); });
+  if (open) L.crates.forEach(([x, y, z], i) => { const [cx, cy] = P(x, y, z); for (let k = 0; k < 3; k++) { ctx.fillStyle = ['#e84a3a', '#f0a020', '#7ac040'][(i + k) % 3]; ctx.beginPath(); ctx.arc(cx + (k - 1) * 0.11 * M, cy, 0.06 * M, 0, Math.PI * 2); ctx.fill(); } });
+  if (open && Math.sin(t * 0.3) > 0) _indPerson(F, 0.6 + Math.sin(t * 0.2) * 0.8, -1.6, _IND_SHIRT[(_parkHash(e, 1) * 8) | 0], _IND_SKIN[(_parkHash(e, 2) * 6) | 0]);
+  if (open && night) _indGlowAt(F, 0, -1.3, 0.3, 1.8, '255,236,190', 0.3);
+  ctx.restore();
+}
+// Community Center: classes in the hall windows 08:00-22:00 (powered), the
+// foyer lit, a half-court game, people on the plaza; dark without power.
+function _indCc2Art(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, hours = hr >= 8 && hr < 22, lit = !!e.powered && hours;
+  const CLASS = ['#f0c060', '#80d0ff', '#ffa0c0', '#a0f0a0'];
+  L.hall.forEach((w, i) => { _indWin(P, w, lit ? (night ? '#ffe0a0' : 'rgba(255,240,210,0.85)') : 'rgba(20,24,30,0.7)');
+    if (lit) { const [x0, x1, y, z0] = w; for (let k = 0; k < 3; k++) { const [sx, sy] = P(x0 + (k + 0.5) * (x1 - x0) / 3, y - 0.01, z0 + 0.1), bob = i === 0 ? Math.abs(Math.sin(t * 2 + k)) * 0.08 : 0; ctx.fillStyle = CLASS[(i + k) % 4]; ctx.fillRect(sx - 0.07 * M, sy - (0.5 + bob) * M, 0.14 * M, 0.42 * M); } } });
+  _indWin(P, L.foyer, lit ? (night ? 'rgba(255,230,180,0.9)' : 'rgba(220,235,245,0.75)') : 'rgba(20,24,30,0.7)');
+  _civText(F, L.sign, 'COMMUNITY CENTRE', lit && night ? '#ffe9b0' : '#2a2a30');
+  if (hr >= 9 && hr < 21) { const [x0, x1, y0, y1] = L.court, [hx, hy, hz] = L.hoop; for (let i = 0; i < 4; i++) { const x = (x0 + x1) / 2 + Math.sin(t * 0.4 + i * 1.7) * 1.4, y = (y0 + y1) / 2 + Math.cos(t * 0.33 + i) * 2; _indPerson(F, x, y, i % 2 ? '#e0402a' : '#3a6ac8', _IND_SKIN[i % 6], Math.abs(Math.sin(t * 7 + i)) * 0.04); }
+    const s = (t % 4) / 4, [bx, by] = P((x0 + x1) / 2 + (hx - (x0 + x1) / 2) * s, (y0 + y1) / 2 + (hy - (y0 + y1) / 2) * s, 1 + Math.sin(s * Math.PI) * 1.6 + (hz - 1) * s); ctx.fillStyle = '#e07020'; ctx.beginPath(); ctx.arc(bx, by, 0.09 * M, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 3; i++) { const u = (t * 0.02 + i / 3) % 1; _indPerson(F, -8 + u * 10, -3.4 - (i % 2) * 0.6, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[(i + 2) % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); } }
+  L.lamps.forEach(l => _parkLamp(F, ...l, night));
+  ctx.restore();
+}
+// Botanic Greenhouse: grow lights and misting 06:00-22:00 (powered), the
+// glass glowing magenta-green at dusk, vents cracked on warm afternoons,
+// visitors on the paths, the lily pond; dark and cold without power.
+function _indGh2Art(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, on = !!e.powered, grow = on && hr >= 6 && hr < 22;
+  { const [x, y, z, r] = L.dome; if (grow && (night || hr >= 17)) { _indGlowAt(F, x, y, z, r * 1.3, '220,120,255', 0.22); _indGlowAt(F, x, y, z - 1, r, '140,255,160', 0.18); } else if (!on) _indGlowAt(F, x, y, z, r, '20,30,60', 0.0); }
+  L.wings.forEach(([x, y, z], i) => { if (grow && (night || hr >= 17)) _indGlowAt(F, x, y, z, 2.6, i ? '255,200,140' : '160,255,170', 0.22); });
+  if (grow && hr >= 12 && hr < 17) L.vents.forEach(([x, y, z]) => { const [vx, vy] = P(x, y, z); ctx.fillStyle = 'rgba(30,40,50,0.6)'; ctx.fillRect(vx - 1.2 * M, vy, 2.4 * M, 0.12 * M); });
+  if (grow) { const mist = (t * 0.4) % 1; _indSmoke(F, -4.4, 1.0, 2.6, t, '235,245,245', 0.12, 0.6); }
+  _indWin(P, L.doors, grow ? (night ? '#ffe0a0' : 'rgba(220,240,230,0.7)') : '#121416');
+  { const [x, y, rx, ry, z] = L.pond; _parkWater(F, x, y, rx, ry, z, t); }
+  if (hr >= 8 && hr < 20) { const pts = L.paths; for (let i = 0; i < 4; i++) { const u = (t / 40 + i / 4) % 1, seg = u * (pts.length - 1), k = Math.floor(seg), f = seg - k, a = pts[k], b = pts[Math.min(pts.length - 1, k + 1)];
+    _indPerson(F, a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, _IND_SHIRT[(i * 3 + 2) % 8], _IND_SKIN[(i + 1) % 6], Math.abs(Math.sin(t * 5 + i)) * 0.03); } }
+  L.lamps.forEach(l => _parkLamp(F, ...l, night));
+  ctx.restore();
+}
+// Farm: the three fields run their crop cycles on the game clock (36 game
+// hours each, a third out of phase): plowed, sown, sprouting, growing,
+// ripe, harvested. The tractor plows and the combine harvests, headlights
+// on after dark. Cows, sheep, horses and pigs in their fields, hens in the
+// yard by day, the farmer and the dog doing the rounds, the windmill
+// turning; the house windows and the yard lamp at night.
+function _indFaArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, day = hr >= 6 && hr < 20;
+  const gh = ((typeof DayNight.day === 'function' ? DayNight.day() : 0) * 24 + hr);
+  const CROPS = [['#d8b040', '#8aa040'], ['#c8c050', '#4a8a30'], ['#e07a20', '#3a7a30']];
+  L.fields.forEach(([x0, x1, y0, y1], i) => {
+    const ph = ((gh / 36) + i / 3) % 1, rows = Math.floor((y1 - y0) / 0.4);
+    let col = null, h = 0.05, work = -1;
+    if (ph < 0.1) work = ph / 0.1; else if (ph < 0.2) col = '#7a6a4a'; else if (ph < 0.45) { col = '#7ac050'; h = 0.1; } else if (ph < 0.75) { col = CROPS[i][1]; h = 0.3; } else if (ph < 0.9) { col = CROPS[i][0]; h = i === 1 ? 0.8 : 0.4; } else { col = '#b0a070'; h = 0.06; work = (ph - 0.9) / 0.1; }
+    for (let k = 0; k < rows; k++) { const y = y0 + 0.2 + k * 0.4, done = work >= 0 ? k / rows < work : true; let c = col;
+      if (work >= 0 && ph < 0.1) c = done ? null : (k % 2 ? '#8a7a4a' : null); if (work >= 0 && ph >= 0.9) c = done ? '#b0a070' : CROPS[i][0];
+      if (!c) continue; const [ax, ay] = P(x0, y, h), [bx] = P(x1, y, h); ctx.fillStyle = c; ctx.fillRect(ax, ay - 0.06 * M, bx - ax, 0.14 * M);
+      if (i === 2 && ph >= 0.75 && ph < 0.95 && k % 2 === 0) for (let q = 0; q < 6; q++) { const [qx, qy] = P(x0 + 0.5 + q * 1.2, y, 0.2); ctx.fillStyle = '#e8701a'; ctx.beginPath(); ctx.arc(qx, qy, 0.13 * M, 0, Math.PI * 2); ctx.fill(); } }
+    if (work >= 0) { const rr = Math.floor(work * rows), dir = rr % 2, f = (work * rows) % 1, x = dir ? x1 - f * (x1 - x0) : x0 + f * (x1 - x0), y = y0 + 0.2 + rr * 0.4, [vx, vy] = P(x, y, 0.4), harvest = ph >= 0.9;
+      ctx.fillStyle = harvest ? '#3a8a3a' : '#c83a2a'; ctx.fillRect(vx - (harvest ? 0.6 : 0.4) * M, vy - 0.4 * M, (harvest ? 1.2 : 0.8) * M, 0.5 * M); ctx.fillStyle = '#1a1a1c'; ctx.fillRect(vx - 0.35 * M, vy, 0.25 * M, 0.15 * M); ctx.fillRect(vx + 0.15 * M, vy, 0.25 * M, 0.15 * M);
+      if (night) _indGlowAt(F, x + (dir ? -1 : 1) * 0.8, y, 0.3, 1.2, '255,240,200', 0.5); }
+  });
+  const animal = (x, y, a, c, s = 1, spot = null) => { const [ax, ay] = P(x, y, 0.2); ctx.save(); ctx.translate(ax, ay); ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(0, 0, 0.3 * s * M, 0.15 * s * M, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(Math.cos(a) * 0.3 * s * M, -0.05 * M, 0.1 * s * M, 0, Math.PI * 2); ctx.fill();
+    if (spot) { ctx.fillStyle = spot; ctx.beginPath(); ctx.arc(-0.08 * s * M, -0.03 * M, 0.08 * s * M, 0, Math.PI * 2); ctx.fill(); } ctx.restore(); };
+  const herd = ([cx, cy, rx, ry], n, c, s, spot, sp) => { for (let i = 0; i < n; i++) { const a = t * sp + i * 2.1, x = cx + Math.sin(a * 0.3 + i) * rx * 0.7, y = cy + Math.cos(a * 0.23 + i * 1.7) * ry * 0.7; animal(x, y, Math.sin(a * 0.3 + i) > 0 ? 0 : Math.PI, c, s, spot); } };
+  herd(L.cows, 3, '#f4f2ec', 1.1, '#1a1a1c', 0.05); herd(L.sheep, 4, '#ece6d8', 0.75, null, 0.07); herd(L.horses, 2, '#6a4026', 1.1, null, 0.06); herd(L.pigs, 3, '#e8a8a0', 0.7, null, 0.08);
+  { const [px_, py_, rx, ry, z] = L.pond; _parkWater(F, px_, py_, rx, ry, z, t); for (let k = 0; k < 2; k++) { const a = t * 0.2 + k * 3, [dx, dy] = P(px_ + Math.cos(a) * rx * 0.5, py_ + Math.sin(a) * ry * 0.5, z + 0.05); ctx.fillStyle = '#f4f4f0'; ctx.beginPath(); ctx.ellipse(dx, dy, 0.12 * M, 0.07 * M, 0, 0, Math.PI * 2); ctx.fill(); } }
+  if (day) { const [cx, cy] = L.coop; for (let k = 0; k < 4; k++) { const a = t * 0.5 + k * 1.7, [hx, hy] = P(cx + Math.sin(a) * 1.0, cy - 0.6 + Math.cos(a * 0.7) * 0.5, 0.1); ctx.fillStyle = k % 2 ? '#c87a3a' : '#f4f0e6'; ctx.beginPath(); ctx.ellipse(hx, hy, 0.09 * M, 0.06 * M, 0, 0, Math.PI * 2); ctx.fill(); }
+    const u = (t / 50) % 1, R = [[-7.6, 3.8], [-2.6, 2.6], [-0.8, -2.2], [-3.0, 0.0]], s = u * R.length, k = Math.floor(s) % R.length, f = s - Math.floor(s), a = R[k], b = R[(k + 1) % R.length];
+    const fx = a[0] + (b[0] - a[0]) * f, fy = a[1] + (b[1] - a[1]) * f; _indPerson(F, fx, fy, '#3a5a8a', _IND_SKIN[1], Math.abs(Math.sin(t * 5)) * 0.03); animal(fx + 0.5, fy - 0.2, 0, '#2a2420', 0.5);
+    L.hives.forEach(([x, y, z]) => { for (let q = 0; q < 3; q++) { const a = t * 3 + q * 2, [bx, by] = P(x + Math.cos(a) * 0.4, y + Math.sin(a) * 0.3, z); ctx.fillStyle = '#f0c020'; ctx.beginPath(); ctx.arc(bx, by, 0.03 * M, 0, Math.PI * 2); ctx.fill(); } }); }
+  { const [x, y, z, r] = L.windmill, a = t * 1.5, [cx, cy] = P(x, y, z); ctx.strokeStyle = '#8a8e94'; ctx.lineWidth = 0.06 * M; for (let k = 0; k < 12; k++) { const b = a + k * Math.PI / 6; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(b) * r * M, cy + Math.sin(b) * r * M); ctx.stroke(); }
+    ctx.fillStyle = '#c83a2a'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 0.9 * M, cy - 0.15 * M); ctx.lineTo(cx + 0.9 * M, cy + 0.15 * M); ctx.closePath(); ctx.fill(); }
+  { const [x, y, z] = L.vane, a = Math.sin(t * 0.2) * 1.2, [vx, vy] = P(x, y, z); ctx.strokeStyle = '#2a2a2e'; ctx.lineWidth = 0.04 * M; ctx.beginPath(); ctx.moveTo(vx - Math.cos(a) * 0.3 * M, vy); ctx.lineTo(vx + Math.cos(a) * 0.3 * M, vy); ctx.stroke(); }
+  if (night) { L.house.forEach(w => _indWin(P, w, '#ffd890')); _parkLamp(F, ...L.lamp, true); }
+  _civText(F, L.sign, 'MEADOWBROOK FARM', '#f4e8c8');
+  ctx.restore();
+}
+// ── Apartment blocks and the school (renderHouse subtypes) ──
+const _HOME_ART_KEY = { apartment: 'ap', birchwood: 'bw', foundry: 'fl', willowbank: 'wb', school: 'sch' };
+function _homeArtTry(e, px, py, t) {
+  if (typeof IND_ART_LAYOUT === 'undefined' || e._ghost || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  const sub = e.commercialSubtype, key = _HOME_ART_KEY[sub]; if (!key) return false;
+  const fp = SubtypeFootprints[sub], art = typeof ArtFootprints !== 'undefined' ? ArtFootprints.sub[sub] : null, fw = e.width || 1, fh = e.height || 1;
+  if (!fp) return false;
+  let kx = 1, ky = 1;
+  if (fw === fp.width && fh === fp.height) { /* its own size */ }
+  else if (art && fw === art[0] && fh === art[1]) { kx = art[0] / fp.width; ky = art[1] / fp.height; }
+  else return false;
+  const L = IND_ART_LAYOUT[key], base = IndArt.get('ind_' + key), fn = _IND_ART_FN[key];
+  if (!L || !base || !fn || !fn.ready()) return false;
+  ctx.save(); ctx.translate(px, py); ctx.scale(kx, ky); ctx.translate(-px, -py);
+  e.width = fp.width; e.height = fp.height;
+  try { fn.draw(e, px, py, t, L, base); } finally { ctx.restore(); e.width = fw; e.height = fh; }
+  if (typeof _drawHouseStatusDots === 'function') _drawHouseStatusDots(e, px + fw * TILE - TILE, py);
+  return true;
+}
+// Households: each unit on its own schedule (lamp, TV flicker, dark), from
+// its own hash and the hour, by the block's demand curve where it has one.
+function _homeUnit(e, i, t, hr, on, kind) {
+  if (!on) return null;
+  const f = _cmFrac(i * 31.7 + (e.col || 0) * 7 + (e.row || 0) * 3), g = _cmFrac(i * 13.1 + Math.floor(t / 20));
+  const away = kind === 'young' ? hr >= 8 && hr < 18 : kind === 'family' ? hr >= 9 && hr < 15 : hr >= 9 && hr < 16 && f < 0.5;
+  const asleep = kind === 'family' ? hr >= 22 || hr < 6 : hr >= 0.5 && hr < 6.5;
+  if (asleep) return f > 0.9 ? '#ffd890' : null;
+  if (away) return f > (kind === 'wfh' ? 0.4 : 0.85) ? '#fff2d0' : null;
+  const night = DayNight.darkness() > 0.3; if (!night && hr < 17) return null;
+  if (f < 0.25) return null;
+  return g > 0.7 ? `rgba(120,170,255,${(0.6 + 0.3 * Math.sin(t * 9 + i)).toFixed(3)})` : (f > 0.6 ? '#ffd890' : '#ffc070');
+}
+function _homeBlock(kind, extra) {
+  return function (e, px, py, t, L, base) {
+    const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+    const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3;
+    L.units.forEach((w, i) => { const c = _homeUnit(e, i, t, hr, on, kind); if (c) (w[4] - w[3] > 1.45 && kind === 'wfh' ? _indArchWin(P, w, c, M) : _indWin(P, w, c)); });
+    extra(F, e, t, L, on, hr, night);
+    ctx.restore();
+  };
+}
+const _indApArt = _homeBlock('mixed', (F, e, t, L, on, hr, night) => {
+  const { P, M } = F;
+  (L.ground || []).forEach(w => _indWin(P, w, on && night ? '#ffe0a8' : on ? 'rgba(200,220,230,0.6)' : '#141418'));
+  L.lobby.forEach(w => _indWin(P, w, on ? (night ? '#ffe2a8' : 'rgba(220,235,240,0.8)') : '#141418'));
+  _civText(F, L.canopy, 'MAPLE COURT', on && night ? '#ffe9b8' : '#f4f0e6');
+  L.balconies.forEach(([x, y, z], i) => { if (on && hr >= 17 && hr < 22 && _cmFrac(i + (e.col || 0) * 3) > 0.5) _indPerson(F, x + 0.4, y, _IND_SHIRT[(i * 3 + 2) % 8], _IND_SKIN[i % 6]); });
+  if (on && night) _indGlowAt(F, 0, L.lobby[0][2] - 0.6, 0.5, 1.6, '255,224,170', 0.3);
+});
+const _indBwArt = _homeBlock('young', (F, e, t, L, on, hr, night) => {
+  const { P } = F;
+  _indWin(P, L.lobby, on ? (night ? 'rgba(255,236,200,0.9)' : 'rgba(215,235,245,0.75)') : '#141418');
+  L.balconies.forEach(([x, y, z], i) => { if (on && (hr >= 18 || hr < 1) && _cmFrac(i * 2 + (e.col || 0)) > 0.45) _indPerson(F, x + (i % 2 ? 0.8 : -0.8), y, _IND_SHIRT[(i * 3 + 5) % 8], _IND_SKIN[(i + 2) % 6]); });
+  if (on && night) _indGlowAt(F, -0.8, L.lobby[2] - 0.5, 0.4, 2.0, '255,236,200', 0.3);
+});
+const _indFlArt = _homeBlock('wfh', (F, e, t, L, on, hr, night) => {
+  const { P, M } = F, cafe = on && hr >= 7 && hr < 18;
+  if (cafe) { _indWin(P, L.cafe, night ? '#ffd890' : 'rgba(255,236,200,0.85)'); const [x0, x1, y] = L.cafe; for (let i = 0; i < 2; i++) _indPerson(F, x0 + 0.6 + i * 1.1, y - 0.6, _IND_SHIRT[(i * 3 + 1) % 8], _IND_SKIN[(i + 3) % 6]); }
+  L.door.forEach(w => _indWin(P, w, on && night ? '#ffe0a0' : '#1a1a1e'));
+  if (on && night) { L.sawtooth.forEach(([x, y, z]) => _indGlowAt(F, x, y, z, 0.7, '255,220,160', 0.4)); L.lamps.forEach(([x, y, z]) => _indGlowAt(F, x, y, z, 0.6, '255,230,180', 0.55)); }
+  _civText(F, L.sign, 'THE FOUNDRY LOFTS', on && night ? 'rgba(240,226,190,0.85)' : 'rgba(240,226,190,0.6)');
+});
+const _indWbArt = _homeBlock('family', (F, e, t, L, on, hr, night) => {
+  const { P } = F;
+  L.dormers.forEach((w, i) => { if (on && night && hr < 22 && _cmFrac(i * 5 + (e.col || 0)) > 0.4) _indWin(P, w, '#ffd890'); });
+  _civText(F, L.plaque, 'WILLOWBANK', '#e8d8b0');
+  { const [x, y] = L.court; if (hr >= 7 && hr < 9 || hr >= 15 && hr < 19) for (let i = 0; i < 3; i++) { const u = (t * 0.05 + i / 3) % 1; _indPerson(F, x - 1.4 + u * 2.8, y - 0.8 + (i % 2) * 1.4, _IND_SHIRT[(i * 3 + 4) % 8], _IND_SKIN[(i + 1) % 6], Math.abs(Math.sin(t * 6 + i)) * 0.04); } }
+  if (on && night) _indGlowAt(F, 0, L.arch[2], 1.6, 1.6, '255,214,150', 0.3);
+});
+// Fernhill Public School: on the timetable (as DemandCurves.school): buses
+// at 07:30-08:30 and 15:00-16:00, lessons lit 08:30-15:30, pupils out in
+// the yard at break and lunch, the hall hired out 18:00-21:00, a janitor's
+// light wandering the block at night; the clock on game time, the bell
+// swinging at the change of lessons.
+function _indSchArt(e, px, py, t, L, base) {
+  const F = _indStripBegin(e, px, py, base, L); if (!F) return;
+  const { P, M } = F, on = !!e.powered, hr = DayNight.hour(), night = DayNight.darkness() > 0.3, wd = true;
+  const lessons = wd && hr >= 8.5 && hr < 15.5, brk = wd && (hr >= 10.5 && hr < 11 || hr >= 12.5 && hr < 13.25), bus = wd && (hr >= 7.5 && hr < 8.5 || hr >= 15 && hr < 16), hall = hr >= 18 && hr < 21;
+  L.rooms.forEach((w, i) => { if (on && lessons && !brk) _indWin(P, w, night ? '#ffe0a0' : 'rgba(255,244,215,0.85)'); else if (on && !lessons && !hall && (hr >= 21 || hr < 6)) { const j = Math.floor(t / 6) % L.rooms.length; if (i === j) _indWin(P, w, '#c8d8ff'); } });
+  (L.hall || []).forEach(w => _indWin(P, w, on && (hall || lessons) ? (night ? '#fff0c8' : 'rgba(255,248,230,0.8)') : '#14181c'));
+  L.door.forEach(w => _indArchWin(P, w, on && (lessons || hall) ? (night ? '#ffe0a0' : 'rgba(80,60,40,0.7)') : '#2a1e14', M));
+  { const [x, y, z, r] = L.clock, [cx, cy] = P(x, y, z), ha = (hr % 12) / 12 * Math.PI * 2 - Math.PI / 2, ma = (hr % 1) * Math.PI * 2 - Math.PI / 2; ctx.strokeStyle = '#2a1c14'; ctx.lineCap = 'round';
+    ctx.lineWidth = 0.09 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ha) * r * 0.5 * M, cy + Math.sin(ha) * r * 0.5 * M); ctx.stroke(); ctx.lineWidth = 0.05 * M; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(ma) * r * 0.8 * M, cy + Math.sin(ma) * r * 0.8 * M); ctx.stroke(); ctx.lineCap = 'butt';
+    if (on && night) _indGlowAt(F, x, y, z, 1.0, '255,236,180', 0.3); }
+  { const [x, y, z] = L.bell, ring = wd && (Math.abs(hr - 8.5) < 0.05 || Math.abs(hr - 10.5) < 0.05 || Math.abs(hr - 11) < 0.05 || Math.abs(hr - 15.5) < 0.05), a = ring ? Math.sin(t * 8) * 0.5 : 0, [bx, by] = P(x, y, z); ctx.save(); ctx.translate(bx, by); ctx.rotate(a); ctx.fillStyle = '#c8a040'; ctx.beginPath(); ctx.moveTo(-0.2 * M, 0.3 * M); ctx.lineTo(0.2 * M, 0.3 * M); ctx.lineTo(0.12 * M, -0.1 * M); ctx.lineTo(-0.12 * M, -0.1 * M); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  _civText(F, L.lintel, 'FERNHILL SCHOOL', '#3a2a1c'); _civText(F, L.sign, 'FERNHILL PUBLIC SCHOOL', '#f4f0e6');
+  if (brk || (bus && hr >= 15)) { const [yx, yy] = L.yard; for (let i = 0; i < 12; i++) { const a = t * (0.4 + (i % 3) * 0.15) + i * 0.9, x = yx + Math.sin(a) * 3.6 - (i % 4 === 0 ? 4.5 : 0), y = yy + Math.cos(a * 0.8) * 1.0;
+    const [sx, sy] = P(x, y, 0.08), lift = Math.abs(Math.sin(t * 8 + i)) * 0.08; ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(sx, sy, 0.1 * M, 0.04 * M, 0, 0, Math.PI * 2); ctx.fill();
+    const [kx, ky] = P(x, y, 0.08 + lift); ctx.fillStyle = _IND_SHIRT[i % 8]; ctx.fillRect(kx - 0.07 * M, ky - 0.28 * M, 0.14 * M, 0.26 * M); ctx.fillStyle = _IND_SKIN[i % 6]; ctx.beginPath(); ctx.arc(kx, ky - 0.34 * M, 0.06 * M, 0, Math.PI * 2); ctx.fill(); } }
+  if (bus) { const [bx0, by0, r] = L.busloop, a = -((t / 14) % 1) * Math.PI * 2, x = bx0 + Math.cos(a) * r, y = by0 + Math.sin(a) * r * 0.7, [qx, qy] = P(x, y, 0.6), deg = Math.atan2(-Math.cos(a) * 0.7, Math.sin(a));
+    ctx.save(); ctx.translate(qx, qy); ctx.rotate(-deg); ctx.fillStyle = '#f0c020'; ctx.fillRect(-0.9 * M, -0.3 * M, 1.8 * M, 0.6 * M); ctx.fillStyle = '#2a3a48'; ctx.fillRect(-0.7 * M, -0.22 * M, 1.4 * M, 0.12 * M); ctx.restore(); }
+  ctx.restore();
+}
+// Request every sprite in the list at once (every() alone stops at the first
+// one still loading, so the rest would trickle in one at a time).
+const _indAll = names => names.map(n => IndArt.get(n)).every(Boolean);
+const _IND_ART_FN = {
+  sch: { ready: () => true, draw: _indSchArt },
+  wb: { ready: () => true, draw: _indWbArt },
+  fl: { ready: () => true, draw: _indFlArt },
+  bw: { ready: () => true, draw: _indBwArt },
+  ap: { ready: () => true, draw: _indApArt },
+  fa: { ready: () => true, draw: _indFaArt },
+  gh2: { ready: () => true, draw: _indGh2Art },
+  cc2: { ready: () => true, draw: _indCc2Art },
+  dp: { ready: () => true, draw: _indDpArt },
+  alt: { ready: () => true, draw: _indAltArt },
+  bf: { ready: () => true, draw: _indBfArt },
+  sp: { ready: () => true, draw: _indSpArt },
+  pg: { ready: () => true, draw: _indPgArt },
+  tstv: { ready: () => true, draw: _indTstArt },
+  bb: { ready: () => true, draw: _indBbArt },
+  fm: { ready: () => true, draw: _indFmArt },
+  fn: { ready: () => true, draw: _indFnArt },
+  tst: { ready: () => true, draw: _indTstArt },
+  cg: { ready: () => true, draw: _indCgArt },
+  spk: { ready: () => true, draw: _indSpkArt },
+  hs: { ready: () => true, draw: _indHsArt },
+  ch: { ready: () => true, draw: _indChArt },
+  mt: { ready: () => true, draw: _indMtArt },
+  ar2: { ready: () => true, draw: _indAr2Art },
+  gl: { ready: () => _indCarsReady(), draw: _indGlArt },
+  ml: { ready: () => _indCarsReady(), draw: _indMlArt },
+  gh: { ready: () => _indCarsReady(), draw: _indGhArt },
+  hb: { ready: () => _indCarsReady(), draw: _indHbArt },
+  ir: { ready: () => true, draw: _indIrArt },
+  nw: { ready: () => true, draw: _indNwArt },
+  rd: { ready: () => true, draw: _indRdArt },
+  dc: { ready: () => true, draw: _indDcArt },
+  cs: { ready: () => _indCarsReady(), draw: _indCsArt },
+  gr: { ready: () => _indCarsReady(), draw: _indGrArt },
+  ev: { ready: () => _indAll(['ind_ev_train', 'ind_ev_car']), draw: _indEvArt },
+  zb: { ready: () => _indCarsReady(), draw: _indZbArt },
+  dd: { ready: () => _indCarsReady(), draw: _indDdArt },
+  cd: { ready: () => _indCarsReady(), draw: _indCdArt },
+  os: { ready: () => _indCarsReady(), draw: _indOsArt },
+  kk: { ready: () => true, draw: _indKkArt },
+  bk: { ready: () => true, draw: _indBkArt },
+  cf: { ready: () => true, draw: _indCfArt },
+  ph: { ready: () => true, draw: _indPhArt },
+  gy: { ready: () => true, draw: _indGyArt },
+  bi: { ready: () => true, draw: _indBiArt },
+  cw2: { ready: () => true, draw: _indCw2Art },
+  lw: { ready: () => _indCarsReady(), draw: _indLwArt },
+  sl: { ready: () => _indCarsReady(), draw: _indSlArt },
+  bnk: { ready: () => true, draw: _indBnkArt },
+  to: { ready: () => _indCarsReady(), draw: _indToArt },
+  mo: { ready: () => _indCarsReady(), draw: _indMoArt },
+  ar: { ready: () => _indAll(['ind_ar_tow']) && _indCarsReady(), draw: _indArArt },
+  cl: { ready: () => _indAll(['ind_cl_amb']), draw: _indClArt },
+  sm: { ready: () => _indAll(['ind_rp_fork_e', 'ind_rp_fork_w', ...Array.from({ length: 12 }, (_, k) => 'ind_sm_arm_' + String(k).padStart(2, '0')), ...[0, 1, 2, 3].map(k => 'ind_sm_truck_' + k)]), draw: _indSmArt },
+  al: { ready: () => _indAll(['ind_al_car_e', 'ind_al_car_w', 'ind_rp_fork_e']), draw: _indAlArt },
+  mc: { ready: () => _indAll(['ind_mc_truck', 'ind_rp_fork_e', 'ind_rp_fork_w']) && !!IND_ART_LAYOUT.rp, draw: _indMcArt },
+  rp: { ready: () => _indAll(['ind_rp_tipper', 'ind_rp_fork_e', 'ind_rp_fork_w']), draw: _indRpArt },
+  sv: { ready: () => true, draw: _indSvArt },
+  bp: { ready: () => _indAll(['ind_bp_fork', 'ind_bp_truck']), draw: _indBpArt },
+  cw: { ready: () => _indAll(['ind_cw_fork', 'ind_cw_tanker']), draw: _indCwArt },
+  ld: { ready: () => _indAll(['ind_ld_gantry', 'ind_ld_van_s', 'ind_ld_van_w'].concat(...['2e6fb8', 'c8322a'].map(c => Array.from({ length: 16 }, (_, k) => `ind_ld_mv_${c}_${String(k).padStart(2, '0')}`)))), draw: _indLdArt },
+  cc: { ready: () => true, draw: _indCcArt },
+  wt: { ready: () => true, draw: _indWtArt },
+  tm: { ready: () => !!IndArt.get('ind_tm_van'), draw: _indTmArt },
+  sf: { ready: () => _indAll(['ind_sf_ladle', ...Array.from({ length: 24 }, (_, k) => 'ind_sf_arm_' + String(k).padStart(2, '0'))]), draw: _indSfArt },
+  df: { ready: () => true, draw: _indDfArt },
+};
+
 function renderIndustrial(e, px, py, t) {
     const cx = px+TILE/2, cy = py+TILE/2;
     const on = e.powered;
     const sub = _industrialSub(e);
+    if (_indArtTry(e, px, py, t, sub)) return;
     // Which passes of the static/animated split this call is drawing. Both
     // are true for an ordinary one-pass render, so the guards below are
     // transparent to every caller that hasn't opted in.

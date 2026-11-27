@@ -458,8 +458,8 @@ const GridManager = (() => {
           if (fill && t.type === T.WATER && !WaterBuild.noFill(entity.type))
             return { reason: WaterBuild.isReservoir(t) ? 'a dam reservoir' : 'water (unlock the Bridge to build over it)', c, r, ent: t };
           const label = t.def?.label || EntityDefs[t.type]?.label || t.type;
-          const extra = t.type === T.WIRE && t._underPipe ? ' (wire laid over a pipe)'
-                      : t.type === T.WIRE && t._underWater ? ' (wire over water)'
+          const extra = t.type === T.WIRE && t._underPipe ? ' (cable laid over a pipe)'
+                      : t.type === T.WIRE && t._underWater ? ' (cable over water)'
                       : (t.type === T.PIPE || t.type === T.CONVEYOR) ? ' (not this building\'s own line)' : '';
           return { reason: `${label}${extra}`, c, r, ent: t };
         }

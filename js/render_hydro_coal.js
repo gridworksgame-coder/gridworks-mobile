@@ -4,7 +4,231 @@
    coal deposit, and waste facilities (coal/oil/nuclear).
    ═══════════════════════════════════════════════════════════════════ */
 
+/* ── Hydro chain, rendered ───────────────────────────────────────────────
+   Hydro Turbine, Hydroelectric Generator and the Dam, built and rendered in
+   Blender (scripts/render_hydro.py, which reuses render_coal_water.py's
+   scene and materials). Each is rendered in its four orientations (the
+   model turned about z, the sun fixed); HYDRO_LAYOUT is in the default
+   orientation (turbine: water from the north; generator: shaft in from the
+   west; dam: reservoir north) and _hyRot turns its points to match. The
+   dam is one tile, drawn along the span. Painted versions are the fallback. */
+const HYDRO_LAYOUT = {
+  turb: {"runner":[0.4,-0.2,1.45,1.3],"outlets":[[-1.6,-4.6,0.05],[1.6,-4.6,0.05]],"hutWin":[3.5,-3.34,2.6],"lamps":[[-3.9,-3.9,3.35],[3.9,-3.9,3.35],[-3.9,2.5,3.35],[3.9,2.5,3.35]],"plate":[0,-3.4,1.3],"deck":1.2,"B":4.3,"frame":13.0,"off":0.9},
+  gen: {"rotor":[-0.8,0,2.43,2.4],"lamp":[-0.25,-0.5,3.6],"bus":[[5.3,-6.0,3.0],[5.3,6.0,3.0]],"trafos":[[4.9,-2.6,2.8],[4.9,2.6,2.8]],"kioskWin":[-4.0,-5.39,1.4],"input":[-6.4,0,1.0],"frame":16.0,"off":1.0},
+  dam: {"lamp":[0.75,0.75,2.55],"spill":[0,-1.05,0.0],"crest":[0,0.7,1.75],"frame":4.0,"off":0.6},
+};
+const _HY_PHI = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
+function _hyRot(p, k) {
+  const a = _HY_PHI[k], c = Math.cos(a), s = Math.sin(a);
+  return [p[0] * c - p[1] * s, p[0] * s + p[1] * c, p[2]];
+}
+// A sprite part rendered at default-orientation point `at` (its frame F),
+// drawn turned by th about where that point lands in orientation k.
+function _hyTurnedAt(im, F, at, k, th) {
+  const [x0, y0] = F.P(at[0], at[1], at[2]), q = _hyRot(at, k), [x1, y1] = F.P(q[0], q[1], q[2]);
+  const F2 = { fx: F.fx + (x1 - x0), fy: F.fy + (y1 - y0), fw: F.fw, fh: F.fh };
+  _cwTurned(im, [F.D(1, 0, 0), F.D(0, 1, 0)], th, x1, y1, F2);
+}
+function _hyPortHub(x, y, S, t, fuelled, rate) {
+  const TAU = Math.PI * 2;
+  ctx.save(); ctx.translate(x, y);
+  if (Camera.zoom > 0.5) {
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 14 * S);
+    g.addColorStop(0, `rgba(224,160,32,${fuelled ? 0.7 + 0.25 * Math.sin(t * 4) : 0.25})`); g.addColorStop(1, 'rgba(224,160,32,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 14 * S, 0, TAU); ctx.fill();
+  }
+  if (fuelled) ctx.rotate(t * 4 * rate);
+  ctx.fillStyle = fuelled ? '#ffc040' : '#604018'; ctx.beginPath(); ctx.arc(0, 0, 5 * S, 0, TAU); ctx.fill();
+  ctx.strokeStyle = '#1a0e00'; ctx.lineWidth = 1.5 * S;
+  ctx.beginPath(); ctx.arc(0, 0, 5 * S, 0, TAU); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-4 * S, 0); ctx.lineTo(4 * S, 0); ctx.moveTo(0, -4 * S); ctx.lineTo(0, 4 * S); ctx.stroke();
+  ctx.restore();
+}
+
+function _hydroTurbArt(e, px, py, t) {
+  const L = HYDRO_LAYOUT.turb;
+  const tw = (e.width || 5) * TILE, th = (e.height || 5) * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const cx = px + tw / 2, cy = py + th / 2;
+  const on = e.powered, fuelled = on && e._fuelled, fillFrac = e._fillFrac || 0;
+  const fdc = e._flowDc || 0, fdr = e._flowDr || 0;
+  const k = fdr > 0 ? 0 : fdc > 0 ? 1 : fdr < 0 ? 2 : fdc < 0 ? 3 : 0;
+  const dark = DayNight.darkness();
+  const F = _cwFrame(L, cx, cy), { P, M } = F;
+  const R = p => P(..._hyRot(p, k));
+  // water under the footprint (as the painted turbine does)
+  if (e._waterTiles && e._waterTiles.length) {
+    if (!e._waterStubs) {
+      const inFoot = new Set(e._waterTiles.map(w => w.c + ',' + w.r));
+      const wet = (c, r) => inFoot.has(c + ',' + r) || WaterSystem.isWater(c, r);
+      e._waterStubs = e._waterTiles.map(w => {
+        let mask = 0;
+        if (!wet(w.c, w.r - 1)) mask |= 1; if (!wet(w.c, w.r + 1)) mask |= 2;
+        if (!wet(w.c - 1, w.r)) mask |= 4; if (!wet(w.c + 1, w.r)) mask |= 8;
+        return { col: w.c, row: w.r, _reservoirId: e._reservoirId, _isRiver: w.isRiver, _shoreMask: mask };
+      });
+    }
+    for (const w of e._waterStubs) { const { x, y } = GridManager.tileToWorld(w.col, w.row); renderWater(w, x, y, t); }
+  }
+  ctx.save();
+  // ripples round the block while water runs through
+  if (fuelled) for (let i = 0; i < 3; i++) {
+    const rp = (t * 0.35 + i / 3) % 1;
+    ctx.strokeStyle = `rgba(200,240,255,${(0.35 * (1 - rp)).toFixed(3)})`; ctx.lineWidth = 1 * S;
+    ctx.beginPath(); ctx.ellipse(cx, cy, tw * (0.45 + rp * 0.1), th * (0.45 + rp * 0.1), 0, 0, TAU); ctx.stroke();
+  }
+  F.draw(CoalWaterArt.get('hydroturb_' + k));
+  // the Kaplan runner in its pit, turning with the flow
+  _hyTurnedAt(CoalWaterArt.get('hydroturb_runner'), F, L.runner, k, fuelled ? t * (1.0 + fillFrac * 2.5) : 0.3);
+  // the water in the pit swirling round the runner, foam riding the vortex
+  if (fuelled && Camera.zoom > 0.45) {
+    const q = _hyRot(L.runner, k), [rx, ry] = F.P(q[0], q[1], q[2] + 0.2), R = (L.runner[3] + 0.25) * M;
+    ctx.save(); ctx.lineCap = 'round';
+    for (let i = 0; i < 10; i++) {
+      const a0 = t * (1.2 + fillFrac * 1.6) + i * 0.628, rr = R * (0.72 + 0.26 * ((i * 37) % 10) / 10);
+      ctx.strokeStyle = `rgba(225,245,255,${(0.22 + 0.18 * Math.sin(t * 2 + i)).toFixed(3)})`; ctx.lineWidth = (0.8 + (i % 3) * 0.4) * S;
+      ctx.beginPath(); ctx.arc(rx, ry, rr, a0, a0 + 0.5 + 0.3 * fillFrac); ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // whitewater out of the draft tubes, downstream
+  if (fuelled) {
+    const dn = _hyRot([0, -1, 0], k);
+    for (const o of L.outlets) {
+      const [ox, oy] = R(o);
+      for (let i = 0; i < 6; i++) {
+        const p = (t * 1.1 + i / 6) % 1, sp = (i - 2.5) * 0.15;
+        const x = ox + (dn[0] * p * 1.4 + dn[1] * sp) * M, y = oy - (dn[1] * p * 1.4 - dn[0] * sp) * M;
+        ctx.fillStyle = `rgba(240,250,255,${(0.7 * (1 - p) * (0.5 + fillFrac * 0.5)).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(x, y, (1 + p * 2.2) * S, 0, TAU); ctx.fill();
+      }
+    }
+  }
+  // output shaft on its own side, port hub where it always was
+  const odc = e._outSideDc || 0, odr = e._outSideDr || 0;
+  const side = odr < 0 ? 0 : odc > 0 ? 1 : odr > 0 ? 2 : odc < 0 ? 3 : -1;
+  if (side >= 0) {
+    F.draw(CoalWaterArt.get('hydroturb_shaft_' + side));
+    const portX = odc !== 0 ? (odc > 0 ? px + tw - 8 : px + 8) : cx, portY = odc !== 0 ? cy : (odr > 0 ? py + th - 8 : py + 8);
+    _hyPortHub(portX, portY, S, t, fuelled, fillFrac);
+  }
+  // lamps and the control hut window after dark
+  if (on && dark > 0.3) {
+    for (const p of L.lamps) {
+      const [lx, ly] = R(p), g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 16 * S);
+      g.addColorStop(0, `rgba(255,230,160,${(0.45 * dark).toFixed(3)})`); g.addColorStop(1, 'rgba(255,230,160,0)');
+      ctx.fillStyle = g; ctx.fillRect(lx - 16 * S, ly - 16 * S, 32 * S, 32 * S);
+      ctx.fillStyle = '#fff0c0'; ctx.beginPath(); ctx.arc(lx, ly, 1.2 * S, 0, TAU); ctx.fill();
+    }
+    const [hx, hy] = R(L.hutWin); ctx.fillStyle = 'rgba(255,214,140,0.85)'; ctx.fillRect(hx - 4 * S, hy - 2.5 * S, 8 * S, 5 * S);
+  }
+  const lbl = fuelled ? `TURBINE ${Math.round((e._rotationRate || 0) * 100)}% RPM` : on ? 'LOW WATER' : 'NO POWER';
+  const [plx, ply] = R(L.plate);
+  _wfPlate(lbl, plx, ply, S, fuelled ? '#60e0ff' : '#6a8a98', true);
+  if (InspectionPanel.isOpen() && InspectionPanel.target === e) {
+    ctx.strokeStyle = '#30d4ff'; ctx.lineWidth = 2 / Camera.zoom; ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
+    ctx.strokeRect(px + 1, py + 1, tw - 2, th - 2); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+
+function _hydroGenArt(e, px, py, t) {
+  const L = HYDRO_LAYOUT.gen;
+  const tw = (e.width || 7) * TILE, th = (e.height || 7) * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const cx = px + tw / 2, cy = py + th / 2;
+  const on = e.powered, rate = e._shaftRate || 0, fuelled = on && rate > 0;
+  const idc = e._inSideDc || 0, idr = e._inSideDr || 0;
+  const k = idc < 0 ? 0 : idr > 0 ? 1 : idc > 0 ? 2 : idr < 0 ? 3 : 0;
+  const dark = DayNight.darkness();
+  const F = _cwFrame(L, cx, cy), { P, M } = F;
+  const R = p => P(..._hyRot(p, k));
+  if (fuelled && Camera.zoom > 0.5) drawGlowHalo(cx, cy, Math.min(tw, th) * 0.55, [[0, '#20d4ff'], [1, 'transparent']], 0.12 + 0.05 * Math.sin(t * 1.5));
+  ctx.save();
+  F.draw(CoalWaterArt.get('hydrogen_' + k));
+  _hyTurnedAt(CoalWaterArt.get('hydrogen_rotor'), F, L.rotor, k, fuelled ? t * (1.5 + rate * 3) : 0.2);
+  // the bracket arms, exciter dome and slip rings over the turning rotor
+  _hyTurnedAt(CoalWaterArt.get('hydrogen_top'), F, L.rotor, k, 0);
+  // HV bus bar live while it generates
+  if (fuelled) {
+    const [ax, ay] = R(L.bus[0]), [bx, by] = R(L.bus[1]);
+    ctx.strokeStyle = `rgba(90,220,255,${(0.35 + 0.2 * Math.sin(t * 6)).toFixed(3)})`; ctx.lineWidth = 2.2 * S;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    for (const p of L.trafos) {
+      if (Math.sin(t * 9 + p[1]) <= 0.92) continue;
+      const [ix, iy] = R(p);
+      ctx.strokeStyle = 'rgba(210,245,255,0.95)'; ctx.lineWidth = 1 * S;
+      ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix + 3 * S, iy - 3 * S); ctx.lineTo(ix - 1 * S, iy - 6 * S); ctx.stroke();
+    }
+  }
+  // exciter status lamp, kiosk window after dark
+  { const [lx, ly] = R(L.lamp); ctx.fillStyle = fuelled ? `rgba(90,255,140,${(0.7 + 0.3 * Math.sin(t * 3)).toFixed(2)})` : on ? '#e0a020' : '#c03020'; ctx.beginPath(); ctx.arc(lx, ly, 1.6 * S, 0, TAU); ctx.fill(); }
+  if (on && dark > 0.3) { const [wx, wy] = R(L.kioskWin); ctx.fillStyle = 'rgba(255,214,140,0.85)'; ctx.fillRect(wx - 7 * S, wy - 4 * S, 14 * S, 8 * S); }
+  // shaft input hub at the port
+  { const [hx, hy] = R(L.input); _hyPortHub(hx, hy, S, t, fuelled, rate); }
+  const horizInput = idc !== 0;
+  const lbl = fuelled ? `HYDRO  ${formatPower(Math.round(e.def.powerOutput))}` : on ? 'NO SHAFT' : 'OFFLINE';
+  const plateY = (!horizInput && idr < 0) ? py + 12 * S : py + th - 10 * S;
+  const plateX = horizInput ? cx : cx + tw * 0.25;
+  _wfPlate(lbl, plateX, plateY, S, fuelled ? '#40d8ff' : '#6a8a98', true);
+  if (InspectionPanel.isOpen() && InspectionPanel.target === e) {
+    ctx.strokeStyle = '#20d4ff'; ctx.lineWidth = 2 / Camera.zoom; ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
+    ctx.strokeRect(px + 1, py + 1, tw - 2, th - 2); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+
+function _damArt(e, px, py, t) {
+  const L = HYDRO_LAYOUT.dam, S = TILE / 40, TAU = Math.PI * 2;
+  const horizontal = e._flowDr !== 0;
+  let upSign = horizontal ? (e._flowDr > 0 ? 1 : -1) : (e._flowDc > 0 ? 1 : -1);
+  if (e._reservoirSide === 'downstream') upSign = -upSign;
+  const k = horizontal ? (upSign > 0 ? 0 : 2) : (upSign > 0 ? 1 : 3);
+  const n = horizontal ? e.width : e.height;
+  const res = (typeof ReservoirSystem !== 'undefined') ? ReservoirSystem.getReservoir(e._reservoirId) : null;
+  const fill = res && res.capacity > 0 ? res.waterLevel / res.capacity : 0;
+  const dark = DayNight.darkness();
+  const im = CoalWaterArt.get('dam_' + k);
+  const up = _hyRot([0, 1, 0], k), dn = [-up[0], -up[1]];
+  ctx.save();
+  for (let i = 0; i < n; i++) {
+    const tcx = px + (horizontal ? (i + 0.5) * TILE : TILE * 0.5 * e.width);
+    const tcy = py + (horizontal ? TILE * 0.5 * e.height : (i + 0.5) * TILE);
+    const F = _cwFrame(L, tcx, tcy), { P, M } = F;
+    // reservoir shimmer against the upstream face
+    const [ux, uy] = P(up[0] * 1.0, up[1] * 1.0, 0);
+    ctx.fillStyle = `rgba(60,140,200,${(0.25 + 0.08 * Math.sin(t * 1.5 + i)).toFixed(3)})`;
+    ctx.beginPath(); ctx.ellipse(ux, uy, (horizontal ? 1.0 : 0.3) * M, (horizontal ? 0.3 : 1.0) * M, 0, 0, TAU); ctx.fill();
+    F.draw(im);
+    // spillway whitewater off the downstream foot
+    const [sx, sy] = P(dn[0] * 1.05, dn[1] * 1.05, 0);
+    for (let q = 0; q < 4; q++) {
+      const p = (t * 1.2 + q * 0.37 + i * 0.21) % 1, a = (q - 1.5) * 0.45;
+      const x = sx + (dn[0] * p * 0.6 + (horizontal ? a : 0)) * M, y = sy - (dn[1] * p * 0.6 - (horizontal ? 0 : a)) * M;
+      ctx.fillStyle = `rgba(240,250,255,${(0.65 * (1 - p)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(x, y, (1 + p * 2) * S, 0, TAU); ctx.fill();
+    }
+    if (dark > 0.3) {
+      const [lx, ly] = P(..._hyRot(L.lamp, k));
+      ctx.fillStyle = `rgba(255,230,150,${(0.35 * dark).toFixed(3)})`; ctx.beginPath(); ctx.arc(lx, ly, 5 * S, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#fff0c0'; ctx.beginPath(); ctx.arc(lx, ly, 1 * S, 0, TAU); ctx.fill();
+    }
+  }
+  // reservoir level gauge on the middle of the crest
+  if (res) {
+    const mid = Math.floor(n / 2);
+    const tcx = px + (horizontal ? (mid + 0.5) * TILE : TILE * 0.5 * e.width), tcy = py + (horizontal ? TILE * 0.5 * e.height : (mid + 0.5) * TILE);
+    const [gx, gy] = _cwFrame(L, tcx, tcy).P(..._hyRot([0, 0.7, 2.0], k));
+    const bl = 18 * S;
+    ctx.fillStyle = '#10181e'; ctx.fillRect(gx - bl / 2 - 1 * S, gy - 1 * S, bl + 2 * S, 4.5 * S);
+    ctx.fillStyle = fill < 0.15 ? '#ff6040' : '#40c8ff';
+    ctx.fillRect(gx - bl / 2, gy, bl * Math.max(0, Math.min(1, fill)), 2.5 * S);
+  }
+  ctx.restore();
+}
+
 function renderHydroGenerator(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('hgen')) return _hydroGenArt(e, px, py, t);
     // Hydroelectric Generator (7×7, rotatable). Drawn in a local frame with
     // the shaft input on -x and the transformer bay on +x (from
     // _inSideDc/_inSideDr): a concrete powerhouse floor; a brass drive shaft
@@ -342,6 +566,7 @@ function renderHydroGenerator(e, px, py, t) {
   }
 
 function renderDam(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('dam')) return _damArt(e, px, py, t);
     // Concrete gravity dam across the river span: railed crest walkway with
     // lamp posts, rusty sluice gates, reservoir shimmer on the upstream face,
     // white spillway water rushing off the downstream face, and a level
@@ -422,6 +647,7 @@ function renderDam(e, px, py, t) {
   }
 
 function renderHydroTurbine(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('hturb')) return _hydroTurbArt(e, px, py, t);
     // Hydro Turbine (5×5, in the reservoir). Drawn in a local frame with the
     // water arriving from -y (from _flowDc/_flowDr): pier noses split the
     // inflow into three intake bays behind trash racks, under a stop-log
@@ -777,6 +1003,7 @@ function renderHydroTurbine(e, px, py, t) {
   }
 
 function renderShaft(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('shaft') && ((e.width || 3) * (e.height || 1)) === 3) return _shaftArt(e, px, py, t);
     // Mechanical drive shaft (3×1 or 1×3): polished steel shaft on yellow
     // pillow-block bearings with flange couplings at the tile seams, stripes
     // that scroll with _rotationRate, and glowing brass end hubs (the far
@@ -874,7 +1101,32 @@ function renderShaft(e, px, py, t) {
 // spray header, a mist-eliminator cap on top, and a green beacon. Drawn at
 // (x, top)–(x, base), radius r. `on` = the plant is burning. pumpSide ±1
 // puts the pump on the right (default) or left of the tower.
+// The rendered tower (scripts/render_scrubber.py: scrub_0 pump left,
+// scrub_1 pump right; radius 1 m, body 6 m). Drawn in three slices so it
+// fits any host: the foot and the dome cap at the tower's own scale, the
+// body stretched between them to the host's (top, base).
+const SCRUB_LAYOUT = { HB: 6.0, rect: [-2.2, 2.2, -1.5, 5.368], pumpX: 1.45 };
+function _scrubArt(x, top, base, r, side) {
+  if (typeof AdvNukeArt === 'undefined' || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return null;
+  const im = AdvNukeArt.get('scrub_' + side); if (!im) return null;
+  const TN = Math.tan(Math.PI / 6), [x0, x1, v0, v1] = SCRUB_LAYOUT.rect, HB = SCRUB_LAYOUT.HB, sx = r;
+  const vFoot = -1 + 1.2 * TN, vBody = -1 + (HB - 0.3) * TN, vTop = HB * TN + 0.38 * TN;
+  const footY = base - (vFoot + 1) * sx, capY = top + (vTop - vBody) * sx;
+  if (capY - footY > -2) {   // too short to stretch: one uniform draw
+    const k = (base - top) / (vTop + 1);
+    ctx.drawImage(im, x + x0 * k, base - (v1 + 1) * k, (x1 - x0) * k, (v1 - v0) * k);
+    return v => base - (v + 1) * k;
+  }
+  const ppm = im.height / (v1 - v0), sy = v => (v1 - v) * ppm, dx = x + x0 * sx, dw = (x1 - x0) * sx;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.roundRect(x - r + 0.4 * r, top + 0.5 * r, r * 2, base - top, r * 0.6); ctx.fill();
+  ctx.drawImage(im, 0, sy(vFoot), im.width, (vFoot - v0) * ppm, dx, footY, dw, (vFoot - v0) * sx);                 // foot
+  ctx.drawImage(im, 0, sy(vBody), im.width, (vBody - vFoot) * ppm, dx, capY, dw, footY - capY + 0.5);              // body, stretched
+  ctx.drawImage(im, 0, 0, im.width, (v1 - vBody) * ppm, dx, capY - (v1 - vBody) * sx, dw, (v1 - vBody) * sx);       // cap
+  return v => v <= vFoot ? base - (v + 1) * sx : v >= vBody ? capY - (v - vBody) * sx : footY + (capY - footY) * (v - vFoot) / (vBody - vFoot);
+}
 function _scrubberTower(x, top, base, r, S, t, on, pumpSide = 1) {
+  const vY = _scrubArt(x, top, base, r, pumpSide < 0 ? 0 : 1);
+  if (vY) return _scrubberLive(x, top, base, r, S, t, on, pumpSide, vY);
   const TAU = Math.PI * 2, detail = Camera.zoom > 0.45;
   const H = base - top;
   // shadow
@@ -971,6 +1223,47 @@ function _scrubberTower(x, top, base, r, S, t, on, pumpSide = 1) {
   }
 }
 
+// The live parts over the rendered tower: sight-glass slurry, spray and
+// bubbles, the riser's flow, the pump impeller, the beacon and the plate.
+function _scrubberLive(x, top, base, r, S, t, on, pumpSide, vY) {
+  const TAU = Math.PI * 2, detail = Camera.zoom > 0.45, TN = Math.tan(Math.PI / 6), HB = SCRUB_LAYOUT.HB;
+  const gx = x - r * 0.5, gw = r, gy = vY(-1 + HB * 0.70 * TN), gh = vY(-1 + HB * 0.28 * TN) - gy;
+  ctx.save(); ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, gw * 0.3); ctx.clip();
+  const lvl = gy + gh * 0.68;
+  const sg = ctx.createLinearGradient(0, lvl, 0, gy + gh);
+  sg.addColorStop(0, on ? '#9ad8e8' : '#4a6a70'); sg.addColorStop(1, on ? '#3a8aa8' : '#23383e');
+  ctx.fillStyle = sg; ctx.beginPath(); ctx.moveTo(gx, gy + gh);
+  for (let k = 0; k <= 6; k++) ctx.lineTo(gx + gw * k / 6, lvl + Math.sin(t * 4 + k * 1.3) * (on ? 1.1 : 0.3) * S);
+  ctx.lineTo(gx + gw, gy + gh); ctx.closePath(); ctx.fill();
+  if (on) {
+    for (let k = 0; k < 7; k++) { const p = (t * 1.6 + k * 0.37) % 1, dx = gx + gw * (0.15 + (k * 0.13) % 0.7);
+      ctx.fillStyle = `rgba(200,240,255,${0.85 * (1 - p * 0.6)})`; ctx.fillRect(dx, gy + 2 * S + p * (lvl - gy - 3 * S), 0.8 * S, 2.2 * S); }
+    for (let k = 0; k < 5; k++) { const p = (t * 0.9 + k * 0.21) % 1;
+      ctx.strokeStyle = `rgba(230,250,255,${0.7 * (1 - p)})`; ctx.lineWidth = 0.6 * S;
+      ctx.beginPath(); ctx.arc(gx + gw * (0.2 + k * 0.15) + Math.sin(t * 3 + k) * S, gy + gh - 1 * S - p * (gy + gh - lvl), (0.6 + p * 0.9) * S, 0, TAU); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(150,230,255,0.35)'; ctx.fillRect(gx, gy, gw, 1.8 * S);
+  }
+  ctx.restore();
+  // riser flow and the pump impeller
+  const pmX = x + pumpSide * SCRUB_LAYOUT.pumpX * r, pmY = vY(-0.3 + 0.55 * TN), ry = vY(-0.3 + (HB * 0.7 + 0.1) * TN), rim = x + pumpSide * r;
+  if (on) { ctx.strokeStyle = 'rgba(200,245,255,0.9)'; ctx.lineWidth = 0.9 * S; ctx.setLineDash([2 * S, 3 * S]); ctx.lineDashOffset = t * 14 * S;
+    ctx.beginPath(); ctx.moveTo(pmX, pmY); ctx.lineTo(pmX, ry); ctx.lineTo(rim, ry); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+  ctx.save(); ctx.translate(pmX, vY(-0.3 + 0.3 * TN) + 0.05 * r); ctx.rotate(on ? t * 9 : 0);
+  ctx.strokeStyle = on ? '#b0f0d0' : '#5a7a70'; ctx.lineWidth = 0.9 * S;
+  for (let k = 0; k < 3; k++) { ctx.rotate(TAU / 3); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0.3 * r, 0); ctx.stroke(); }
+  ctx.restore();
+  // beacon on the cap
+  const by = vY((HB + 0.68) * TN), lit = on && Math.sin(t * 3) > -0.2;
+  ctx.fillStyle = lit ? '#50ff90' : '#1a3a28'; ctx.beginPath(); ctx.arc(x, by, 1.6 * S, 0, TAU); ctx.fill();
+  if (lit && detail) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.3 + 0.15 * Math.sin(t * 3); ctx.beginPath(); ctx.arc(x, by, 4.5 * S, 0, TAU); ctx.fill(); ctx.restore(); }
+  // plate
+  if (detail) {
+    ctx.font = `bold ${Math.max(3, 3.4 * S)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = on ? '#70f0a8' : '#4a7a60'; ctx.fillText('SCRUBBER', x, vY(-1 + HB * 0.16 * TN));
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+}
+
 // Rectangular flue duct along a polyline — flanged joints, and grey
 // flue gas chevrons crawling toward the last point while running.
 function _scrubberDuct(pts, S, t, on) {
@@ -1036,6 +1329,10 @@ function _drawCaptureRadius(cx, cy) {
 
 function renderCarbonCapture(e, px, py, t) {
   if (e.col * TILE !== px || e.row * TILE !== py) return;
+  if (_wfOK(e, 'cc', 10, 8, ['cc_base', 'hyp_fan'])) {   // rendered (end of this file)
+    _ccArt(e, px, py, t);
+    return;
+  }
   const TAU = Math.PI * 2;
   const AW = 400, AH = 320;
   const w = (e.width || 10) * TILE, h = (e.height || 8) * TILE;
@@ -1341,8 +1638,426 @@ function renderCarbonCapture(e, px, py, t) {
   if (typeof drawNetworkHighlight === 'function' && !e._ghost) drawNetworkHighlight(e, px, py, t);
 }
 
+/* ── Coal generator, coal mine MK1, water extractor: rendered ────────────
+   Built and rendered in Blender (scripts/render_coal_water.py, Poly Haven
+   scans + procedural brick / slate / timber; same camera as the wind and
+   solar sprites). Each frame is centred on the ground point (0, off) metres
+   from the footprint's centre, so tall stacks fit. COAL_WATER_LAYOUT is the
+   script's LAYOUT (metres; re-paste after a re-render). The painted
+   buildings stay as the fallback (image not loaded, withoutImageFills, or a
+   generator rotated to 6x5). */
+const COAL_WATER_LAYOUT = {
+  gen: {"frame":19.0,"off":3.2,"bunker":[-1.6,0.4,9.2,0.75,0.65],"belt":[[-4.55,-5.0,1.4],[-4.55,0.4,9.3],[-2.45,0.4,9.3]],"chimney":[-3.3,3.4,15.45,0.55],"hall":[2.7,-0.6,5.42,2.9,1.1],"steam":[[0.4,-0.4,3.4],[0.8,-0.4,3.4]],"bushings":[[2.7,2.8,2.4],[3.1,2.8,2.4],[3.5,2.8,2.4]],"ashGauge":[3.097,-4.551,2.6,3.9,-1.955],"water":[[0.0,-5.9,0.35],[0.0,-3.4,0.35],[-0.8,-3.4,0.35],[-0.8,-2.4,0.35]],"gaugeFace":[-1.875,-2.495,5.35,0.17],"coalIn":[-4.45,-5.0,0.5,0.45,0.42],"waterIn":[0.0,-5.55,0.95],"windows":[[-3.392,-2.47,1.0,0.78,4.0],[-1.875,-2.47,1.0,0.78,4.0],[-0.358,-2.47,1.0,0.78,4.0]],"gauge":[-1.875,-2.48,5.35],"valve":[-2.55,0.0,7.5],"avLight":[-2.8,3.2,15.5],"vent":[-3.25,-1.12,7.65],"scrubber":[0.0,2.9,10.1],"res":912},
+  mine: {"frame":12.5,"off":1.4,"rail":[-2.62,0.2],"lampRoom":{"win":[[-3.15,1.54,1.3],[-2.15,1.54,1.3]],"pipe":[-2.2,2.4,3.6],"door":[-2.55,1.3,0]},"winding":{"win":[[1.5,0.93,1.4],[2.1,0.93,1.4],[2.7,0.93,1.4]],"stack":[3.45,2.4,6.1]},"sheave":{"hub":[0.0,-0.3,6.75],"R":0.6,"u":[0.667,0.745,0.0],"v":[0.0,0.0,1.0],"ropeTo":[1.7,1.1,1.6]},"belt":[[-0.55,-0.6,0.9],[-1.7,-0.95,2.75]],"chute":[-2.3,-1.15,1.1],"lamps":[[-1.4,-1.72,2.12],[1.6,-1.72,2.12]],"frameLamp":[0.55,-0.85,6.0],"heap":[2.2,-1.65],"cage":[0,-0.3,1.45],"cartY":-2.62,"cartRange":[-2.3,1.3],"res":750},
+  mine2: {"frame":14.5,"off":0.7,"plantWin":[[-4.85,-0.05,3.6],[-3.93,-0.05,3.6],[-3.01,-0.05,3.6],[-2.09,-0.05,3.6],[-1.17,-0.05,3.6]],"vents":[[-1.6,2.4,5.8],[-2.4,2.4,5.8]],"trafoLed":[-1.5,-2.79,1.0],"silo":[-3.85,-5.0,1.9],"skipShaft":[3.6,-0.5,0.6,7.4],"avLight":[3.6,0.9,10.0],"floods":[[2.3,-0.55,4.51],[4.9,-0.55,4.51]],"sheaves":{"hubs":[[2.95,-0.35,8.9],[4.25,-0.35,8.9]],"R":0.55,"u":[1,0,0],"v":[0,0,1]},"gallery":[[2.45,0.4,6.0],[-0.65,2.2,5.0]],"boomHead":[1.9,-2.7,2.7],"pile":[1.6,-3.1],"railY":-5.0,"res":841},
+  water: {"frame":9.4,"off":0.9,"fan":[-0.75,1.3,3.43,0.78],"gauge":[0.9,0.15,1.9,0.22],"beacon":[1.95,2.15,3.24],"intake":[0.0,-1.3,0.55,1.0],"riser":[[0.0,-1.3,1.6],[0.0,0.2,1.6]],"plate":[0,-3.1,0.4],"stub":{"frame":3.4,"off":0.5,"cap":0.0,"z":0.42},"res":658},
+};
+const _CW_TAN = Math.tan(Math.PI / 6);
+// Aviation obstruction lamp: a dark housing and a red lens that flashes
+// softly (eases up and down, no hard on / off), its glow added over the
+// sprite and growing towards night, a hot core at the peak of each flash.
+function _avLamp(x, y, S, t, period = 1.5, detail = true) {
+  const TAU = Math.PI * 2, ph = (t % period) / period;
+  const k = ph < 0.22 ? Math.sin(ph / 0.22 * Math.PI) ** 2 : 0;
+  const dk = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+  ctx.save();
+  ctx.fillStyle = 'rgba(20,14,12,0.9)'; ctx.beginPath(); ctx.arc(x, y + 0.25 * S, 1.35 * S, 0, TAU); ctx.fill();
+  ctx.fillStyle = `rgb(${Math.round(96 + 159 * k)},${Math.round(22 + 48 * k)},${Math.round(16 + 30 * k)})`;
+  ctx.beginPath(); ctx.arc(x, y, 0.95 * S, 0, TAU); ctx.fill();
+  if (k > 0.02 && detail) {
+    ctx.globalCompositeOperation = 'lighter';
+    const r = (2.6 + 4.5 * dk) * S, g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,60,36,${(k * (0.35 + 0.4 * dk)).toFixed(3)})`);
+    g.addColorStop(0.4, `rgba(255,40,24,${(k * (0.12 + 0.18 * dk)).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(255,30,20,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+    if (k > 0.5) { ctx.fillStyle = `rgba(255,220,200,${((k - 0.5) * 1.2).toFixed(3)})`; ctx.beginPath(); ctx.arc(x - 0.2 * S, y - 0.2 * S, 0.4 * S, 0, TAU); ctx.fill(); }
+  }
+  ctx.restore();
+}
+const CoalWaterArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  const NEED = {
+    gen: ['coalgen_base', 'coalgen_scrubber', 'coalgen_ash_0', 'coalgen_ash_1', 'coalgen_ash_2', 'coalgen_ash_3'],
+    mine: ['coalmine1_base', 'coalmine1_heap_0', 'coalmine1_heap_1', 'coalmine1_heap_2', 'coalmine1_heap_3',
+           'coalmine1_sheave', 'coalmine1_cage', 'coalmine1_cart', 'coalmine1_cart_full'],
+    mine2: ['coalmine2_base', 'coalmine2_heap_0', 'coalmine2_heap_1', 'coalmine2_heap_2', 'coalmine2_heap_3',
+            'coalmine2_sheave_0', 'coalmine2_sheave_1', 'coalmine2_skip', 'coalmine2_wagon', 'coalmine2_wagon_full'],
+    hturb: ['hydroturb_0', 'hydroturb_1', 'hydroturb_2', 'hydroturb_3', 'hydroturb_runner',
+            'hydroturb_shaft_0', 'hydroturb_shaft_1', 'hydroturb_shaft_2', 'hydroturb_shaft_3'],
+    hgen: ['hydrogen_0', 'hydrogen_1', 'hydrogen_2', 'hydrogen_3', 'hydrogen_rotor', 'hydrogen_top'],
+    dam: ['dam_0', 'dam_1', 'dam_2', 'dam_3'],
+    rs1: ['rs1_base', 'rsdome_0', 'rsdome_1', 'rsdome_2', 'rsdome_3', 'rsdome_4', 'rsdome_5', 'rsdome_6', 'rsdome_7', 'rsdome_8', 'rsdome_9', 'rsdome_10', 'rsdome_11', 'rsdome_12', 'rsdome_13', 'rsdome_14', 'rsdome_15'],
+    rs2: ['rs2_base', 'rsdome_0', 'rsdome_1', 'rsdome_2', 'rsdome_3', 'rsdome_4', 'rsdome_5', 'rsdome_6', 'rsdome_7', 'rsdome_8', 'rsdome_9', 'rsdome_10', 'rsdome_11', 'rsdome_12', 'rsdome_13', 'rsdome_14', 'rsdome_15', 'rsdish_0', 'rsdish_1', 'rsdish_2', 'rsdish_3', 'rsdish_4', 'rsdish_5', 'rsdish_6', 'rsdish_7', 'rsdish_8', 'rsdish_9', 'rsdish_10', 'rsdish_11', 'rsdish_12', 'rsdish_13', 'rsdish_14', 'rsdish_15'],
+    rs3: ['rs3_base', 'rsdome_0', 'rsdome_1', 'rsdome_2', 'rsdome_3', 'rsdome_4', 'rsdome_5', 'rsdome_6', 'rsdome_7', 'rsdome_8', 'rsdome_9', 'rsdome_10', 'rsdome_11', 'rsdome_12', 'rsdome_13', 'rsdome_14', 'rsdome_15', 'rsdish_0', 'rsdish_1', 'rsdish_2', 'rsdish_3', 'rsdish_4', 'rsdish_5', 'rsdish_6', 'rsdish_7', 'rsdish_8', 'rsdish_9', 'rsdish_10', 'rsdish_11', 'rsdish_12', 'rsdish_13', 'rsdish_14', 'rsdish_15'],
+    rs4: ['rs4_base', 'rsdome_0', 'rsdome_1', 'rsdome_2', 'rsdome_3', 'rsdome_4', 'rsdome_5', 'rsdome_6', 'rsdome_7', 'rsdome_8', 'rsdome_9', 'rsdome_10', 'rsdome_11', 'rsdome_12', 'rsdome_13', 'rsdome_14', 'rsdome_15', 'rsdish_0', 'rsdish_1', 'rsdish_2', 'rsdish_3', 'rsdish_4', 'rsdish_5', 'rsdish_6', 'rsdish_7', 'rsdish_8', 'rsdish_9', 'rsdish_10', 'rsdish_11', 'rsdish_12', 'rsdish_13', 'rsdish_14', 'rsdish_15'],
+    rs5: ['rs5_base', 'rsdome_0', 'rsdome_1', 'rsdome_2', 'rsdome_3', 'rsdome_4', 'rsdome_5', 'rsdome_6', 'rsdome_7', 'rsdome_8', 'rsdome_9', 'rsdome_10', 'rsdome_11', 'rsdome_12', 'rsdome_13', 'rsdome_14', 'rsdome_15', 'rsdish_0', 'rsdish_1', 'rsdish_2', 'rsdish_3', 'rsdish_4', 'rsdish_5', 'rsdish_6', 'rsdish_7', 'rsdish_8', 'rsdish_9', 'rsdish_10', 'rsdish_11', 'rsdish_12', 'rsdish_13', 'rsdish_14', 'rsdish_15'],
+    sp1: ['sp1_base'],
+    sp2: ['sp2_base'],
+    sp3: ['sp3_base'],
+    ss1: ['ss1_base'],
+    ss2: ['ss2_base'],
+    ss3: ['ss3_base'],
+    ss4: ['ss4_base', 'ss4_gyro_0', 'ss4_gyro_1', 'ss4_gyro_2', 'ss4_gyro_3', 'ss4_gyro_4', 'ss4_gyro_5', 'ss4_gyro_6', 'ss4_gyro_7', 'ss4_gyro_8', 'ss4_gyro_9', 'ss4_gyro_10', 'ss4_gyro_11', 'ss4_gyro_12', 'ss4_gyro_13', 'ss4_gyro_14', 'ss4_gyro_15', 'ss4_gyro_16', 'ss4_gyro_17', 'ss4_gyro_18', 'ss4_gyro_19', 'ss4_gyro_20', 'ss4_gyro_21', 'ss4_gyro_22', 'ss4_gyro_23'],
+    ss5: ['ss5_base', 'ss5_arm_0', 'ss5_arm_1', 'ss5_arm_2', 'ss5_arm_3', 'ss5_arm_4', 'ss5_arm_5', 'ss5_arm_6', 'ss5_arm_7', 'ss5_arm_8', 'ss5_arm_9', 'ss5_arm_10', 'ss5_arm_11', 'ss5_arm_12', 'ss5_arm_13', 'ss5_arm_14', 'ss5_arm_15', 'ss5_arm_16', 'ss5_arm_17', 'ss5_arm_18', 'ss5_arm_19', 'ss5_arm_20', 'ss5_arm_21', 'ss5_arm_22', 'ss5_arm_23'],
+    pole: ['pole_base_0', 'pole_base_1', 'pole_foot', 'pole_pier', 'pole_guy_0', 'pole_guy_1', 'pole_xf_0', 'pole_xf_1'],
+    tower: ['tower_base', 'tower_dmg', 'tower_feet', 'tower_piers'],
+    nr: ['nr_base', 'nr_crane'],
+    ct: ['ct_base'],
+    st: ['st_base'],
+    um: ['um_base_0', 'um_base_1', 'um_cart'],
+    fp: ['fp_base'],
+    cp: ['cp_0', 'cp_1', 'cp_2', 'cp_3'],
+    nw: ['nw_base', 'nw_cask', 'nw_crane', 'nw_cart'],
+    fg: ['fg_base', 'fg_fan', 'fg_guard', 'fg_scrubber'],
+    ref: ['ref_base', 'ref_roof'],
+    sb: ['sb_base_0', 'sb_base_1', 'sb_heap_0_0', 'sb_heap_0_1', 'sb_heap_0_2', 'sb_heap_0_3', 'sb_heap_0_4', 'sb_heap_0_5', 'sb_heap_0_6', 'sb_heap_0_7', 'sb_heap_1_0', 'sb_heap_1_1', 'sb_heap_1_2', 'sb_heap_1_3', 'sb_heap_1_4', 'sb_heap_1_5', 'sb_heap_1_6', 'sb_heap_1_7'],
+    shaft: ['shaft_h', 'shaft_v'],
+    bat: ['bat_base'],
+    cs1: ['cs1_base', 'cs1_closed', 'cs1_open'],
+    cs2: ['cs2_base', 'cs2_closed', 'cs2_open'],
+    mon1: ['mon1_base', 'rsdish_0'],
+    mon2: ['mon2_base', 'rsdish_0'],
+    pipe: ['pipe_0', 'pipe_1', 'pipe_2', 'pipe_3', 'pipe_4', 'pipe_5', 'pipe_6', 'pipe_7', 'pipe_8', 'pipe_9', 'pipe_10', 'pipe_11', 'pipe_12', 'pipe_13', 'pipe_14', 'pipe_15'],
+    belt: ['belt_0', 'belt_1', 'belt_2', 'belt_3', 'belt_4', 'belt_5', 'belt_6', 'belt_7', 'belt_8', 'belt_9', 'belt_10', 'belt_11', 'belt_12', 'belt_13', 'belt_14', 'belt_15'],
+    udgp: ['udgp_pad', 'udg_earth_n', 'udg_earth_s', 'udg_earth_w', 'udg_earth_e', 'udgp_0', 'udgp_1', 'udgp_2', 'udgp_3', 'udgp_4', 'udgp_8', 'udgp_12'],
+    udgb: ['udgb_h0', 'udgb_h4', 'udgb_h8', 'udgb_h12', 'udgb_v0', 'udgb_v1', 'udgb_v2', 'udgb_v3'],
+    rod1: ['rod1_base'],
+    rod2: ['rod2_base'],
+    rod3: ['rod3_base'],
+    wire: ['wire_h', 'wire_v', 'wire_tie_h', 'wire_tie_v', 'wire_box', 'wire_gland_right', 'wire_gland_left', 'wire_gland_bottom', 'wire_gland_top'],
+    port: ['right', 'left', 'bottom', 'top'].flatMap(f => ['pipe', 'band', 'blind', 'dock'].map(k => `port_${k}_${f}`)),
+    water: ['waterx_base', 'waterx_fan', 'waterx_fanguard', 'waterx_stub_0', 'waterx_stub_1', 'waterx_stub_2', 'waterx_stub_3'],
+  };
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/${name}.png`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ready(kind) {
+      if (_imageFillsOff) return false;
+      let ok = true;
+      for (const n of NEED[kind]) if (!get(n)) ok = false;
+      return ok;
+    },
+  };
+})();
+// Projection and frame for a sprite of layout L centred on footprint centre
+// (cx, cy), scaled kx, ky (1 = authored size).
+function _cwFrame(L, cx, cy, kx = 1, ky = 1) {
+  const M = 20 * (TILE / 40);
+  const P = (x, y, z) => [cx + x * M * kx, cy - (y + z * _CW_TAN) * M * ky];
+  const D = (x, y, z) => [x * M * kx, -(y + z * _CW_TAN) * M * ky];
+  const fw = L.frame * M * kx, fh = L.frame * M * ky;
+  const fx = cx - fw / 2, fy = cy - L.off * M * ky - fh / 2;
+  return { M, P, D, fx, fy, fw, fh, draw: (im, dx = 0, dy = 0) => { if (im) ctx.drawImage(im, fx + dx, fy + dy, fw, fh); } };
+}
+// A frame-sized sprite turned by th in a plane whose axes show on screen as
+// u, v ([[ux, uy], [vx, vy]]), about (ox, oy). As _windTurned, any frame size.
+function _cwTurned(im, A, th, ox, oy, F) {
+  const [[a, b], [c, d]] = A, det = a * d - b * c;
+  if (!im || Math.abs(det) < 1e-6) return;
+  const co = Math.cos(th), si = Math.sin(th);
+  const r00 = a * co + c * si, r01 = -a * si + c * co, r10 = b * co + d * si, r11 = -b * si + d * co;
+  const i00 = d / det, i01 = -c / det, i10 = -b / det, i11 = a / det;
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.transform(r00 * i00 + r01 * i10, r10 * i00 + r11 * i10, r00 * i01 + r01 * i11, r10 * i01 + r11 * i11, 0, 0);
+  ctx.drawImage(im, F.fx - ox, F.fy - oy, F.fw, F.fh);
+  ctx.restore();
+}
+function _cwAlong(P, pts, f) {
+  let tot = 0; const seg = [];
+  for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]); seg.push(d); tot += d; }
+  let d = f * tot;
+  for (let i = 0; i < seg.length; i++) {
+    if (d <= seg[i] || i === seg.length - 1) {
+      const k = seg[i] ? Math.min(1, d / seg[i]) : 0, a = pts[i], b = pts[i + 1];
+      return P(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k);
+    }
+    d -= seg[i];
+  }
+  return P(...pts[0]);
+}
+
+function _coalGenArt(e, px, py, t) {
+  const L = COAL_WATER_LAYOUT.gen;
+  const w = 5 * TILE, h = 6 * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const on = e._fuelled && e._hasWater && e.powered;
+  const ash = Math.min(1, (e._ashWaste || 0) / 100);
+  const throttle = e._cgThrottle || 'normal';
+  const pressure = Math.max(0, Math.min(1, e._cgPressure || 0));
+  const critical = e._cgState === 'critical';
+  const blink = Math.sin(t * 9) > 0;
+  const fire = !on ? 0 : (throttle === 'overdrive' ? 1 : throttle === 'eco' ? 0.55 : 0.8) * (e._cgState === 'warming' ? 0.7 : 1);
+  const hopFill = Math.min(1, (e._hopperCoal || 0) / (30 * EntityDefs[T.COALGENERATOR].coalPerSecond));
+  const detail = Camera.zoom > 0.5;
+  const lerpN = (a, b, k) => Math.round(a + (b - a) * k);
+  const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
+  const F = _cwFrame(L, px + w / 2, py + h / 2), { P, M } = F;
+  const wTiles = 5, waterX = px + Math.floor(wTiles / 2) * TILE + TILE / 2;
+  ctx.save();
+  if (Sp) {
+    // furnace glow round the boiler house
+    if ((on || critical) && Camera.zoom > 0.5) {
+      const [gx, gy] = P(-1.9, -2.5, 2.5);
+      ctx.save(); ctx.globalAlpha = critical ? 0.16 + 0.10 * Math.sin(t * 7) : 0.06 + 0.07 * fire;
+      const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, w * 0.6);
+      g.addColorStop(0, critical ? '#ff3010' : '#ff7020'); g.addColorStop(1, 'rgba(255,100,20,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(gx, gy, w * 0.6, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    F.draw(CoalWaterArt.get('coalgen_base'));
+    if (e._scrubber) F.draw(CoalWaterArt.get('coalgen_scrubber'));
+    // the tall windows lit by the furnace
+    if (fire > 0 || critical) L.windows.forEach(([x, y, z0, ww, hh], i) => {
+      const [x0, yb] = P(x - ww / 2, y, z0), [x1, yt] = P(x + ww / 2, y, z0 + hh);
+      const r = (x1 - x0) / 2;
+      ctx.beginPath(); ctx.moveTo(x0, yb); ctx.lineTo(x0, yt + r); ctx.arc(x0 + r, yt + r, r, Math.PI, 0); ctx.lineTo(x1, yb); ctx.closePath();
+      let g;
+      if (critical) {
+        const k = 0.6 + 0.4 * Math.sin(t * 11 + i * 1.7);
+        g = ctx.createLinearGradient(0, yt, 0, yb); g.addColorStop(0, `rgba(255,${lerpN(120, 220, k)},${lerpN(60, 140, k)},0.9)`); g.addColorStop(1, 'rgba(224,40,16,0.9)');
+      } else {
+        const k = Math.max(0, Math.min(1, fire + 0.08 * Math.sin(t * 3.1 + i * 2) + 0.05 * Math.sin(t * 7.3 + i)));
+        g = ctx.createLinearGradient(0, yt, 0, yb);
+        g.addColorStop(0, `rgba(255,${lerpN(150, 236, k)},${lerpN(60, 170, k)},0.85)`); g.addColorStop(1, `rgba(${lerpN(150, 230, k)},${lerpN(50, 84, k)},16,0.85)`);
+      }
+      ctx.fillStyle = g; ctx.fill();
+      ctx.strokeStyle = 'rgba(40,24,14,0.7)'; ctx.lineWidth = 0.6 * S;
+      ctx.beginPath(); ctx.moveTo((x0 + x1) / 2, yt); ctx.lineTo((x0 + x1) / 2, yb);
+      for (let k = 1; k < 4; k++) { const ly = yt + r + (yb - yt - r) * k / 4; ctx.moveTo(x0, ly); ctx.lineTo(x1, ly); }
+      ctx.stroke();
+    });
+    // (the roof bunker's coal is part of the rendered sprite)
+    // boiler pressure gauge (modelled dial): only the needle is drawn, thin
+    // and dark, sweeping into the painted red zone as pressure climbs
+    {
+      const [gx, gy, gz, gr] = L.gaugeFace, [gX, gY] = P(gx, gy, gz), R = gr * M;
+      const A0 = Math.PI * 0.8, A1 = Math.PI * 2.1, ang = v => A0 + v * (A1 - A0);
+      const nv = Math.min(1, pressure + (on ? Math.sin(t * 23) * 0.012 : 0));
+      ctx.strokeStyle = critical && blink ? '#b01808' : 'rgba(30,26,22,0.9)'; ctx.lineWidth = 0.55 * S; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(gX, gY); ctx.lineTo(gX + Math.cos(ang(nv)) * R * 0.9, gY + Math.sin(ang(nv)) * R * 0.9); ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = 'rgba(40,32,22,0.9)'; ctx.beginPath(); ctx.arc(gX, gY, 0.5 * S, 0, TAU); ctx.fill();
+      if (critical && blink) { ctx.fillStyle = 'rgba(255,60,30,0.25)'; ctx.beginPath(); ctx.arc(gX, gY, R * 1.6, 0, TAU); ctx.fill(); }
+    }
+    // turbine hall skylight, warm while it runs
+    if (on) {
+      const [x, y, z, sw, sd] = L.hall;
+      const a = P(x - sw / 2, y - sd / 2, z), b = P(x + sw / 2, y + sd / 2, z);
+      ctx.fillStyle = `rgba(255,220,150,${(0.35 + 0.15 * Math.sin(t * 1.5)).toFixed(3)})`;
+      ctx.fillRect(a[0], b[1], b[0] - a[0], a[1] - b[1]);
+    }
+    // ash under the silo's chute (rendered heaps by fill), and the level in
+    // its sight glass: a muted grey column, amber near full, blinking red full
+    if (ash > 0.02) F.draw(CoalWaterArt.get('coalgen_ash_' + Math.min(3, Math.floor(ash * 4))));
+    if (ash > 0.01) {
+      const [gx, gy, z0, z1, ga] = L.ashGauge, sx = -Math.sin(ga) * 0.07, sy = Math.cos(ga) * 0.07, zt = z0 + (z1 - z0) * ash;
+      const q = [[gx - sx, gy - sy, z0], [gx + sx, gy + sy, z0], [gx + sx, gy + sy, zt], [gx - sx, gy - sy, zt]];
+      ctx.beginPath(); q.forEach((pt, i) => { const [x, y] = P(...pt); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.closePath();
+      ctx.fillStyle = ash >= 1 ? (blink ? 'rgba(220,60,30,0.85)' : 'rgba(120,30,16,0.8)') : ash > 0.8 ? 'rgba(200,150,60,0.7)' : 'rgba(168,164,154,0.62)';
+      ctx.fill();
+    }
+    // safety valve venting on over-pressure (or a legacy trip)
+    if (critical || (!on && (e._cgTrip || 0) > 0)) {
+      const [vx, vy] = P(...L.valve);
+      for (let i = 0; i < 8; i++) {
+        const p = (t * 1.4 + i / 8) % 1;
+        ctx.fillStyle = `rgba(240,242,245,${0.75 * (1 - p)})`;
+        ctx.beginPath(); ctx.arc(vx + Math.sin(i * 1.7 + t * 3) * 2 * S + p * 6 * S, vy - p * 30 * S, (2 + p * 9) * S, 0, TAU); ctx.fill();
+      }
+    }
+    _coalGenPorts(e, px, py, w, h, S, t, on, waterX, { P, M, coalIn: L.coalIn, waterIn: L.waterIn });
+  }
+  if (Ap) {
+    const [chX, chTop] = P(L.chimney[0], L.chimney[1], L.chimney[2]), ctw = L.chimney[3] * M;
+    if (on && e._scrubber) {
+      ctx.fillStyle = `rgba(255,170,90,${0.12 + 0.08 * Math.sin(t * 6)})`; ctx.beginPath(); ctx.ellipse(chX, chTop, ctw * 0.8, ctw * 0.3, 0, 0, TAU); ctx.fill();
+      _scrubberVapour(chX, chTop, S, t, throttle === 'overdrive' ? 7 : throttle === 'eco' ? 4 : 5, throttle === 'overdrive' ? 1.15 : 1);
+    } else if (on) {
+      const puffs = throttle === 'overdrive' ? 10 : throttle === 'eco' ? 4 : 7;
+      const soot = throttle === 'overdrive' ? 40 : throttle === 'eco' ? -25 : 0;
+      const size = throttle === 'overdrive' ? 1.25 : throttle === 'eco' ? 0.8 : 1;
+      ctx.fillStyle = `rgba(255,120,40,${0.3 + 0.2 * Math.sin(t * 6)})`; ctx.beginPath(); ctx.ellipse(chX, chTop, ctw * 0.8, ctw * 0.3, 0, 0, TAU); ctx.fill();
+      for (let i = 0; i < puffs; i++) {
+        const p = (t * 0.3 + i / puffs) % 1;
+        ctx.fillStyle = `rgba(${lerpN(90 - soot, 150 - soot, p)},${lerpN(84 - soot, 144 - soot, p)},${lerpN(76 - soot, 136 - soot, p)},${0.6 * (1 - p)})`;
+        ctx.beginPath(); ctx.arc(chX + Math.sin(i * 2.1 + t) * 3 * S + p * 18 * S, chTop - 3 * S - p * 40 * S, (4 + p * 14) * size * S, 0, TAU); ctx.fill();
+      }
+    }
+    { const [lx, ly] = P(...L.avLight); _avLamp(lx, ly, S, t, 1.5, detail); }
+    if (on && detail) {
+      // (the coal rides inside the covered gallery: it is in the render, not drawn here)
+      L.bushings.forEach(([x, y, z], k) => {
+        if (Math.sin(t * 11 + k * 2.3) <= 0.9) return;
+        const [ix, iy] = P(x, y, z);
+        ctx.strokeStyle = 'rgba(210,245,255,0.95)'; ctx.lineWidth = 1.1 * S;
+        ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ix + 3 * S, iy - 3 * S); ctx.lineTo(ix - 1 * S, iy - 6 * S); ctx.stroke();
+      });
+    }
+  }
+  ctx.restore();
+  if (Ap) drawNetworkHighlight(e, px, py, t);
+}
+
+// Status plate and the Coal IN / Water IN ports, shared by the painted and
+// rendered generator (cut out of renderCoalGenerator unchanged).
+function _coalGenPorts(e, px, py, w, h, S, t, on, waterX, art) {
+    // ── Status plate ──
+    const offReason = e._decommissioned ? 'DECOMMISSIONED'   // a cleanup job's unit: only its ash matters
+                    : (e._ashWaste || 0) >= 100 ? 'ASH FULL'
+                    : e._waterShort ? 'LOW WATER'
+                    : !e._hasWater ? 'NO WATER'
+                    : !e._fuelled ? 'NO FUEL' : 'NO POWER';
+    const plateTxt = on ? `COAL  ${formatPower(Math.round(e.def?.powerOutput ?? EntityDefs[T.COALGENERATOR].powerOutput))}` : offReason;
+    _wfPlate(plateTxt, px + w*(e._scrubber ? 0.765 : 0.72), py + h*0.075, S, on ? '#ff9040' : '#c07050', true);
+
+    const outputLabelY = py + h - TILE - 5;
+
+    // ── Connection stubs (Coal IN / Water IN) ─────────────
+    // Port centres are unchanged (CoalGeneratorConnections): Coal IN sits
+    // mid-tile on the bottom row's left edge, Water IN on the bottom edge
+    // under the middle column. Ash is trucked away, so there is no outlet.
+    {
+      const pScale = Math.min(w, h) / 96;
+      const STUB_INSET = pScale * 3;
+      const gy = py + h - TILE / 2;
+      const tag = (text, x, y, align, accent, lit) => {
+        ctx.font = `bold ${Math.max(3.5, 4*S)}px Courier New`;
+        const tw = ctx.measureText(text).width + 8.5*S, th = 7*S;
+        const x0 = align === 'left' ? x : align === 'right' ? x - tw : x - tw/2;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.roundRect(x0 + 1*S, y - th/2 + 1.5*S, tw, th, 3*S); ctx.fill();
+        ctx.fillStyle = '#16181c'; ctx.strokeStyle = lit ? accent : '#3a3e44'; ctx.lineWidth = 0.9*S;
+        ctx.beginPath(); ctx.roundRect(x0, y - th/2, tw, th, 3*S); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = lit ? accent : '#4a4e54';
+        ctx.beginPath(); ctx.arc(x0 + 3.3*S, y, 1.3*S, 0, Math.PI*2); ctx.fill();
+        if (lit) { ctx.fillStyle = accent; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(x0 + 3.3*S, y, 2.6*S, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; }
+        ctx.fillStyle = lit ? '#f2f4f0' : '#9aa0a6';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(text, x0 + 6*S, y + 0.3*S);
+        ctx.textBaseline = 'alphabetic';
+      };
+      // Steel receiving hopper: trapezoid pit, hazard lip, grate, heap inside
+      const hopper = (hcx, fillRGB, heapCols, connected, accent) => {
+        const topW = 22*S, botW = 12*S, top = gy - 9*S, bot = gy + 9*S;
+        if (art) {
+          // rendered: coal in the modelled pit and the status lamp on its lip
+          const [, , , rx, ry] = art.coalIn, [ax, ay] = art.P(art.coalIn[0], art.coalIn[1], art.coalIn[2]);
+          if (connected) {
+            ctx.fillStyle = '#0e0e10'; ctx.beginPath(); ctx.ellipse(ax, ay, rx * art.M * 0.9, ry * art.M * 0.75, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = 'rgba(150,150,160,0.5)';
+            for (let j = 0; j < 6; j++) ctx.fillRect(ax + (j - 2.5) * rx * art.M * 0.28, ay + ((j % 3) - 1) * ry * art.M * 0.3, 0.9*S, 0.9*S);
+          }
+          const [lx, ly] = art.P(art.coalIn[0] + 0.55, art.coalIn[1] - 0.53, 0.66);
+          ctx.fillStyle = connected ? accent : '#2a2c30';
+          ctx.beginPath(); ctx.arc(lx, ly, 1.5*S, 0, Math.PI*2); ctx.fill();
+          if (connected) { ctx.globalAlpha = 0.35 + 0.2*Math.sin(t*3); ctx.beginPath(); ctx.arc(lx, ly, 3.5*S, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; }
+          if (typeof _portReady === 'function' && _portReady())
+            _portBeltArt({ face: 'left', x: px, y: gy, dx: -1, dy: 0 }, S, t, { belt: accent, on: connected, out: false });
+          return;
+        }
+        ctx.fillStyle = 'rgba(0,0,0,0.32)';
+        ctx.beginPath(); ctx.moveTo(hcx - topW/2 + 3*S, top + 4*S); ctx.lineTo(hcx + topW/2 + 3*S, top + 4*S); ctx.lineTo(hcx + botW/2 + 3*S, bot + 4*S); ctx.lineTo(hcx - botW/2 + 3*S, bot + 4*S); ctx.closePath(); ctx.fill();
+        const sg = ctx.createLinearGradient(hcx - topW/2, 0, hcx + topW/2, 0);
+        sg.addColorStop(0, '#7a7e84'); sg.addColorStop(0.5, '#5a5e64'); sg.addColorStop(1, '#3a3e44');
+        ctx.fillStyle = sg; ctx.strokeStyle = '#1e2024'; ctx.lineWidth = S;
+        ctx.beginPath(); ctx.moveTo(hcx - topW/2, top); ctx.lineTo(hcx + topW/2, top); ctx.lineTo(hcx + botW/2, bot); ctx.lineTo(hcx - botW/2, bot); ctx.closePath(); ctx.fill(); ctx.stroke();
+        // pit mouth
+        const mx = hcx - topW/2 + 3*S, my = top + 5*S, mw = topW - 6*S, mh = 10*S;
+        ctx.fillStyle = '#0c0c0e'; ctx.fillRect(mx, my, mw, mh);
+        if (connected) {
+          heapCols.forEach((c, k) => {
+            ctx.fillStyle = c;
+            for (let j = 0; j < 5; j++) {
+              const lx = mx + mw*(0.12 + ((j*0.37 + k*0.21) % 0.8)), ly = my + mh*(0.45 + k*0.18) + Math.sin(j + k)*1.2*S;
+              ctx.beginPath(); ctx.arc(lx, ly, (1.4 + (j % 2)*0.6)*S, 0, Math.PI*2); ctx.fill();
+            }
+          });
+        }
+        ctx.strokeStyle = '#8a8e94'; ctx.lineWidth = 0.9*S;
+        for (let gx = mx + 3*S; gx < mx + mw; gx += 3.2*S) { ctx.beginPath(); ctx.moveTo(gx, my); ctx.lineTo(gx, my + mh); ctx.stroke(); }
+        ctx.strokeStyle = '#1e2024'; ctx.lineWidth = 0.8*S; ctx.strokeRect(mx, my, mw, mh);
+        // hazard lip
+        ctx.save(); ctx.beginPath(); ctx.rect(hcx - topW/2, top - 3*S, topW, 3.5*S); ctx.clip();
+        ctx.fillStyle = '#1a1a1a'; ctx.fillRect(hcx - topW/2, top - 3*S, topW, 3.5*S);
+        ctx.fillStyle = '#e0b020';
+        for (let x = hcx - topW/2 - 4*S; x < hcx + topW/2; x += 5*S) { ctx.beginPath(); ctx.moveTo(x, top + 0.5*S); ctx.lineTo(x + 2.5*S, top + 0.5*S); ctx.lineTo(x + 5.5*S, top - 3*S); ctx.lineTo(x + 3*S, top - 3*S); ctx.closePath(); ctx.fill(); }
+        ctx.restore();
+        ctx.strokeStyle = '#1e2024'; ctx.lineWidth = 0.8*S; ctx.strokeRect(hcx - topW/2, top - 3*S, topW, 3.5*S);
+        // status rivet lamp on the chute
+        ctx.fillStyle = connected ? accent : '#2a2c30';
+        ctx.beginPath(); ctx.arc(hcx, bot - 3*S, 1.5*S, 0, Math.PI*2); ctx.fill();
+        if (connected) { ctx.globalAlpha = 0.35 + 0.2*Math.sin(t*3); ctx.beginPath(); ctx.arc(hcx, bot - 3*S, 3.5*S, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; }
+      };
+
+      // Coal IN — receiving hopper feeding the conveyor foot
+      {
+        const hcx = px + 11*S;
+        const con = !!e._coalInConnected;
+        hopper(hcx, null, ['#2a2a2e', '#18181a', '#3a3a40'], con, '#a8e050');
+        tag('COAL IN', hcx + 12.5*S, gy + 4*S, 'left', '#a8e050', con);
+      }
+
+      // Water IN — flanged inlet with a gate valve and handwheel
+      {
+        const sx = waterX, bot = py + h - STUB_INSET*0.5;
+        const con = !!e._waterInConnected;
+        const blue = con ? '#5ac0ff' : '#3a5a70';
+        if (art) {
+          if (typeof _portReady === 'function' && _portReady()) {
+            _portPipeArt({ face: 'bottom', x: sx, y: py + h, dx: 0, dy: 1 }, S, t, { fluid: '#5ac0ff', on: con, out: false, flow: con && e.powered });
+          } else if (con && e.powered) {
+            const p = (t*0.8) % 1, [vx2, vy2] = art.P(art.waterIn[0], art.waterIn[1] - 0.3, 0.4 + p * 0.3);
+            ctx.fillStyle = `rgba(160,220,255,${0.9*(1 - p)})`; ctx.beginPath(); ctx.arc(vx2, vy2, 0.9*S, 0, Math.PI*2); ctx.fill();
+          }
+          tag('WATER IN', sx, bot - 20*S, 'center', blue, con);
+        } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(sx - 2.5*S + 3*S, bot - 14*S + 3*S, 5*S, 14*S);
+        ctx.fillStyle = '#5a6a74'; ctx.fillRect(sx - 2.5*S, bot - 14*S, 5*S, 14*S);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(sx - 2.5*S, bot - 14*S, 1.4*S, 14*S);
+        // end flange with bolts
+        ctx.fillStyle = '#7a8a94'; ctx.strokeStyle = '#1e262c'; ctx.lineWidth = 0.9*S;
+        ctx.beginPath(); ctx.roundRect(sx - 5*S, bot - 3*S, 10*S, 3*S, 1*S); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#2a3238';
+        [-3.2, -1.1, 1.1, 3.2].forEach(o => { ctx.beginPath(); ctx.arc(sx + o*S, bot - 1.5*S, 0.6*S, 0, Math.PI*2); ctx.fill(); });
+        // gate valve body (bowtie) + handwheel
+        const vy = bot - 9*S;
+        ctx.fillStyle = '#4a5a64';
+        ctx.beginPath(); ctx.moveTo(sx - 5*S, vy - 3.5*S); ctx.lineTo(sx, vy); ctx.lineTo(sx - 5*S, vy + 3.5*S); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx + 5*S, vy - 3.5*S); ctx.lineTo(sx, vy); ctx.lineTo(sx + 5*S, vy + 3.5*S); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.translate(sx, vy); ctx.rotate(con ? 0.4 : 0);
+        ctx.strokeStyle = con ? '#3a8ad0' : '#8a3a30'; ctx.lineWidth = 1.3*S;
+        ctx.beginPath(); ctx.arc(0, 0, 3.6*S, 0, Math.PI*2); ctx.stroke();
+        ctx.lineWidth = 0.9*S;
+        for (let k = 0; k < 3; k++) { ctx.rotate(Math.PI/3); ctx.beginPath(); ctx.moveTo(-3.6*S, 0); ctx.lineTo(3.6*S, 0); ctx.stroke(); }
+        ctx.restore();
+        ctx.fillStyle = '#1e262c'; ctx.beginPath(); ctx.arc(sx, vy, 1*S, 0, Math.PI*2); ctx.fill();
+        if (con && e.powered) {
+          const p = (t*0.8) % 1;
+          ctx.fillStyle = `rgba(160,220,255,${0.9*(1 - p)})`;
+          ctx.beginPath(); ctx.arc(sx, bot - 4*S - p*10*S, 0.9*S, 0, Math.PI*2); ctx.fill();
+        }
+        tag('WATER IN', sx, bot - 20*S, 'center', blue, con);
+        }
+      }
+
+    }
+}
+
 function renderCoalGenerator(e, px, py, t) {
     if (RenderSplit.wholePass(e, () => renderCoalGenerator(e, px, py, t))) return;
+    if ((e.width || 5) === 5 && (e.height || 6) === 6 && CoalWaterArt.ready('gen')) return _coalGenArt(e, px, py, t);
     // Coal-fired power station: a brick boiler house under a slate roof with
     // a louvred ridge vent, its tall arched windows lit by the furnace
     // (brighter with the throttle, flaring red while the boiler is critical);
@@ -1724,120 +2439,7 @@ function renderCoalGenerator(e, px, py, t) {
     }
     ctx.lineJoin = 'miter';
 
-    // ── Status plate ──
-    const offReason = e._decommissioned ? 'DECOMMISSIONED'   // a cleanup job's unit: only its ash matters
-                    : (e._ashWaste || 0) >= 100 ? 'ASH FULL'
-                    : e._waterShort ? 'LOW WATER'
-                    : !e._hasWater ? 'NO WATER'
-                    : !e._fuelled ? 'NO FUEL' : 'NO POWER';
-    const plateTxt = on ? `COAL  ${formatPower(Math.round(e.def?.powerOutput ?? EntityDefs[T.COALGENERATOR].powerOutput))}` : offReason;
-    _wfPlate(plateTxt, px + w*(e._scrubber ? 0.765 : 0.72), py + h*0.075, S, on ? '#ff9040' : '#c07050', true);
-
-    const outputLabelY = py + h - TILE - 5;
-
-    // ── Connection stubs (Coal IN / Water IN) ─────────────
-    // Port centres are unchanged (CoalGeneratorConnections): Coal IN sits
-    // mid-tile on the bottom row's left edge, Water IN on the bottom edge
-    // under the middle column. Ash is trucked away, so there is no outlet.
-    {
-      const pScale = Math.min(w, h) / 96;
-      const STUB_INSET = pScale * 3;
-      const gy = py + h - TILE / 2;
-      const tag = (text, x, y, align, accent, lit) => {
-        ctx.font = `bold ${Math.max(3.5, 4*S)}px Courier New`;
-        const tw = ctx.measureText(text).width + 8.5*S, th = 7*S;
-        const x0 = align === 'left' ? x : align === 'right' ? x - tw : x - tw/2;
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.roundRect(x0 + 1*S, y - th/2 + 1.5*S, tw, th, 3*S); ctx.fill();
-        ctx.fillStyle = '#16181c'; ctx.strokeStyle = lit ? accent : '#3a3e44'; ctx.lineWidth = 0.9*S;
-        ctx.beginPath(); ctx.roundRect(x0, y - th/2, tw, th, 3*S); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = lit ? accent : '#4a4e54';
-        ctx.beginPath(); ctx.arc(x0 + 3.3*S, y, 1.3*S, 0, Math.PI*2); ctx.fill();
-        if (lit) { ctx.fillStyle = accent; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.arc(x0 + 3.3*S, y, 2.6*S, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; }
-        ctx.fillStyle = lit ? '#f2f4f0' : '#9aa0a6';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.fillText(text, x0 + 6*S, y + 0.3*S);
-        ctx.textBaseline = 'alphabetic';
-      };
-      // Steel receiving hopper: trapezoid pit, hazard lip, grate, heap inside
-      const hopper = (hcx, fillRGB, heapCols, connected, accent) => {
-        const topW = 22*S, botW = 12*S, top = gy - 9*S, bot = gy + 9*S;
-        ctx.fillStyle = 'rgba(0,0,0,0.32)';
-        ctx.beginPath(); ctx.moveTo(hcx - topW/2 + 3*S, top + 4*S); ctx.lineTo(hcx + topW/2 + 3*S, top + 4*S); ctx.lineTo(hcx + botW/2 + 3*S, bot + 4*S); ctx.lineTo(hcx - botW/2 + 3*S, bot + 4*S); ctx.closePath(); ctx.fill();
-        const sg = ctx.createLinearGradient(hcx - topW/2, 0, hcx + topW/2, 0);
-        sg.addColorStop(0, '#7a7e84'); sg.addColorStop(0.5, '#5a5e64'); sg.addColorStop(1, '#3a3e44');
-        ctx.fillStyle = sg; ctx.strokeStyle = '#1e2024'; ctx.lineWidth = S;
-        ctx.beginPath(); ctx.moveTo(hcx - topW/2, top); ctx.lineTo(hcx + topW/2, top); ctx.lineTo(hcx + botW/2, bot); ctx.lineTo(hcx - botW/2, bot); ctx.closePath(); ctx.fill(); ctx.stroke();
-        // pit mouth
-        const mx = hcx - topW/2 + 3*S, my = top + 5*S, mw = topW - 6*S, mh = 10*S;
-        ctx.fillStyle = '#0c0c0e'; ctx.fillRect(mx, my, mw, mh);
-        if (connected) {
-          heapCols.forEach((c, k) => {
-            ctx.fillStyle = c;
-            for (let j = 0; j < 5; j++) {
-              const lx = mx + mw*(0.12 + ((j*0.37 + k*0.21) % 0.8)), ly = my + mh*(0.45 + k*0.18) + Math.sin(j + k)*1.2*S;
-              ctx.beginPath(); ctx.arc(lx, ly, (1.4 + (j % 2)*0.6)*S, 0, Math.PI*2); ctx.fill();
-            }
-          });
-        }
-        ctx.strokeStyle = '#8a8e94'; ctx.lineWidth = 0.9*S;
-        for (let gx = mx + 3*S; gx < mx + mw; gx += 3.2*S) { ctx.beginPath(); ctx.moveTo(gx, my); ctx.lineTo(gx, my + mh); ctx.stroke(); }
-        ctx.strokeStyle = '#1e2024'; ctx.lineWidth = 0.8*S; ctx.strokeRect(mx, my, mw, mh);
-        // hazard lip
-        ctx.save(); ctx.beginPath(); ctx.rect(hcx - topW/2, top - 3*S, topW, 3.5*S); ctx.clip();
-        ctx.fillStyle = '#1a1a1a'; ctx.fillRect(hcx - topW/2, top - 3*S, topW, 3.5*S);
-        ctx.fillStyle = '#e0b020';
-        for (let x = hcx - topW/2 - 4*S; x < hcx + topW/2; x += 5*S) { ctx.beginPath(); ctx.moveTo(x, top + 0.5*S); ctx.lineTo(x + 2.5*S, top + 0.5*S); ctx.lineTo(x + 5.5*S, top - 3*S); ctx.lineTo(x + 3*S, top - 3*S); ctx.closePath(); ctx.fill(); }
-        ctx.restore();
-        ctx.strokeStyle = '#1e2024'; ctx.lineWidth = 0.8*S; ctx.strokeRect(hcx - topW/2, top - 3*S, topW, 3.5*S);
-        // status rivet lamp on the chute
-        ctx.fillStyle = connected ? accent : '#2a2c30';
-        ctx.beginPath(); ctx.arc(hcx, bot - 3*S, 1.5*S, 0, Math.PI*2); ctx.fill();
-        if (connected) { ctx.globalAlpha = 0.35 + 0.2*Math.sin(t*3); ctx.beginPath(); ctx.arc(hcx, bot - 3*S, 3.5*S, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1; }
-      };
-
-      // Coal IN — receiving hopper feeding the conveyor foot
-      {
-        const hcx = px + 11*S;
-        const con = !!e._coalInConnected;
-        hopper(hcx, null, ['#2a2a2e', '#18181a', '#3a3a40'], con, '#a8e050');
-        tag('COAL IN', hcx + 12.5*S, gy + 4*S, 'left', '#a8e050', con);
-      }
-
-      // Water IN — flanged inlet with a gate valve and handwheel
-      {
-        const sx = waterX, bot = py + h - STUB_INSET*0.5;
-        const con = !!e._waterInConnected;
-        const blue = con ? '#5ac0ff' : '#3a5a70';
-        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(sx - 2.5*S + 3*S, bot - 14*S + 3*S, 5*S, 14*S);
-        ctx.fillStyle = '#5a6a74'; ctx.fillRect(sx - 2.5*S, bot - 14*S, 5*S, 14*S);
-        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(sx - 2.5*S, bot - 14*S, 1.4*S, 14*S);
-        // end flange with bolts
-        ctx.fillStyle = '#7a8a94'; ctx.strokeStyle = '#1e262c'; ctx.lineWidth = 0.9*S;
-        ctx.beginPath(); ctx.roundRect(sx - 5*S, bot - 3*S, 10*S, 3*S, 1*S); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#2a3238';
-        [-3.2, -1.1, 1.1, 3.2].forEach(o => { ctx.beginPath(); ctx.arc(sx + o*S, bot - 1.5*S, 0.6*S, 0, Math.PI*2); ctx.fill(); });
-        // gate valve body (bowtie) + handwheel
-        const vy = bot - 9*S;
-        ctx.fillStyle = '#4a5a64';
-        ctx.beginPath(); ctx.moveTo(sx - 5*S, vy - 3.5*S); ctx.lineTo(sx, vy); ctx.lineTo(sx - 5*S, vy + 3.5*S); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(sx + 5*S, vy - 3.5*S); ctx.lineTo(sx, vy); ctx.lineTo(sx + 5*S, vy + 3.5*S); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.save(); ctx.translate(sx, vy); ctx.rotate(con ? 0.4 : 0);
-        ctx.strokeStyle = con ? '#3a8ad0' : '#8a3a30'; ctx.lineWidth = 1.3*S;
-        ctx.beginPath(); ctx.arc(0, 0, 3.6*S, 0, Math.PI*2); ctx.stroke();
-        ctx.lineWidth = 0.9*S;
-        for (let k = 0; k < 3; k++) { ctx.rotate(Math.PI/3); ctx.beginPath(); ctx.moveTo(-3.6*S, 0); ctx.lineTo(3.6*S, 0); ctx.stroke(); }
-        ctx.restore();
-        ctx.fillStyle = '#1e262c'; ctx.beginPath(); ctx.arc(sx, vy, 1*S, 0, Math.PI*2); ctx.fill();
-        if (con && e.powered) {
-          const p = (t*0.8) % 1;
-          ctx.fillStyle = `rgba(160,220,255,${0.9*(1 - p)})`;
-          ctx.beginPath(); ctx.arc(sx, bot - 4*S - p*10*S, 0.9*S, 0, Math.PI*2); ctx.fill();
-        }
-        tag('WATER IN', sx, bot - 20*S, 'center', blue, con);
-      }
-
-    }
+    _coalGenPorts(e, px, py, w, h, S, t, on, waterX);
     }   // Sp
 
     ctx.restore();
@@ -1955,15 +2557,72 @@ function _wfSmoke(x, y, S, t, rgb, on, alpha) {
   // column has reached are drawn, feathered at its head; the whole wisp is
   // thinner until it is up to strength.
   const reach = st.lvl, dens = Math.sqrt(st.lvl);
-  for (let i = 0; i < 5; i++) {
-    const ph = (t*0.35 + i/5) % 1;
+  _smokeColumn(x, y, S, t, rgb, alpha * dens, reach, key);
+}
+
+// ── Smoke billows ───────────────────────────────────────────────────────
+// Built the way the cooling towers' steam is (CoolingTowerPlume,
+// render_oil_nuclear.js): one pre-shaded cauliflower billow per smoke
+// colour (lit at the upper left, shaded grey underneath), stamped many
+// times at growing sizes, oldest first so the young billows boil up over
+// the column they push. It leans with the wind as it climbs and thins at
+// the top. These replaced flat translucent discs, which read as floating
+// circles. `reach` 0..1 is how far up the column has built.
+const _SMOKE_SPRITES = new Map();
+function _smokeSprite(rgb) {
+  let c = _SMOKE_SPRITES.get(rgb);
+  if (c) return c;
+  const [r, g, b] = rgb.split(',').map(Number), lum = (0.3 * r + 0.59 * g + 0.11 * b) / 255;
+  const lift = k => [r, g, b].map(v => Math.round(v + (255 - v) * k)).join(',');
+  const sink = k => [r, g, b].map(v => Math.round(v * k)).join(',');
+  const N = 96; c = document.createElement('canvas'); c.width = c.height = N;
+  const x = c.getContext('2d'), s = N / 128;
+  const blob = (bx, by, br, a) => {
+    const gr = x.createRadialGradient(bx * s, by * s, 0, bx * s, by * s, br * s);
+    gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(0.55, `rgba(${rgb},${a * 0.9})`); gr.addColorStop(1, `rgba(${rgb},0)`);
+    x.fillStyle = gr; x.beginPath(); x.arc(bx * s, by * s, br * s, 0, Math.PI * 2); x.fill();
+  };
+  blob(64, 66, 50, 1);
+  for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2 + 0.4; blob(64 + Math.cos(a) * 30, 66 + Math.sin(a) * 28, 26 + (k % 3) * 4, 0.9); }
+  x.globalCompositeOperation = 'source-atop';
+  const sh = x.createRadialGradient(84 * s, 92 * s, 4 * s, 76 * s, 84 * s, 70 * s);
+  sh.addColorStop(0, `rgba(${sink(lum > 0.5 ? 0.55 : 0.45)},0.6)`); sh.addColorStop(1, `rgba(${sink(0.8)},0)`);
+  x.fillStyle = sh; x.fillRect(0, 0, N, N);
+  const hl = x.createRadialGradient(46 * s, 42 * s, 2 * s, 50 * s, 46 * s, 46 * s);
+  hl.addColorStop(0, `rgba(${lift(lum > 0.5 ? 0.85 : 0.45)},0.85)`); hl.addColorStop(1, `rgba(${lift(0.5)},0)`);
+  x.fillStyle = hl; x.fillRect(0, 0, N, N);
+  _SMOKE_SPRITES.set(rgb, c);
+  return c;
+}
+const _smokeOrder = [];
+function _smokeColumn(x, y, S, t, rgb, alpha, reach = 1, seedKey = '') {
+  if (alpha <= 0.005) return;
+  const sprite = _smokeSprite(rgb);
+  let seed = 0; for (let i = 0; i < seedKey.length; i++) seed = (seed * 31 + seedKey.charCodeAt(i)) % 997;
+  seed /= 997;
+  const ws = typeof WindState !== 'undefined' ? (WindState.trendSpeed ?? 0.3) : 0.3;
+  const wd = typeof WindState !== 'undefined' && WindState.dir !== undefined ? Math.cos(WindState.dir) : 1;
+  const N = Camera.zoom > 0.5 ? 14 : 8, rise = 50 * S * (1 - 0.25 * ws), lean = (14 + 30 * ws) * S * (wd >= 0 ? 1 : -1) * (0.4 + 0.6 * Math.abs(wd));
+  _smokeOrder.length = 0;
+  for (let i = 0; i < N; i++) { const q = Math.sin(i * 78.233 + seed * 13.7) * 43758.5453; _smokeOrder.push([((t * 0.3) + (i + (q - Math.floor(q)) * 0.8) / N + seed) % 1, i]); }
+  _smokeOrder.sort((a, b) => b[0] - a[0]);
+  const a0 = ctx.globalAlpha;
+  for (let n = 0; n < N; n++) {
+    const [ph, i] = _smokeOrder[n];
     const head = reach >= 1 ? 1 : Math.max(0, Math.min(1, (reach - ph) / 0.2));
     if (head <= 0) continue;
-    ctx.fillStyle = `rgba(${rgb},${alpha*(1-ph)*dens*head})`;
-    ctx.beginPath();
-    ctx.arc(x + Math.sin(ph*3 + i)*4*S + ph*16*S, y - ph*44*S, (4 + ph*13)*S, 0, Math.PI*2);
-    ctx.fill();
+    const k = Math.sin(i * 12.9898 + seed * 71.1) * 43758.5453, j = k - Math.floor(k);
+    const drift = Math.pow(ph, 1.5);
+    const bx = x + (j - 0.5) * 9 * S * (0.4 + ph) + Math.sin(t * 0.4 + i * 2.1) * 4 * S * ph + lean * drift;
+    const by = y - Math.pow(ph, 0.85) * rise + (Math.cos(i * 4.7 + seed) * 3 * S * ph);
+    const r = (4 + 14 * Math.pow(ph, 0.7)) * S * (0.75 + 0.5 * j);
+    const fade = ph < 0.35 ? 1 : Math.pow(1 - (ph - 0.35) / 0.65, 1.5);
+    const a = alpha * 0.85 * fade * Math.min(1, 0.35 + ph / 0.15) * head;
+    if (a <= 0.01) continue;
+    ctx.globalAlpha = a0 * Math.min(1, a);
+    ctx.drawImage(sprite, bx - r * 1.15, by - r * 1.15, r * 2.3, r * 2.3);
   }
+  ctx.globalAlpha = a0;
 }
 
 function _wfGauge(x, y, w, h, S, fill, accent, on) {
@@ -1995,14 +2654,32 @@ function _wfLamp(x, y, S, t, accent, on) {
 }
 
 function _wfPlate(text, cx, cy, S, accent, on) {
-  ctx.font = `bold ${Math.max(7, 8*S)}px Courier New`;
-  const tw = ctx.measureText(text).width + 10*S;
-  ctx.fillStyle = 'rgba(8,8,6,0.85)'; ctx.strokeStyle = on ? accent : '#4a4232'; ctx.lineWidth = S;
-  ctx.beginPath(); ctx.roundRect(cx - tw/2, cy - 7*S, tw, 13*S, 2*S); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = on ? accent : '#7a6e58';
+  // A gunmetal nameplate fixed to the plant: brushed face, a bevel catching
+  // the light along its top, corner rivets, the accent as a thin edge, and
+  // LED lettering that glows only while it runs. (It used to be a black pill
+  // with a bright outline, which floated over the model instead of sitting
+  // on it.)
+  ctx.save();
+  ctx.font = `bold ${Math.max(6, 7*S)}px Courier New`;
+  const tw = ctx.measureText(text).width + 12*S, th = 11.5*S, x = cx - tw/2, y = cy - th/2 - 0.5*S, r = 1.6*S;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';                                    // contact shadow on the plant
+  ctx.beginPath(); ctx.roundRect(x + 1.2*S, y + 1.6*S, tw, th, r); ctx.fill();
+  const g = ctx.createLinearGradient(0, y, 0, y + th);
+  g.addColorStop(0, 'rgba(70,74,78,0.92)'); g.addColorStop(0.18, 'rgba(42,45,48,0.92)'); g.addColorStop(1, 'rgba(22,24,26,0.94)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x, y, tw, th, r); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.035)'; ctx.lineWidth = 0.5*S;         // brushed grain
+  ctx.beginPath(); for (let k = 1.5; k < th - 1; k += 1.3*S) { ctx.moveTo(x + 1.5*S, y + k); ctx.lineTo(x + tw - 1.5*S, y + k); } ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 0.6*S;           // bevel
+  ctx.beginPath(); ctx.moveTo(x + r, y + 0.4*S); ctx.lineTo(x + tw - r, y + 0.4*S); ctx.stroke();
+  ctx.strokeStyle = on ? accent : 'rgba(0,0,0,0.6)'; ctx.globalAlpha = on ? 0.45 : 1; ctx.lineWidth = 0.7*S;
+  ctx.beginPath(); ctx.roundRect(x, y, tw, th, r); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(150,154,158,0.85)';                                    // rivets
+  for (const [rx, ry] of [[x + 2.2*S, y + 2.2*S], [x + tw - 2.2*S, y + 2.2*S], [x + 2.2*S, y + th - 2.2*S], [x + tw - 2.2*S, y + th - 2.2*S]]) { ctx.beginPath(); ctx.arc(rx, ry, 0.6*S, 0, Math.PI*2); ctx.fill(); }
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (on) { ctx.shadowColor = accent; ctx.shadowBlur = 3*S; }
+  ctx.fillStyle = on ? accent : 'rgba(140,132,116,0.85)';
   ctx.fillText(text, cx, cy);
-  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 // Moving belt between two points; dashes crawl toward (x2, y2) while powered.
@@ -2067,6 +2744,7 @@ function _wfTrefoil(cx, cy, r, bg, fg) {
 // get the building grain. Unpowered, the belts, kiln, dozer, flame and
 // smoke all stop; the stored ash stays where it is.
 function renderCoalWasteFacility(e, px, py, t) {
+  if (_wfOK(e, 'coalw', 8, 7, ['cwf_base', 'cwf_ash', 'cwf_dozer'])) return _cwfArt(e, px, py, t);   // rendered (end of this file)
   const { S, fill } = _wfDims(e, T.COALWASTE);
   const on = !!e.powered;
   const accent = '#e0a040';
@@ -2356,6 +3034,7 @@ function renderCoalWasteFacility(e, px, py, t) {
 // rim bands fill with stored waste, a fan-cooled treatment building, a
 // bubbling sludge lagoon that rises with storage, and a flare stack.
 function renderOilWasteFacility(e, px, py, t) {
+  if (_wfOK(e, 'oilw', 8, 9, ['owf_base', 'hyp_fan'])) return _owfArt(e, px, py, t);   // rendered (end of this file)
   const { W, H, S, fill } = _wfDims(e, T.OILWASTE);
   const on = e.powered;
   const accent = '#70d050';
@@ -2535,6 +3214,7 @@ function renderOilWasteFacility(e, px, py, t) {
 // appear in the yard as stored waste rises; a rail cart shuttles between
 // the hall and the yard while powered.
 function renderNuclearWasteFacility(e, px, py, t) {
+  if (typeof _nkOK === 'function' && _nkOK(e, 'nw', 13, 11)) return _nwArt(e, px, py, t);
   const { W, H, S, fill } = _wfDims(e, T.NUCLEARWASTE);
   const on = e.powered;
   const accent = '#8cf050';
@@ -2729,3 +3409,205 @@ function renderNuclearWasteFacility(e, px, py, t) {
 
 // renderCoalDeposit — see render_deposits.js
 
+/* ── Drive shaft, rendered ───────────────────────────────────────────────
+   Built in Blender (scripts/render_shaft.py): plinths, pillow-block
+   bearings, the shaft with its keyway, flange couplings at the seams,
+   brass end hubs, one render per direction. Live: stripes running along
+   the shaft at _rotationRate, the end hubs turning and glowing (the far end
+   only once a source turbine drives it, as the painted shaft). */
+const SHAFT_LAYOUT = {"h":{"frame":8.0,"off":0.3,"ends":[[-3.02,0,0.75],[3.02,0,0.75]],"z":0.75,"r":0.17},"v":{"frame":8.0,"off":0.3,"ends":[[0,3.02,0.75],[0,-3.02,0.75]],"z":0.75,"r":0.17}};
+function _shaftArt(e, px, py, t) {
+  const horizontal = e._orientation === 'h', L = SHAFT_LAYOUT[horizontal ? 'h' : 'v'];
+  const tw = (e.width || (horizontal ? 3 : 1)) * TILE, th = (e.height || (horizontal ? 1 : 3)) * TILE;
+  const F = _cwFrame(L, px + tw / 2, py + th / 2, 1, 1), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const rate = e._rotationRate || 0, driven = rate > 0;
+  ctx.save();
+  F.draw(CoalWaterArt.get(horizontal ? 'shaft_h' : 'shaft_v'));
+  const [a, b] = L.ends, [ax, ay] = P(...a), [bx, by] = P(...b);
+  if (driven && Camera.zoom > 0.4) {
+    ctx.save(); ctx.lineCap = 'butt';
+    ctx.strokeStyle = `rgba(255,214,120,${(0.35 + 0.2 * Math.sin(t * 6 * rate)).toFixed(3)})`; ctx.lineWidth = L.r * 1.6 * M;
+    ctx.setLineDash([3 * S, 7 * S]); ctx.lineDashOffset = -t * 40 * S * rate;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    ctx.restore();
+  }
+  let glowEnds = [0, 1];
+  const src = e._sourceTurbine;
+  if (src) {
+    const tCx = src.col + src.width / 2, tCy = src.row + src.height / 2;
+    if (horizontal) glowEnds = [Math.abs(e.col - tCx) > Math.abs(e.col + 4 - tCx) ? 0 : 1];
+    else glowEnds = [Math.abs(e.row - tCy) > Math.abs(e.row + 4 - tCy) ? 0 : 1];
+  }
+  const endGlow = driven ? 0.85 + 0.15 * Math.sin(t * 5) : 0.3;
+  for (const i of glowEnds) {
+    const [gx, gy] = i === 0 ? [ax, ay] : [bx, by];
+    const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, 10 * S);
+    gr.addColorStop(0, `rgba(255,200,80,${(endGlow * 0.8).toFixed(3)})`); gr.addColorStop(1, 'rgba(255,200,80,0)');
+    ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(gx, gy, 10 * S, 0, TAU); ctx.fill();
+    ctx.save(); ctx.translate(gx, gy); ctx.rotate(driven ? t * 6 * rate : 0);
+    ctx.strokeStyle = driven ? '#3a2400' : '#4a3010'; ctx.lineWidth = 0.9 * S;
+    ctx.beginPath(); ctx.moveTo(-3 * S, 0); ctx.lineTo(3 * S, 0); ctx.moveTo(0, -3 * S); ctx.lineTo(0, 3 * S); ctx.stroke();
+    ctx.restore();
+  }
+  if (InspectionPanel.isOpen() && InspectionPanel.target === e) {
+    ctx.strokeStyle = '#e0a020'; ctx.lineWidth = 2 / Camera.zoom; ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
+    ctx.strokeRect(px + 1, py + 1, tw - 2, th - 2);
+  }
+  ctx.restore();
+}
+
+
+/* ── Coal / Oil Waste Facilities, rendered (scripts/render_civic2.py coalw /
+   oilw; layout in CIV2_LAYOUT, render_world_civic.js). Coal: the ash cell
+   fills from the east with the store (cwf_ash, clipped) and a dozer
+   (cwf_dozer) works the face; aerator, kiln heat and burner, baghouse pulse,
+   stack smoke, silo vents, gauge, lit windows. Oil: the clarifier's skimmer
+   bridge turns, digester fill rings, hall fans and green windows, the sludge
+   lagoon fills and bubbles, the flare (blue pilot when idle), gauge.
+   Nameplates and lamps as the painted ones. Default sizes only. */
+function _wfOK(e, key, w, h, imgs) {
+  if (e._ghost || typeof CIV2_LAYOUT === 'undefined' || !CIV2_LAYOUT || !CIV2_LAYOUT[key] || (e.width || w) !== w || (e.height || h) !== h) return false;
+  if (typeof AdvNukeArt === 'undefined' || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  for (const n of imgs) if (!AdvNukeArt.get(n)) return false;
+  return true;
+}
+function _wfGaugeAt(F, g, fill, accent, on) {
+  const [g0, g1, gy, z0, z1] = g, [ax, ay] = F.P(g0, gy, z1), [bx, by] = F.P(g1, gy, z0), gh = (by - ay) * fill;
+  ctx.fillStyle = on ? accent : '#5a5040'; ctx.fillRect(ax, by - gh, bx - ax, gh);
+}
+function _cwfArt(e, px, py, t) {
+  const L = CIV2_LAYOUT.coalw, { S, fill } = _wfDims(e, T.COALWASTE), F = _anFrame(e, px, py), { P, M } = F;
+  const on = !!e.powered, dark = DayNight.darkness(), detail = Camera.zoom > 0.45, accent = '#e0a040';
+  ctx.save();
+  F.draw(AdvNukeArt.get('cwf_base'), L.rect);
+  // the settling pond: murky water over the rendered basin
+  { const [x0, x1, y0, y1, z] = L.pond, [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z);
+    const g = ctx.createLinearGradient(0, ay, 0, by); g.addColorStop(0, 'rgba(78,96,90,0.85)'); g.addColorStop(1, 'rgba(52,66,64,0.9)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(ax, ay, bx - ax, by - ay, 0.25 * M); ctx.fill();
+    if (typeof BldWater !== 'undefined') BldWater.draw(ctx, 'path', ax, ay, bx - ax, by - ay, t, { murky: true, still: !on }); }
+  // the ash cell filling from the east, the dozer pushing the face
+  { const [x0, x1, y0, y1, z] = L.cell, aw = (x1 - x0) * Math.min(1, 0.12 + 0.88 * fill), ax0 = x1 - aw;
+    if (fill > 0.005) {
+      const [cx, cy] = [(x0 + x1) / 2, (y0 + y1) / 2], [sx0] = P(ax0, cy, z), [sx1] = P(x1, cy, z), [, syT] = P(cx, y1, z + 0.6), [, syB] = P(cx, y0, z);
+      ctx.save(); ctx.beginPath(); ctx.rect(sx0, syT, sx1 - sx0, syB - syT); ctx.clip();
+      _amDraw(F, AdvNukeArt.get('cwf_ash'), L.ashRect, 1, cx, cy + z * Math.tan(Math.PI / 6)); ctx.restore();
+      if (fill > 0.04) {
+        const span = Math.max(0.5, x1 - 1.2 - ax0), u = on ? 0.5 + 0.5 * Math.sin(t * 0.35) : 0.15;
+        const dx = ax0 + 0.6 + u * span, dy = cy + (on ? Math.sin(t * 0.9) * 0.3 : 0);
+        _amDraw(F, AdvNukeArt.get('cwf_dozer'), L.dozerRect, 1, dx, dy + (z + 0.1) * Math.tan(Math.PI / 6));
+        if (on && detail) for (let k = 0; k < 3; k++) { const ph = (t * 0.9 + k / 3) % 1, [qx, qy] = P(dx - 0.9 - ph * 0.4, dy, z + 0.3 + ph * 0.5);
+          ctx.fillStyle = `rgba(190,186,178,${(0.35 * (1 - ph)).toFixed(2)})`; ctx.beginPath(); ctx.ellipse(qx, qy, (0.1 + ph * 0.2) * M, (0.08 + ph * 0.15) * M, 0, 0, Math.PI * 2); ctx.fill(); }
+      } } }
+  // aerator blades and ripples
+  { const [x, y, z, r] = L.aerator, a0 = on ? t * 3 : 0.4, [cx, cy] = P(x, y, z);
+    { const [, , , py1] = L.pond, [wx, wy] = P(x, py1, z + 0.15); ctx.strokeStyle = '#8a8c88'; ctx.lineWidth = 0.4 * M; ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(cx, cy - 0.3 * M); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(cx + 0.06 * M, cy + 0.08 * M, r * 1.2 * M, r * 1.2 * M, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#d8d4c8'; ctx.beginPath(); ctx.ellipse(cx, cy, r * 1.2 * M, r * 1.2 * M, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#4a5058'; ctx.lineWidth = Math.max(1, 0.08 * M);
+    for (let k = 0; k < 3; k++) { const a = a0 + k * 2.094, [bx, by] = P(x + Math.cos(a) * r, y + Math.sin(a) * r, z); ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(bx, by); ctx.stroke(); }
+    if (on) { const rr = (0.5 + (t * 0.6 % 0.6)) * M; ctx.strokeStyle = 'rgba(240,250,250,0.35)'; ctx.lineWidth = Math.max(0.6, 0.04 * M); ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr, 0, 0, Math.PI * 2); ctx.stroke(); } }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (on) {
+    const [k0, k1, ky, kz, kr] = L.kiln, [ax, ay] = P(k0 + (k1 - k0) * 0.55, ky, kz + kr), [bx, by] = P(k1, ky - kr, kz - kr);
+    const g = ctx.createLinearGradient(ax, 0, bx, 0); g.addColorStop(0, 'rgba(255,110,30,0)'); g.addColorStop(1, `rgba(255,110,30,${(0.3 + 0.08 * Math.sin(t * 4)).toFixed(2)})`);
+    ctx.fillStyle = g; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    const [fx, fy] = P(...L.burner); _anGlow(fx, fy, 0.7 * M, '255,150,60', 0.75 + 0.15 * Math.sin(t * 7)); _anGlow(fx, fy, 0.25 * M, '255,240,190', 0.9);
+    if (detail) { const k = Math.floor(t * 1.2) % L.cells.length, [cx, cy] = P(...L.cells[k]); _anGlow(cx, cy, 0.5 * M, '200,220,240', 0.35); }
+  }
+  if (on && dark > 0.3) [...L.hallWins, ...L.officeWins].forEach(([x, y, z]) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.5 * M, '255,214,140', 0.45 + 0.3 * dark); });
+  if (on) { const [hx, hy] = P(...L.hallDoor); _anGlow(hx, hy, 1.0 * M, '255,190,110', 0.1 + 0.25 * dark); }
+  ctx.restore();
+  { const [sx, sy] = P(...L.stack); _wfSmoke(sx, sy, S, t, '150,146,140', on, 0.4); if (dark > 0.3 && Math.sin(t * 2.4) > 0.3) _amLed(sx, sy + 0.1 * M, 0.15 * M, '255,48,32', 0.9); }
+  if (on && detail) L.silos.forEach(([x, y, z], i) => { if (Math.sin(t * 0.7 + i * 2) > 0.6) { const [vx, vy] = P(x, y, z); ctx.fillStyle = 'rgba(200,196,190,0.4)'; ctx.beginPath(); ctx.ellipse(vx + 0.1 * M, vy - 0.2 * M, 0.2 * M, 0.12 * M, 0, 0, Math.PI * 2); ctx.fill(); } });
+  _wfGaugeAt(F, L.gauge, fill, accent, on);
+  _wfPlate('COAL ASH PROCESSING', px + 196 * S, py + 10 * S, S, accent, on);
+  _wfLamp(px + 306 * S, py + 12 * S, S, t, accent, on);
+  ctx.restore();
+}
+function _owfArt(e, px, py, t) {
+  const L = CIV2_LAYOUT.oilw, { W, H, S, fill } = _wfDims(e, T.OILWASTE), F = _anFrame(e, px, py), { P, M } = F;
+  const on = !!e.powered, accent = '#70d050', TAU = Math.PI * 2;
+  ctx.save();
+  F.draw(AdvNukeArt.get('owf_base'), L.rect);
+  // clarifier: coloured sheen rings and the skimmer bridge turning
+  { const [cx, cy, z, r] = L.clar, [ox, oy] = P(cx, cy, z);
+    [[0.62, 'rgba(160,120,220,0.18)'], [0.42, 'rgba(120,220,160,0.18)'], [0.78, 'rgba(230,200,90,0.14)']].forEach(([rf, col], i) => {
+      const a0 = (on ? t * 0.5 : 0) * (i % 2 ? -1 : 1) + i * 2; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, 0.1 * M);
+      ctx.beginPath(); ctx.arc(ox, oy, r * rf * M, a0, a0 + 2.2); ctx.stroke(); });
+    const a = on ? t * 0.4 : 0.6, [ex, ey] = P(cx + Math.cos(a) * r, cy + Math.sin(a) * r, z + 0.15), [hx, hy] = P(cx, cy, z + 0.15);
+    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.4 * M; ctx.beginPath(); ctx.moveTo(hx + 0.1 * M, hy + 0.12 * M); ctx.lineTo(ex + 0.1 * M, ey + 0.12 * M); ctx.stroke();
+    ctx.strokeStyle = '#8a8470'; ctx.lineWidth = 0.34 * M; ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.fillStyle = '#d8a820'; ctx.beginPath(); ctx.arc(ex, ey, 0.25 * M, 0, TAU); ctx.fill(); }
+  // digester fill rings
+  L.digesters.forEach(([x, y, z, r], idx) => { const tf = Math.max(0, Math.min(1, fill * 2 - idx)), [ox, oy] = P(x, y, z);
+    ctx.strokeStyle = '#141810'; ctx.lineWidth = Math.max(1.5, 0.12 * M); ctx.beginPath(); ctx.arc(ox, oy, r * 0.6 * M, 0, TAU); ctx.stroke();
+    if (tf > 0) { ctx.strokeStyle = accent; ctx.globalAlpha = on ? 0.9 : 0.45; ctx.lineWidth = Math.max(1, 0.09 * M); ctx.beginPath(); ctx.arc(ox, oy, r * 0.6 * M, -Math.PI / 2, -Math.PI / 2 + TAU * tf); ctx.stroke(); ctx.globalAlpha = 1; } });
+  L.fans.forEach(([x, y, z, r], k) => _anFan(F, x, y, z, r, on ? t * 7 + k : 0.4));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.wins.forEach(([w0, w1, wy, z0, z1], k) => { const [ax, ay] = P(w0, wy, z1), [bx, by] = P(w1, wy, z0);
+    ctx.fillStyle = on ? `rgba(110,230,80,${(0.45 + 0.2 * Math.sin(t * 2 + k)).toFixed(3)})` : 'rgba(0,0,0,0)'; ctx.fillRect(ax, ay, bx - ax, by - ay); });
+  ctx.restore();
+  // the sludge lagoon fills with the store and bubbles
+  { const [x0, x1, y0, y1, z] = L.lagoon, f = 0.18 + 0.78 * fill;
+    if (fill > 0.005) { const [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z), top = by - (by - ay) * f;
+      const g = ctx.createLinearGradient(0, top, 0, by); g.addColorStop(0, '#3a4a1c'); g.addColorStop(1, '#141a0a');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(ax, by);
+      for (let xx = 0; xx <= bx - ax; xx += 3) ctx.lineTo(ax + xx, top + Math.sin(xx / (0.5 * M) + (on ? t * 1.5 : 0)) * 0.08 * M);
+      ctx.lineTo(bx, by); ctx.closePath(); ctx.fill();
+      if (on) for (let i = 0; i < 7; i++) { const ph = (t * 0.6 + i * 0.37) % 1, qx = ax + (bx - ax) * (0.1 + ((i * 0.618) % 0.8)), qy = top + (by - top) * (0.2 + ((i * 0.41) % 0.7));
+        ctx.strokeStyle = `rgba(150,200,80,${(0.6 * (1 - ph)).toFixed(3)})`; ctx.lineWidth = Math.max(0.6, 0.04 * M); ctx.beginPath(); ctx.arc(qx, qy, (0.05 + ph * 0.15) * M, 0, TAU); ctx.stroke(); } } }
+  // the flare: a flame while running, a blue pilot otherwise
+  { const [fx, fy] = P(...L.flare);
+    if (on) { const fh = 0.9 * M * (1 + 0.18 * Math.sin(t * 9) + 0.08 * Math.sin(t * 23)), sway = Math.sin(t * 2.3) * 0.1 * M;
+      const flame = (w, h, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(fx - w, fy); ctx.quadraticCurveTo(fx - w * 1.1, fy - h * 0.5, fx + sway, fy - h); ctx.quadraticCurveTo(fx + w * 1.1, fy - h * 0.5, fx + w, fy); ctx.fill(); };
+      _amLed(fx, fy - fh * 0.4, 1.0 * M, '255,140,40', 0.25); flame(0.25 * M, fh, 'rgba(255,110,30,0.85)'); flame(0.15 * M, fh * 0.65, 'rgba(255,220,90,0.95)');
+    } else { ctx.fillStyle = 'rgba(90,150,255,0.7)'; ctx.beginPath(); ctx.arc(fx, fy - 0.08 * M, 0.08 * M, 0, TAU); ctx.fill(); } }
+  _wfGaugeAt(F, L.gauge, fill, accent, on);
+  _wfPlate('OIL SLUDGE TREATMENT', px + W * 0.40, py + H * 0.05, S, accent, on);
+  _wfLamp(px + W - 11 * S, py + 11 * S, S, t, accent, on);
+  ctx.restore();
+}
+
+
+/* ── Carbon Capture Plant, rendered (scripts/render_civic2.py cc; layout in
+   CIV2_LAYOUT). Live: twelve contactor fans turning with the sorbent glow
+   under them, smog drawn in when there is smog, a technician's lamp on the
+   catwalk, the desorber's steam jacket cycling and its vapour and warning
+   lamp, the CO2 cylinder gauges, the compression hall's roof shimmer and
+   windows, the control windows and the CO2 CAPTURED board, and the injection
+   pulses at the wellhead. The placement ghost keeps the painted plant and
+   its capture radius. Default size only. */
+function _ccArt(e, px, py, t) {
+  const L = CIV2_LAYOUT.cc, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const on = !!e.powered && !e._lightningDamaged, dark = DayNight.darkness(), night = on && dark > 0.3, detail = Camera.zoom > 0.35;
+  const smog = on && typeof PollutionSystem !== 'undefined' ? Math.min(1, PollutionSystem.concAt(e.col + 5, e.row + 4) / 40) : 0;
+  ctx.save();
+  F.draw(AdvNukeArt.get('cc_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], i) => {
+    const [fx, fy] = P(x, y, z);
+    if (on && detail) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(fx, fy, r * M, '110,240,180', 0.18 + 0.08 * Math.sin(t * 1.5 + i)); ctx.restore(); }
+    _anFan(F, x, y, z, r, on ? t * (5 + i % 2) : i * 0.4);
+    if (on && detail && smog > 0.03) for (let k = 0; k < 2; k++) { const p = (t * 0.45 + k / 2 + i * 0.17) % 1, a = i * 1.9 + k * 2.1 + p * 2.4, d = r * (1 + 1.6 * (1 - p)) * M;
+      ctx.fillStyle = `rgba(120,100,62,${(Math.min(0.85, 0.3 + 0.6 * smog) * Math.sin(p * Math.PI)).toFixed(3)})`; ctx.beginPath(); ctx.arc(fx + Math.cos(a) * d, fy + Math.sin(a) * d * 0.8, (0.1 + 0.15 * (1 - p)) * M, 0, TAU); ctx.fill(); }
+  });
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  { const [x, y, z] = L.jacket, heat = on ? 0.5 + 0.5 * Math.sin(t * 0.6) : 0, [jx, jy] = P(x, y, z); if (heat > 0.3) _anGlow(jx, jy, 1.0 * M, '255,140,70', (heat - 0.3) * 0.6); }
+  { const [x, y, z] = L.desorber, [dx, dy] = P(x, y, z); if (on && Math.sin(t * 3) > 0) _anGlow(dx, dy - 0.1 * M, (night ? 0.5 : 0.2) * M, '255,58,42', 0.9); }
+  L.cyls.forEach(([g0, g1, gy, z0, z1], i) => { const [ax, ay] = P(g0, gy, z1), [bx, by] = P(g1, gy, z0), f = on ? Math.min(1, 0.35 + 0.5 * ((t * 0.05) % 1) + i * 0.1) : 0.2;
+    ctx.fillStyle = on ? 'rgba(96,240,168,0.85)' : 'rgba(42,74,58,0.9)'; ctx.fillRect(ax, by - (by - ay) * f, bx - ax, (by - ay) * f); });
+  if (night) [...L.wins, ...L.hallWins].forEach(([x, y, z], k) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.5 * M, '255,225,160', 0.45); });
+  if (night) { const [dx, dy] = P(...L.door); _anGlow(dx, dy, 0.7 * M, '255,225,160', 0.4); }
+  if (on && night && detail) { const [c0, c1, cy, cz] = L.catwalk, u = (t * 0.08) % 1, [lx, ly] = P(c0 + (c1 - c0) * u, cy, cz); _anGlow(lx, ly, 0.3 * M, '255,230,170', 0.7); }
+  ctx.restore();
+  { const [x, y, z] = L.desorber, [vx, vy] = P(x, y, z); if (on) _scrubberVapour(vx, vy, S, t, 5, 0.8); }
+  if (on && detail) L.hallVents.forEach(([x, y, z], k) => { for (let q = 0; q < 2; q++) { const p = (t * 0.8 + q / 2) % 1, [vx, vy] = P(x, y, z);
+    ctx.fillStyle = `rgba(255,255,255,${(0.2 * (1 - p)).toFixed(3)})`; ctx.beginPath(); ctx.ellipse(vx + Math.sin(t * 3 + q) * 0.08 * M, vy - p * 0.5 * M, (0.1 + p * 0.1) * M, 0.06 * M, 0, 0, TAU); ctx.fill(); } });
+  if (on && detail) { const [wx, wy] = P(...L.well); for (let k = 0; k < 3; k++) { const p = (t * 0.5 + k / 3) % 1;
+    ctx.strokeStyle = `rgba(100,240,170,${(0.5 * (1 - p)).toFixed(3)})`; ctx.lineWidth = Math.max(0.8, 0.05 * M); ctx.beginPath(); ctx.ellipse(wx, wy, (0.3 + p * 1.2) * M, (0.15 + p * 0.6) * M, 0, 0, TAU); ctx.stroke(); } }
+  if (typeof _civText === 'function') _civText(F, L.hallSign, 'COMPRESSION', on ? '#e8eef0' : '#6a6e70');
+  if (L.board && typeof _amBoardText === 'function') {
+    const tonnes = typeof PollutionSystem !== 'undefined' ? PollutionSystem.capturedTonnes() : 0;
+    _amBoardText(F, L.board, [['CO₂ CAPTURED', '112,240,176', 0.8], [`${Math.floor(tonnes).toLocaleString('en-US')} t`, '112,240,176', 1.4]], on);
+  }
+  ctx.restore();
+}

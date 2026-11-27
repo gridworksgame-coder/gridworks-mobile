@@ -146,7 +146,7 @@ function updateProgressTracker() {
     const bfPct = Math.min(1, biofuelTotal / 125);
     rows.push(row('Collected', val(`${biofuelTotal}/125`, bfPct > 0.4 ? 'warn' : 'dim')));
     rows.push(bar(bfPct, '#40a020'));
-    if (biofuelTotal < 50) rows.push(row('Wire', val('needs 50 biofuel', 'dim')));
+    if (biofuelTotal < 50) rows.push(row('Cable', val('needs 50 biofuel', 'dim')));
     else rows.push(row('Research Station', val('needs 125 biofuel', 'dim')));
   }
 
@@ -155,7 +155,7 @@ function updateProgressTracker() {
   // These rows used to carry their own copy of every requirement, and the
   // copies drifted (the Cell Tower read Ready at 20 homes; it needs 25).
   const NEXT_UNLOCKS = [
-    { type: T.WIRE,          label: 'Wire' },
+    { type: T.WIRE,          label: 'Cable' },
     { type: T.RESEARCH,      label: 'Research Station MK1' },
     { type: T.POLE,          label: 'Power Pole' },
     { type: T.CELLTOWER,     label: 'Cell Tower' },
@@ -212,7 +212,7 @@ function updateProgressTracker() {
     { type: T.COALMINE2,     label: 'Coal Mine MK2' },
     { type: T.COALGENERATOR, label: 'Coal Generator' },
     { type: T.WATEREXTRACTOR, label: 'Water Extractor' },
-    { type: T.POWERTOWER,    label: 'Wire MK2' },
+    { type: T.POWERTOWER,    label: 'Cable MK2' },
     { type: T.BLUEPRINT,     label: 'Blueprints' },
     { type: T.DAM,           label: 'Dam' },
     { type: T.HYDROTURBINE,  label: 'Hydro Turbine' },

@@ -3005,7 +3005,7 @@ const SaveSystem = (() => {
       }
       // A 3-tall deposit comes back at full size under its 3×2 well, leaving
       // its bottom row on the grid beneath the well's sprite: a tile the
-      // player can't see, and a wire run up to the well's edge would end on
+      // player can't see, and a cable run up to the well's edge would end on
       // the deposit instead of the well and carry nothing. Clear it the way
       // tryPlaceGeoWell does.
       for (const well of EntityRegistry.getByType(T.GEOWELL)) {

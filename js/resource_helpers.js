@@ -1408,7 +1408,7 @@ function pipeRunHas(run, c, r) { return PipeRuns.has(run, c, r); }
 // it. Without the renderer (no PipeFill) the fluid is there at once.
 // Some producers flag the wire or belt laid over a pipe rather than the pipe
 // under it, which is then drawn dry and never seen to fill; a stub like that
-// isn't held back. (Water is always marked on the pipe; a wire's own
+// isn't held back. (Water is always marked on the pipe; a cable's own
 // `powered` is its electricity.)
 const _FLUID_FLAG = {
   oil: '_oilActive', fueloil: '_fuelOilActive', lpg: '_lpgActive', acid: '_acidActive',

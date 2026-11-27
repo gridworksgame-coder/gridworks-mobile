@@ -8,6 +8,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 function renderTritiumBreeder(e, px, py, t) {
+  if (FusionArt.ok(e, 'tb', 38, 22)) return _tbArt(e, px, py, t);   // rendered (end of render_advanced_fusion.js)
   // Read left to right, the way the beam goes. Lithium Compound comes off the
   // LITHIUM IN belt into a hopper; an ion source on the berm injects into a
   // great synchrotron ring, magnets red and blue round a trench in a concrete

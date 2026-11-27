@@ -522,7 +522,9 @@ const PuddleSystem = (() => {
       const dry = DRY * (snowing ? 3 : 1) * dt;
       water = water < wetness ? Math.min(wetness, water + FILL * dt) : Math.max(wetness, water - dry);
       stain = Math.max(water, stain - dry * 0.5);
-      if (flood) floodK = Math.min(1, floodK + FLOOD_UP * dt);
+      // The flood only rises while rain is actually falling: without it the
+      // water drains as after any flood.
+      if (flood && raining) floodK = Math.min(1, floodK + FLOOD_UP * dt);
       else if (!(raining && level >= 0.7)) floodK = Math.max(0, floodK - FLOOD_DOWN * dt * (raining ? 0.4 : 1) * (snowing ? 2 : 1));
     }
     if (stain < 0.005 && floodK <= 0) { FC.ok = false; return; }

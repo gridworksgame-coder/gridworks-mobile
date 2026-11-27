@@ -177,8 +177,53 @@ const BuildingSpriteCache = (() => {
   // mine 2's spoil heap 1.5, the refinery's flare 1.2, coal waste and the
   // sulfur mine's headframe just over 1) get a two-tile margin instead.
   let _wide = null;
+  // The rendered (Blender) Coal Generator's chimney stands 15 m, its top and
+  // smoke about four tiles over the footprint; the rendered Coal Mine's
+  // stack and smoke just over one.
   function _margin(type) {
-    if (!_wide) _wide = new Set([T.COALMINE2, T.REFINERY, T.COALWASTE, T.SULFURMINE, T.SULFURMINE2]);
+    if (!_wide) _wide = new Set([T.COALMINE2, T.REFINERY, T.COALWASTE, T.SULFURMINE, T.SULFURMINE2, T.FUELGEN, T.COALMINE,
+      T.URANIUMMINE, T.FUELPLANT, T.CHEMICALPLANT, T.NUCLEARWASTE]);   // rendered: headframe, towers, stack shadows
+    if (type === T.COALGENERATOR) return 5;
+    // The rendered reactor's vent stack stands seven tiles over its top edge;
+    // the rendered cooling tower's shadow reaches past one.
+    if (type === T.NUCLEARREACTOR) return 8;
+    if (type === T.LIGHTNINGROD || type === T.LIGHTNINGROD2 || type === T.LIGHTNINGROD3) return 3;   // rendered spires stand well over their footprints
+    if (type === T.COOLINGTOWER) return 2;
+    if (type === T.COOLINGTOWER2) return 3;   // rendered: the fan deck stands over the top edge
+    if (type === T.CRYOPLANT) return 3;             // rendered: the cold box stands over the top edge
+    if (type === T.ELECTROLYZER) return 3;          // rendered: the separator columns' shadows past the east edge
+    if (type === T.ATMOSCOLLECTOR) return 3;        // rendered: purifier heads, relief stack and shadows past the top / east edges
+    if (type === T.HABERBOSCH) return 4;            // rendered: the converter stands over the top edge
+    if (type === T.WASHTOWER) return 4;             // rendered: the exchange towers stand over the top edge
+    if (type === T.LITHIUMPROCESSPLANT) return 3;   // rendered: silos, towers and stack over the top edge
+    if (type === T.HELIUMWELL || type === T.HELIUMWELL2) return 3;   // rendered: derrick / column and flare over the top edge
+    if (type === T.GASSTORAGE) return 2;
+    if (type === T.OILSTORAGE) return 2;            // rendered: the tank's rim stands over the top edge
+    if (type === T.SULFURMINE) return 3;            // rendered: the boiler stack and its smoke over the top edge
+    if (type === T.SULFURMINE2) return 4;           // rendered: the twin stacks and their smoke over the top edge
+    if (type === T.SURVEY) return 3;                // rendered: the mast and dish over the top edge
+    if (type === T.SURVEY2) return 3;               // rendered: the towers and dishes over the top edge
+    if (type === T.RAREEARTHMINE) return 2;         // rendered: spirals, shed and shadows over the edges
+    if (type === T.LEACHPLANT) return 3;            // rendered: the scrubber stack and its smoke over the top edge
+    if (type === T.SCMILL) return 2;                // rendered: the clean-room hall's roof units over the top edge
+    if (type === T.COREWORKS) return 2;             // rendered: the winding hall over the top edge
+    if (type === T.BEACON) return 2;                // rendered: the lattice tower's head and whips over the top edge
+    if (type === T.COKEOVEN) return 3;              // rendered: the flare stack and its flame over the top edge
+    if (type === T.GRAPHITEFURNACE) return 2;       // rendered: the bucket elevator over the top edge
+    if (type === T.CELLTOWER) return 2;             // rendered: the mast top and aviation light over the top edge
+    if (type === T.FIBERHUB) return 2;              // rendered: the rooftop chillers over the top edge
+    if (type === T.EVCHARGER) return 2;             // rendered: the solar canopy over the top edge
+    if (type === T.STEAMTURBINE2) return 2;
+    // Rendered Hyperion Station: its halls, masts and pylons stand up past
+    // the north edge, the pylons' shadows past the east one.
+    if (type === T.NATIONALGRID) return 5;
+    // Rendered advanced nuclear chain: the reprocessing stack stands six tiles
+    // over its top edge, the reactor's vent stack and steam generators three.
+    if (type === T.REPROCESSOR) return 7;
+    if (type === T.ADVREACTOR) return 4;
+    if (type === T.SPENTFUELPOOL || type === T.MOXPLANT) return 2;
+    // Rendered fusion chain: shadows off the coils, stacks and spheres.
+    if (type === T.FUSIONFUELPLANT || type === T.HULKINGFUSIONREACTOR || type === T.ADVFUSIONREACTOR || type === T.MHDRING || type === T.HE3SEPARATOR || type === T.TRITIUMBREEDER) return 2;
     return _wide.has(type) ? 2 : MX;
   }
   const MAX_DIM = 2048;
@@ -994,14 +1039,14 @@ const FixtureCache = (() => {
   // live.
   FixtureCache.register(T.POLE, {
     maxZoom: 0.5, nearZoom: 1.6, nearRefreshMs: 200,
-    key: e => (e.failed || e.outOfRange || e._underWater) ? null : (e.powered ? '1|' : '0|') + kerb(e, 17),
+    key: e => (e.failed || e.outOfRange || e._underWater) ? null : (e.powered ? '1|' : '0|' + ((performance.now() % 800) < 400 ? 'r|' : '')) + kerb(e, 17),
   });
   // Pylons: below 0.5 only legs, arms and footings are drawn; closer, the
   // lattice, the insulator glow and the beacon. Lightning damage sparks and
   // smokes; footings in water bring their water tiles.
   FixtureCache.register(T.POWERTOWER, {
-    maxZoom: 0.5, nearZoom: 1.6, nearRefreshMs: 200,
-    key: e => (e._lightningDamaged || e._waterFooting) ? null : (e.powered ? '1|' : '0|') + kerb(e, 35),
+    maxZoom: 0.5, nearZoom: 1.6, nearRefreshMs: 200, margin: 2,
+    key: e => (e._lightningDamaged || e._waterFooting) ? null : (e.powered ? '1|' : '0|' + ((performance.now() % 800) < 400 ? 'r|' : '')) + kerb(e, 35),
   });
   // Surge protectors: the load meter and lamps follow the load (which moves
   // every tick, hence minMs); the arcs and the status beacon keep a little
@@ -1403,7 +1448,10 @@ function _renderEntitySprite(e, x, y, t) {
         ctx.restore();
       }
       break;
-    case T.MONITOR:         dispatchScaledRender(e, x, y, t, renderMonitor); break;
+    case T.MONITOR:
+      if (!e._ghost && typeof _gmOK === 'function' && _gmOK(e, 'mon1', 2, 2)) { if (e.col * TILE === x && e.row * TILE === y) _mon1Art(e, x, y, t); }
+      else dispatchScaledRender(e, x, y, t, renderMonitor);
+      break;
     case T.MONITOR2:        renderMonitor2(e, x, y, t); break;
     case T.ENGOFFICE:       renderEngOffice(e, x, y, t); break;
     case T.BEACON:          renderBeacon(e, x, y, t); break;
@@ -2741,6 +2789,9 @@ RenderSystem.render = function (t, inputState) {
       ZoneLights.render(ctx, dark, cStart, cEnd, rStart, rEnd);   // zone street, porch, shop and yard lights
       if (typeof renderUnpoweredPolesNight === 'function') renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // dead poles outlined over the dark
       SiteYard.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // plant yard floodlights (render_site_yard.js)
+      if (typeof GeoWellArt !== 'undefined') GeoWellArt.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // geothermal wellhead lamps
+      if (typeof GeoTurbineArt !== 'undefined') GeoTurbineArt.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // geothermal turbine lamps
+      if (typeof PumpJackArt !== 'undefined') PumpJackArt.renderNight(ctx, dark, cStart, cEnd, rStart, rEnd);   // pump jack status lights, MK2 floodlight
       if (typeof SeasonalEventFx !== 'undefined') SeasonalEventFx.renderNight(ctx, dark, t, cStart, cEnd, rStart, rEnd);   // festival lights, stage beams, pledge markers
       if (typeof SmallFliers !== 'undefined') SmallFliers.renderNight(ctx);   // fireflies glowing, bats against the dusk
       if (typeof ContractSystem !== 'undefined') ContractSystem.renderLabels(ctx);   // job-site zone names

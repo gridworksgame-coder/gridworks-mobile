@@ -137,7 +137,7 @@ const AchievementsSystem = (() => {
       check: () => _gen() >= 50000 },
     { id: 'deep_reserves',       label: 'Deep Reserves',       icon: '🔋', desc: 'Build a Substation MK3.', cat: 'grid',
       check: () => _has(T.SUBSTATION3) },
-    { id: 'spaghetti',           label: 'Spaghetti Junction',  icon: '🍝', desc: 'Lay 500 pieces of wire.', cat: 'grid',
+    { id: 'spaghetti',           label: 'Spaghetti Junction',  icon: '🍝', desc: 'Lay 500 pieces of cable.', cat: 'grid',
       check: () => _n(T.WIRE) >= 500 },
     { id: 'high_voltage',        label: 'High Voltage',        icon: '🛡', desc: 'Build a Surge Protector MK3.', cat: 'grid',
       check: () => _has(T.PROTECTOR3) },

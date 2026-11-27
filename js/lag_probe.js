@@ -15,7 +15,7 @@ const LagProbe = (() => {
   const CATS = [
     ['conveyors',          ['CONVEYOR']],
     ['pipes',              ['PIPE', 'UNDERGNDPIPE']],
-    ['wires + towers',     ['WIRE', 'POWERTOWER']],
+    ['cables + towers',     ['WIRE', 'POWERTOWER']],
     ['poles + lamps',      ['POLE', 'LAMP', 'PROTECTOR']],
     ['trees + bushes',     ['TREE', 'BUSH']],
     ['water tiles',        ['WATER']],

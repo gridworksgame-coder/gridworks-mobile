@@ -18,6 +18,7 @@ const _GAS_FORMULA = { hydrogen: 'H₂', nitrogen: 'N₂', ammonia: 'NH₃', deu
 const _GAS_PLATE   = { hydrogen: 'H2', nitrogen: 'N2', ammonia: 'NH3', deuterium: 'D2', tritium: 'T2', helium: 'HE', helium3: 'HE3' };
 
 function renderGasStorage(e, px, py, t) {
+  if (_gstOK(e)) return _gstArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.GASSTORAGE];
   const w = (e.width || def.width) * TILE, h = (e.height || def.height) * TILE;
   const S = TILE / 40;
@@ -248,5 +249,49 @@ function renderGasStorage(e, px, py, t) {
   const [plx, ply] = [w*0.5, h*0.93];
   const pct = Math.round(fill * 100);
   _wfPlate(e._lightningDamaged ? 'STRUCK: OFFLINE' : gas ? `${_GAS_PLATE[gas]} ${pct}%` : 'GAS HOLDER', plx, ply, S, e._lightningDamaged ? '#ff5040' : gc, online);
+  ctx.restore();
+}
+
+
+/* ── Gas Storage, rendered (scripts/render_fusionfeed.py gst) ───────────
+   A bunded pad with a hazard kerb, the white sphere on navy legs with its
+   stair, top platform and relief valves, lines to the nozzles under it.
+   Live: the stored gas's colour as a band round the sphere and the valve
+   lamps, the fill climbing a ring round the top, ports and plate. */
+const GST_LAYOUT = {"gauge": [-1.4, -5.688, 3.24, 8.76], "sphere": [0.0, -0.72, 6.0, 4.6], "valves": [[-1.38, -1.7, 0.9], [1.38, -1.7, 0.9]], "frame": [-8, 8, -8, 8], "rect": [-8.3, 12.792, -13.861, 14.94], "turned": {"gauge": [-1.4, -5.688, 3.24, 8.76], "sphere": [0.0, -0.72, 6.0, 4.6], "valves": [[1.7, 4.68, 0.9], [1.7, -6.12, 0.9]], "frame": [-8, 8, -8, 8], "rect": [-8.3, 12.792, -13.861, 14.94]}, "bandRect": [-5.2, 5.2, -5.92, 8.521]};
+const _gstBand = new Map();
+function _gstOK(e) {
+  // any rotation: turned a quarter, the ports are top / bottom (gst_base_1)
+  return !!GST_LAYOUT && (e.width || 8) === 8 && (e.height || 8) === 8
+    && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && !!AdvNukeArt.get('gst_base') && !!AdvNukeArt.get('gst_base_1') && !!AdvNukeArt.get('gst_band');
+}
+function _gstArt(e, px, py, t) {
+  const turned = (e._rotation || 0) % 2 === 1, L = turned ? GST_LAYOUT.turned : GST_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const sys = typeof GasStorageSystem !== 'undefined' ? GasStorageSystem : null, gas = e._gasType || null;
+  const cap = sys ? sys.capacity() : 5000, fill = sys && e.col !== undefined ? Math.min(1, sys.stored(e) / cap) : 0;
+  const online = !e._lightningDamaged && !e._ghost, gc = gas && sys ? sys.color(gas) : '#6a7c8a';
+  ctx.save();
+  F.draw(AdvNukeArt.get(turned ? 'gst_base_1' : 'gst_base'), L.rect);
+  const [x, y, z, R] = L.sphere;
+  // the gas's colour: the rendered equator band, tinted (kept once per colour)
+  { const im = AdvNukeArt.get('gst_band'); if (im && gas) { let cv = _gstBand.get(gc);
+      if (!cv) { cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight; const g = cv.getContext('2d'); g.drawImage(im, 0, 0);
+        g.globalCompositeOperation = 'multiply'; g.fillStyle = gc; g.fillRect(0, 0, cv.width, cv.height); g.globalCompositeOperation = 'destination-in'; g.drawImage(im, 0, 0); _gstBand.set(gc, cv); }
+      F.draw(cv, GST_LAYOUT.bandRect); } }
+  // the fill: a soft glow risen up inside the gauge's glass, no more
+  if (fill > 0) { const [gx, gy, z0, z1] = L.gauge, [ax, ay] = P(gx, gy, z0), [, by] = P(gx, gy, z0 + (z1 - z0) * fill);
+    const g = ctx.createLinearGradient(0, ay, 0, by); g.addColorStop(0, `rgba(${parseInt(gc.slice(1, 3), 16)},${parseInt(gc.slice(3, 5), 16)},${parseInt(gc.slice(5, 7), 16)},${online ? 0.55 : 0.2})`); g.addColorStop(1, 'rgba(255,255,255,0.08)');
+    ctx.fillStyle = g; ctx.fillRect(ax - 0.06 * M, by, 0.12 * M, ay - by); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.valves.forEach(([vx, vy, vz], i) => { const [lx, ly] = P(vx, vy, vz), lit = online && (i ? (e._outRate || 0) > 0.5 : !!e._filling); _anGlow(lx, ly, 0.4 * M, lit ? '96,255,128' : '60,70,80', lit ? 0.85 : 0.3); });
+  ctx.restore();
+  const st = sys && e.col !== undefined ? sys.getStubs(e) : null;
+  if (st) {
+    const pc = gas ? gc : '#9ab0c0';
+    _portPipe(_portAnchor(e, px, py, F.W, F.H, st.gasIn),  S, t, { fluid: pc, label: 'GAS IN',  on: online, out: false, flow: !!e._filling });
+    _portPipe(_portAnchor(e, px, py, F.W, F.H, st.gasOut), S, t, { fluid: pc, label: 'GAS OUT', on: !!e._outLinked, out: true, flow: (e._outRate || 0) > 0.5 });
+  }
+  const pct = Math.round(fill * 100);
+  _wfPlate(e._lightningDamaged ? 'STRUCK: OFFLINE' : gas ? `${_GAS_PLATE[gas]} ${pct}%` : 'GAS HOLDER', px + F.W * 0.5, py + F.H * 0.93, S, e._lightningDamaged ? '#ff5040' : gc, online);
   ctx.restore();
 }

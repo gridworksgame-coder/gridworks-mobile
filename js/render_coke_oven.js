@@ -22,6 +22,7 @@
 const _CO_ACCENT = '#ff7a2a';
 
 function renderCokeOven(e, px, py, t) {
+  if (_cbOK(e, 'co', 14, 9, ['co_base', 'co_pusher', 'co_larry', 'co_car', 'co_heap'])) return _coArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.COKEOVEN];
   const w = (e.width || def.width) * TILE, h = (e.height || def.height) * TILE;
   const on = !!e.powered, active = on && !!e._running;
@@ -575,5 +576,188 @@ function renderCokeOven(e, px, py, t) {
 
   _wfPlate('COKE OVEN BATTERY', px + w*0.42, py + h*0.045, S, _CO_ACCENT, on);
   _wfLamp(X(0.55), py + 9*S, S, t, flaring ? '#ffb040' : _CO_ACCENT, on);
+  ctx.restore();
+}
+
+
+/* ── Graphitization Furnace and Coke Oven Battery, rendered
+   (scripts/render_carbon.py gf / co). Static plant in gf_base / co_base;
+   the moving machines are sprites slid along their tracks on the painted
+   plants' own schedules: the furnace's gantry crane (gf_crane) and its
+   finished blocks (gf_block); the coke works' pusher (co_pusher), larry car
+   (co_larry), hot car (co_car) and wharf heaps (co_heap). Live: trough
+   seams cracking white-hot with CO flames while firing, bus current,
+   transformer hum, the kW board, GRAPHITE %; oven flue glow, the pushed
+   oven's open doors, the cake falling into the car, its glow and the push
+   plume, the quench cloud, the collecting main's flow, the flare, chimney
+   smoke (or the scrubber), H2 gauge, windows. Ports, plates and lamps as the
+   painted plants. Default sizes only. */
+const CARBON_LAYOUT = {"gf":{"troughs":[[-5.8,7.6,3.1,5.3,1.46],[-5.8,7.6,-0.9,1.3,1.46]],"crane":[-5.2,6.6,2.2,3.15],"trafos":[[10.4,4.75,2.0],[10.4,0.75,2.0]],"bus":[[[9.2,4.8,1.5],[8.5,4.8,1.5],[8.5,4.2,1.2],[8.25,4.2,1.2]],[[9.2,0.8,1.5],[8.5,0.8,1.5],[8.5,0.2,1.2],[8.25,0.2,1.2]]],"kw":[[9.3,-2.92,0.21],[11.5,-2.92,0.21],[9.3,-2.314,0.56]],"blocks":[[-0.271,-3.225,0.38],[0.487,-3.225,0.38],[1.246,-3.225,0.38],[2.004,-3.225,0.38],[2.762,-3.225,0.38],[3.521,-3.225,0.38],[4.279,-3.225,0.38],[5.038,-3.225,0.38],[5.796,-3.225,0.38],[6.554,-3.225,0.38],[7.313,-3.225,0.38],[8.071,-3.225,0.38],[-0.271,-4.375,0.38],[0.487,-4.375,0.38],[1.246,-4.375,0.38],[2.004,-4.375,0.38],[2.762,-4.375,0.38],[3.521,-4.375,0.38],[4.279,-4.375,0.38],[5.038,-4.375,0.38],[5.796,-4.375,0.38],[6.554,-4.375,0.38],[7.313,-4.375,0.38],[8.071,-4.375,0.38]],"bayLabel":[3.9,-2.1,0],"wins":[[-5.6,-5.25,1.7],[-4.2,-5.25,1.7],[-2.8,-5.25,1.7]],"stack":[9.9,-3.5,7.05],"frame":[-12,12,-8,8],"rect":[-12.3,15.425,-12.169,12.919],"craneRect":[-0.9,1.095,-4.642,4.689],"blockRect":[-0.52,0.661,-0.694,0.728]},"co":{"pushTrack":[6.7],"carTrack":[-1.3],"ovens":[-9.9,6.0,0.0,5.6,4.2,22],"main":[-9.9,7.1,5.3,5.9],"larry":[-9.1,5.2,2.8,4.4],"quench":[8.7,-0.95,8.1],"heaps":[[0.144,-3.76,0.8],[1.776,-3.76,0.8],[3.408,-3.76,0.8],[5.04,-3.76,0.8],[0.96,-4.67,0.8],[2.592,-4.67,0.8],[4.224,-4.67,0.8]],"basin":[6.6,9.8,-6.7,-4.3,0.53],"chimney":[-2.0,-4.9,11.05],"wins":[[-8.2,-6.45,1.7],[-6.7,-6.45,1.7],[-5.2,-6.45,1.7]],"flare":[13.2,7.5,7.1],"gauge":[11.42,11.58,0.34,0.1,1.95],"frame":[-14,14,-9,9],"rect":[-14.3,18.675,-14.716,15.766],"pusherRect":[-1.9,3.267,-2.893,3.221],"larryRect":[-1.3,2.159,-2.364,2.57],"carRect":[-1.7,2.188,-1.605,1.722],"carBed":[-1.25,1.25,-0.55,0.55,0.72],"heapRect":[-1.2,1.395,-1.092,1.139]}};
+function _cbOK(e, key, w, h, imgs) {
+  if (e._ghost || e._iconThumb || !CARBON_LAYOUT || !CARBON_LAYOUT[key] || (e.width || w) !== w || (e.height || h) !== h) return false;
+  if (typeof AdvNukeArt === 'undefined' || typeof _amDraw === 'undefined' || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  for (const n of imgs) if (!AdvNukeArt.get(n)) return false;
+  return true;
+}
+const _cbTN = Math.tan(Math.PI / 6);
+const _cbSpr = (F, n, rect, x, y, z = 0) => _amDraw(F, AdvNukeArt.get(n), rect, 1, x, y + z * _cbTN);
+
+function _gfArt(e, px, py, t) {
+  const L = CARBON_LAYOUT.gf, def = EntityDefs[T.GRAPHITEFURNACE], F = _anFrame(e, px, py), { P, M } = F, w = F.W, h = F.H;
+  const on = !!e.powered, active = on && !!e._running, detail = Camera.zoom > 0.45, TAU = Math.PI * 2;
+  const grFill = Math.min(1, (e._graphite || 0) / (def.graphiteCapacity || 200));
+  const S = (TILE / 40) * Math.max(1, Math.min(w / (8 * TILE), h / (7 * TILE)));
+  const cyc = (t / 40) % 1;
+  const fire = [active ? Math.max(0, Math.min(1, Math.sin(cyc * TAU) * 1.6 + 0.5)) : 0, active ? Math.max(0, Math.min(1, -Math.sin(cyc * TAU) * 1.6 + 0.5)) : 0];
+  ctx.save();
+  F.draw(AdvNukeArt.get('gf_base'), L.rect);
+  // the troughs: a white-hot seam with CO flames while firing, cooling through red
+  L.troughs.forEach(([x0, x1, y0, y1, z], i) => {
+    const glow = Math.max(on ? 0.12 : 0, fire[i]), my = (y0 + y1) / 2;
+    if (glow < 0.03) return;
+    const hsh = q => { const v = Math.sin((q + (i ? 37 : 11)) * 12.9898) * 43758.5453; return v - Math.floor(v); };
+    const pts = []; for (let x = x0 + 0.3, q = 0; x <= x1 - 0.3; x += 0.32, q++) pts.push(P(x, my + (hsh(q) - 0.5) * (y1 - y0) * 0.22, z));
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z);
+    const bl = ctx.createLinearGradient(0, ay, 0, by); bl.addColorStop(0, 'rgba(255,120,30,0)'); bl.addColorStop(0.5, `rgba(255,${(140 + 90 * glow) | 0},${(50 + 120 * glow) | 0},${(0.5 * glow).toFixed(3)})`); bl.addColorStop(1, 'rgba(255,120,30,0)');
+    ctx.fillStyle = bl; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    const crack = (lw, col) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); pts.forEach(([x, y], q) => q ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.stroke(); };
+    crack((0.12 + 0.12 * glow) * M, `rgba(255,${(110 + 60 * glow) | 0},30,${(0.55 * glow).toFixed(3)})`);
+    crack((0.05 + 0.06 * glow) * M, `rgba(255,${(215 + 40 * glow) | 0},${(140 + 110 * glow) | 0},${Math.min(1, 0.45 + 0.55 * glow).toFixed(3)})`);
+    if (detail && glow > 0.35) for (let f = 0; f < 11; f++) {
+      const [fx, fy] = pts[Math.min(pts.length - 1, Math.floor((f + 0.5) / 11 * pts.length))], life = (t * 1.1 + f * 0.37) % 1, fh = (0.15 + 0.2 * Math.sin(life * Math.PI)) * M * glow;
+      ctx.fillStyle = `rgba(${f % 2 ? '110,160,255' : '255,170,70'},${(0.6 * glow * Math.sin(life * Math.PI)).toFixed(3)})`;
+      ctx.beginPath(); ctx.ellipse(fx + Math.sin(t * 1.3 + f * 4.1) * 0.1 * M, fy - fh / 2, 0.06 * M, fh / 2, 0, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+    if (detail) { const [lx, ly] = P(x0, y1 + 0.3, z); ctx.font = `bold ${Math.max(5, 0.32 * M).toFixed(1)}px Courier New`; ctx.fillStyle = fire[i] > 0.5 ? '#fff0c0' : on ? '#b0a090' : '#5a5048';
+      ctx.fillText(`${'AB'[i]} ${fire[i] > 0.5 ? 'FIRING' : glow > 0.2 ? 'COOLING' : 'LOADED'}`, lx, ly); }
+  });
+  // bus current, transformer hum
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.bus.forEach((pts, i) => { if (fire[i] <= 0.2) return; ctx.strokeStyle = `rgba(190,230,255,${(0.9 * fire[i]).toFixed(3)})`; ctx.lineWidth = Math.max(1, 0.07 * M);
+    ctx.setLineDash([0.1 * M, 0.45 * M]); ctx.lineDashOffset = -t * 2 * M; ctx.beginPath(); pts.forEach((p, q) => { const [x, y] = P(...p); q ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke(); ctx.setLineDash([]); });
+  L.trafos.forEach(([x, y, z], i) => { if (fire[i] > 0.3) { const [tx, ty] = P(x, y, z); _anGlow(tx, ty, 1.0 * M, '140,200,255', 0.18 * fire[i] * (0.7 + 0.3 * Math.sin(t * 50))); } });
+  ctx.restore();
+  // the gantry crane, working over the trough that isn't firing
+  { const [c0, c1, cy, cz] = L.crane, u = 0.5 + 0.5 * Math.sin(active ? t * 0.13 : 0.7); _cbSpr(F, 'gf_crane', L.craneRect, c0 + (c1 - c0) * u, cy, cz); }
+  // finished blocks stack up with the store
+  const lit = Math.round(grFill * L.blocks.length);
+  for (let q = 0; q < lit; q++) { const [x, y, z] = L.blocks[q]; _cbSpr(F, 'gf_block', L.blockRect, x, y, z); }
+  if (detail) { const [x, y, z] = L.bayLabel, [lx, ly] = P(x, y, z); ctx.font = `bold ${Math.max(5, 0.3 * M).toFixed(1)}px Courier New`; ctx.textAlign = 'center';
+    ctx.fillStyle = on ? '#d8e0ee' : '#5a6068'; ctx.fillText(`GRAPHITE ${Math.round(grFill * 100)}%`, lx, ly); ctx.textAlign = 'left'; }
+  const kw = on ? Math.round((def.powerInput || 120) * (active ? 0.97 + 0.03 * Math.sin(t * 3.1) : 0.12)) : 0;
+  _amBoardText(F, L.kw, [[`${kw} kW`, active ? '255,207,96' : '96,192,144', 1]], on);
+  if (on && DayNight.darkness() > 0.3) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.wins.forEach(([x, y, z]) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.5 * M, '255,214,140', 0.45); }); ctx.restore(); }
+  // dust stack, or the scrubber fitted to it
+  { const [sx, sy, sz] = L.stack, [qx, qy] = P(sx, sy, sz);
+    if (e._scrubber) { const scR = 12 * S, scX = qx + 1.2 * M, scTop = qy + 0.8 * M, scBase = P(sx, sy - 1.3, 0)[1];
+      _scrubberDuct([[qx, qy], [qx + 0.6 * M, qy], [qx + 0.6 * M, scTop + 0.6 * M], [scX - scR, scTop + 0.6 * M]], S, t, active);
+      _scrubberTower(scX, scTop, scBase, scR, S, t, active, -1); if (active && detail) _scrubberVapour(scX, scTop - 4 * S, S, t, 4, 0.8);
+    } else _wfSmoke(qx, qy, S * 0.85, t, '120,116,110', active, 0.28); }
+  const TH = TILE / 2, Pp = _fcPorts(px, py, h, S, t);
+  const st = typeof GraphiteFurnaceSystem !== 'undefined' && e.col !== undefined ? GraphiteFurnaceSystem.getStubs(e) : null;
+  Pp.belt(px + TILE * 1 + TH, 'COKE IN', !!e._hasCoke, true, active, '#a8acb2', '#c8ccd2');
+  Pp.belt(px + TILE * 9 + TH, 'GRAPHITE OUT', st ? _fcBeltAt(st.graphiteOut) : false, false, on && grFill > 0, '#4a4e58', '#d8e0ee');
+  _wfPlate('GRAPHITIZATION FURNACE', px + w * 0.48, py + h * 0.04, S, _GF_ACCENT, on);
+  _wfLamp(px + 0.55 * w / 12, py + 9 * S, S, t, active ? '#ffcf60' : _GF_ACCENT, on);
+  ctx.restore();
+}
+
+function _coArt(e, px, py, t) {
+  const L = CARBON_LAYOUT.co, def = EntityDefs[T.COKEOVEN], F = _anFrame(e, px, py), { P, M } = F, w = F.W, h = F.H, TAU = Math.PI * 2;
+  const on = !!e.powered, active = on && !!e._running, detail = Camera.zoom > 0.45, night = DayNight.darkness() > 0.3;
+  const cokeFill = Math.min(1, (e._coke || 0) / (def.cokeCapacity || 300)), gasFill = Math.min(1, (e._hydrogen || 0) / (def.hydrogenCapacity || 1000));
+  const flaring = active && !!e._flaring, heat = active ? 1 : on ? 0.4 : 0.08;
+  const S = (TILE / 40) * Math.max(1, Math.min(w / (8 * TILE), h / (7 * TILE)));
+  const lerp = (a, b, f) => a + (b - a) * f, ease = f => f < 0 ? 0 : f > 1 ? 1 : f * f * (3 - 2 * f);
+  const [bx0, bx1, by0, by1, bh, N] = L.ovens, ow = (bx1 - bx0) / N, ovenX = i => bx0 + (i + 0.5) * ow;
+  const cycT = t / 16, cycN = Math.floor(cycT), ph = active ? cycT - cycN : 1;
+  const k = ((cycN * 9) % N + N) % N, kp = (((cycN - 1) * 9) % N + N) % N;
+  const wharfX = 2.2, quenchX = 8.6;
+  const pushF = active ? ease((ph - 0.18) / 0.22) : 0, doorOpen = active && ph > 0.16 && ph < 0.44;
+  let carX, load = 0, loadHeat = 0;
+  if (!active) carX = wharfX;
+  else if (ph < 0.18) carX = lerp(wharfX, ovenX(k), ease(ph / 0.18));
+  else if (ph < 0.40) { carX = ovenX(k); load = pushF; loadHeat = 1; }
+  else if (ph < 0.60) { carX = lerp(ovenX(k), quenchX, ease((ph - 0.40) / 0.20)); load = 1; loadHeat = 1; }
+  else if (ph < 0.78) { carX = quenchX; load = 1; loadHeat = 1 - ease((ph - 0.60) / 0.16); }
+  else { carX = lerp(quenchX, wharfX, ease((ph - 0.78) / 0.12)); load = ph < 0.9 ? 1 : 1 - ease((ph - 0.9) / 0.08); }
+  const pusherX = !active ? ovenX(k) : ph < 0.18 ? lerp(ovenX(kp), ovenX(k), ease(ph / 0.18)) : ovenX(k);
+  ctx.save();
+  F.draw(AdvNukeArt.get('co_base'), L.rect);
+  // quench basin water, over the rendered basin
+  { const [x0, x1, y0, y1, z] = L.basin, [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z);
+    ctx.fillStyle = 'rgba(52,70,74,0.85)'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    if (typeof BldWater !== 'undefined') BldWater.draw(ctx, 'path', ax, ay, bx - ax, by - ay, t, { murky: true, still: !active }); }
+  // flue glow along the top and the oven doors
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < N; i++) {
+    const pushed = active && i === k, empty = pushed && ph > 0.3, flick = 0.6 + 0.4 * Math.sin(t * 0.9 + i * 1.73);
+    const g = (empty ? 0.05 : heat * flick) * (pushed && doorOpen ? 2.2 : 1);
+    const [fx, fy] = P(bx0 + i * ow, (by0 + by1) / 2, bh + 0.12);
+    ctx.fillStyle = `rgba(255,${(90 + 60 * Math.min(1, g)) | 0},30,${(0.16 * Math.min(1.5, g)).toFixed(3)})`; ctx.fillRect(fx - 0.04 * M, fy - (by1 - by0) * 0.4 * M, 0.08 * M, (by1 - by0) * 0.8 * M);
+    if (pushed && doorOpen) for (const yy of [by0, by1]) { const [dx, dy] = P(ovenX(i), yy, bh / 2); _anGlow(dx, dy, 1.0 * M, '255,200,110', 0.9); }
+  }
+  ctx.restore();
+  // larry car shuttling along the top
+  { const [l0, l1, ly, lz] = L.larry, s = 0.5 + 0.5 * Math.sin(active ? t * 0.32 : 1.1); _cbSpr(F, 'co_larry', L.larryRect, l0 + (l1 - l0) * s, ly, lz);
+    const speed = Math.abs(Math.cos(t * 0.32)); if (active && speed < 0.18) { const [sx, sy] = P(l0 + (l1 - l0) * s, ly, lz + 2); _wfSmoke(sx, sy, S * 0.6, t * 1.6, '120,96,70', true, 0.35 * (1 - speed / 0.18)); } }
+  // collecting main: gas moving along it
+  if (active && detail) { const [m0, m1, my, mz] = L.main; ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let q = 0; q < 6; q++) { const f = (t * 0.25 + q / 6) % 1, [gx, gy] = P(m0 + (m1 - m0) * f, my, mz); _anGlow(gx, gy, 0.25 * M, '255,210,140', 0.25); } ctx.restore(); }
+  // pusher on the north track
+  { const [ty] = L.pushTrack; _cbSpr(F, 'co_pusher', L.pusherRect, pusherX, ty, 0.15);
+    if (active && pushF > 0 && ph < 0.44) { const [rx, ry] = P(pusherX, ty - 0.5, 1.3), [ex, ey] = P(pusherX, by1 - (by1 - by0) * pushF, 1.3);
+      ctx.strokeStyle = '#c8ccd0'; ctx.lineWidth = 0.18 * M; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(ex, ey); ctx.stroke(); } }
+  // the cake falling into the car, and the plume a push throws up
+  const [carY] = L.carTrack;
+  if (active && ph > 0.18 && ph < 0.42) {
+    const [gx, gy] = P(ovenX(k), by0, 1.5), [cx2, cy2] = P(ovenX(k), carY, 0.8);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow((gx + cx2) / 2, (gy + cy2) / 2, 2.2 * M, '255,150,60', 0.5); ctx.restore();
+    for (let s = 0; s < 12; s++) { const f = (t * 1.6 + s * 0.0917) % 1, dir = Math.sin(s * 12.9898);
+      ctx.fillStyle = `rgba(255,${(210 + (s % 4) * 10) | 0},${(100 + (s % 5) * 25) | 0},${(1 - f * f).toFixed(3)})`; ctx.fillRect(gx + dir * ow * 1.6 * f * M - 1, gy + f * (cy2 - gy) - Math.sin(f * Math.PI) * 0.7 * M - 1, 2, 2); }
+    for (let i = 0; i < 9; i++) { const f = (t * 0.55 + i / 9) % 1, lit = 1 - f;
+      ctx.fillStyle = `rgba(${(50 + 120 * lit * lit) | 0},${(40 + 50 * lit * lit) | 0},${(34 + 10 * lit) | 0},${(0.5 * (1 - f)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(gx + Math.sin(i * 2.3 + f * 3) * 0.4 * M + f * 0.8 * M, gy - f * 3.6 * M, (0.35 + f * 1.0) * M, 0, TAU); ctx.fill(); }
+  }
+  // the hot car and its load
+  _cbSpr(F, 'co_car', L.carRect, carX, carY, 0.12);
+  if (load > 0) { const [b0, b1, b2, b3, bz] = L.carBed, [ax, ay] = P(carX + b0, carY + b3, bz + 0.12), [bx, by] = P(carX + b0 + (b1 - b0) * load, carY + b2, bz + 0.12);
+    const g = ctx.createLinearGradient(ax, 0, bx, 0), a = loadHeat;
+    g.addColorStop(0, `rgb(${(70 + 185 * a) | 0},${(60 + 160 * a) | 0},${(56 + 80 * a) | 0})`); g.addColorStop(1, `rgb(${(60 + 195 * a) | 0},${(54 + 110 * a) | 0},${(50 + 30 * a) | 0})`);
+    ctx.fillStyle = g; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    if (a > 0.2) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow((ax + bx) / 2, (ay + by) / 2, 2 * M, '255,140,60', 0.4 * a); ctx.restore(); if (detail && ph > 0.4) _wfSmoke((ax + bx) / 2, ay, S * 0.55, t * 1.4, '200,120,70', true, 0.22 * a); } }
+  // the quench cloud
+  if (active && ph > 0.6 && ph < 0.86) { const f0 = (ph - 0.6) / 0.26, [qx, qy] = P(...L.quench), swell = Math.sin(Math.min(1, f0 * 1.4) * Math.PI * 0.5), fade = f0 > 0.6 ? 1 - (f0 - 0.6) / 0.4 : 1;
+    for (let i = 0; i < 14; i++) { const r1 = (i * 0.618) % 1, a = i * 2.399, rise = (swell * 0.8 + r1 * 0.4) * 3.5 * M;
+      ctx.fillStyle = `rgba(${235 + (i * 7) % 20},${235 + (i * 7) % 20},${240},${(0.55 * fade).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(qx + Math.cos(a) * 0.5 * M * swell + rise * 0.35 + Math.sin(t * 1.3 + i) * 0.15 * M, qy - rise, (0.4 + r1 * 0.5 + swell * 0.7) * M, 0, TAU); ctx.fill(); }
+  } else { const [qx, qy] = P(...L.quench); _wfSmoke(qx, qy, S * 0.8, t * 0.6, '230,232,236', true, 0.18); }
+  // coke heaps on the wharf
+  const heaps = Math.round(cokeFill * L.heaps.length);
+  for (let q = 0; q < heaps; q++) { const [x, y, z] = L.heaps[q]; _cbSpr(F, 'co_heap', L.heapRect, x, y, z); }
+  // chimney (or scrubber), flare, gauge, windows
+  { const [cx, cy, cz] = L.chimney, [qx, qy] = P(cx, cy, cz);
+    if (e._scrubber) { const scR = 12 * S, scX = qx + 1.3 * M, scTop = qy + 2 * M, scBase = P(cx, cy - 1.2, 0)[1];
+      _scrubberDuct([[qx, qy + 2.6 * M], [scX - scR, qy + 2.6 * M]], S, t, active); _scrubberTower(scX, scTop, scBase, scR, S, t, active, -1); if (active && detail) _scrubberVapour(scX, scTop - 4 * S, S, t, 4, 0.8);
+    } else _wfSmoke(qx, qy, S * 1.1, t, '70,66,62', on, active ? 0.4 : 0.15); }
+  { const [fx, fy] = P(...L.flare);
+    if (flaring) { const fl = 1 + 0.18 * Math.sin(t * 17) + 0.1 * Math.sin(t * 31);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(fx, fy - 0.3 * M, 1.6 * M * fl, '255,150,60', 0.35); ctx.restore();
+      for (const [sc, col] of [[1, 'rgba(255,110,30,0.85)'], [0.68, 'rgba(255,190,60,0.92)'], [0.38, 'rgba(255,250,210,0.95)']]) {
+        const Lh = 1.1 * M * fl * sc, Wd = 0.28 * M * sc; ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(fx - Wd, fy); ctx.quadraticCurveTo(fx - Wd, fy - Lh * 0.6, fx + Math.sin(t * 2.3) * 0.1 * M, fy - Lh); ctx.quadraticCurveTo(fx + Wd, fy - Lh * 0.6, fx + Wd, fy); ctx.fill(); }
+      _wfSmoke(fx + 0.3 * M, fy - 1.1 * M, S * 0.8, t, '60,54,50', true, 0.25);
+    } else if (on) { ctx.fillStyle = 'rgba(90,150,255,0.8)'; ctx.beginPath(); ctx.arc(fx, fy - 0.06 * M, 0.07 * M, 0, TAU); ctx.fill(); } }
+  { const [g0, g1, gy, z0, z1] = L.gauge, [ax, ay] = P(g0, gy, z1), [bx, by] = P(g1, gy, z0), gh = (by - ay) * gasFill; ctx.fillStyle = on ? '#80d8ff' : '#2a4a5a'; ctx.fillRect(ax, by - gh, bx - ax, gh); }
+  if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.wins.forEach(([x, y, z]) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.5 * M, '255,214,140', 0.45); }); ctx.restore(); }
+  const TH = TILE / 2, Pp = _fcPorts(px, py, h, S, t);
+  const st = typeof CokeOvenSystem !== 'undefined' && e.col !== undefined ? CokeOvenSystem.getStubs(e) : null;
+  Pp.belt(px + TILE * 1 + TH, 'COAL IN', !!e._hasCoal, true, active, '#3a3632', '#b0a89c');
+  Pp.belt(px + TILE * 8 + TH, 'COKE OUT', st ? _fcBeltAt(st.cokeOut) : false, false, on && cokeFill > 0, '#a8acb2', '#c8ccd2');
+  const gx = px + TILE * 12 + TH, gConn = !!e._gasPipeOut;
+  Pp.pipe(gx, 'GAS OUT', gConn, '#80d8ff', '#80d8ff', '#1a5a7a', 'rgba(0,0,0,0)');
+  _wfPlate('COKE OVEN BATTERY', px + w * 0.42, py + h * 0.045, S, _CO_ACCENT, on);
+  _wfLamp(px + 0.55 * w / 14, py + 9 * S, S, t, flaring ? '#ffb040' : _CO_ACCENT, on);
   ctx.restore();
 }

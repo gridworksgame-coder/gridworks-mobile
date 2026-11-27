@@ -95,6 +95,7 @@ function renderGovernor(e, px, py, t) {
   const powered = !!e.powered && !e._lightningDamaged;
   const active  = powered && working > 0;   // spins / flows only while governing a running generator
   const trimming = active && overdrive && trim > 0.02;
+  if (typeof _opsOK !== 'undefined' && _opsOK(e, 'gov', 2, 2, ['gov_base'])) return _govArt(e, px, py, t, { sides, gens, trim, level, overdrive, powered, active, trimming });   // rendered (below)
 
   ctx.save();
 
@@ -192,5 +193,48 @@ function renderGovernor(e, px, py, t) {
   ctx.fillStyle = '#3a3e44'; ctx.beginPath(); ctx.arc(sx, sy, 2.4*S, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#c8a050'; ctx.beginPath(); ctx.arc(sx, sy, 1*S, 0, Math.PI*2); ctx.fill();
 
+  ctx.restore();
+}
+
+
+// The rendered governor (scripts/render_ops.py gov): cabinet, pad and the
+// flyball's spindle are the sprite; the conduits, dial needle, lamp and the
+// spinning balls are drawn here.
+function _govArt(e, px, py, t, g) {
+  const L = OPS_LAYOUT.gov, F = _anFrame(e, px, py), { P, M } = F, W = F.W, H = F.H, S = TILE / 40, TN = Math.tan(Math.PI / 6);
+  ctx.save();
+  // conduits out to the attached generators (under the cabinet)
+  const [ccx, ccy] = P(0, -0.2, 0.25);
+  const conduit = (x2, y2) => {
+    ctx.lineCap = 'butt'; ctx.strokeStyle = '#1a1c1e'; ctx.lineWidth = 6 * S; ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.strokeStyle = '#6a6e72'; ctx.lineWidth = 4 * S; ctx.stroke();
+    if (g.active) { ctx.strokeStyle = g.trimming ? 'rgba(255,190,80,0.95)' : 'rgba(120,230,255,0.9)'; ctx.lineWidth = 1.5 * S; ctx.setLineDash([2.5 * S, 3 * S]); ctx.lineDashOffset = -t * 14 * S;
+      ctx.beginPath(); ctx.moveTo(ccx, ccy); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+  };
+  if (g.sides.N) conduit(ccx, py + 1 * S);
+  if (g.sides.S) conduit(ccx, py + H - 1 * S);
+  if (g.sides.W) conduit(px + 1 * S, ccy);
+  if (g.sides.E) conduit(px + W - 1 * S, ccy);
+  F.draw(AdvNukeArt.get('gov_base'), L.rect);
+  // dial needle on the cabinet face (the face is upright: its circle is squashed)
+  { const [x, y, z, r] = L.dial, [dx, dy] = P(x, y, z), a0 = Math.PI * 0.75, span = Math.PI * 1.5, rx = r * M, ry = r * M * TN * 1.6;
+    ctx.strokeStyle = '#d03020'; ctx.lineWidth = Math.max(1, 0.05 * M); ctx.beginPath(); ctx.ellipse(dx, dy, rx * 0.85, ry * 0.85, 0, a0 + span * 0.8, a0 + span); ctx.stroke();
+    const na = a0 + span * Math.min(1, g.gens ? g.level : 0);
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = Math.max(0.8, 0.035 * M); ctx.beginPath(); ctx.moveTo(dx, dy); ctx.lineTo(dx + Math.cos(na) * rx * 0.85, dy + Math.sin(na) * ry * 0.85); ctx.stroke(); }
+  { const [lx, ly] = P(...L.lamp), rgb = !g.gens ? null : !g.powered ? (Math.sin(t * 4) > 0 ? '224,48,32' : null) : g.trimming ? '255,176,32' : '64,224,112';
+    ctx.fillStyle = rgb ? `rgb(${rgb})` : '#5a5e62'; ctx.beginPath(); ctx.arc(lx, ly, 0.08 * M, 0, Math.PI * 2); ctx.fill();
+    if (rgb) _amLed(lx, ly, 0.3 * M, rgb, 0.5); }
+  // flyballs on their arms, flung further out the harder it's trimming
+  { const [gx, gy, gz, armL] = L.fly, spin = g.active ? t * (g.overdrive ? 7 : 3) : 0.7, spread = 0.3 + (g.active ? 0.12 + g.trim * 0.25 : 0);
+    const drop = Math.sqrt(Math.max(0.05, 0.36 - spread * spread)), [hx, hy] = P(gx, gy, gz);
+    const balls = [0, 1].map(i => { const a = spin + i * Math.PI; return { a, p: P(gx + Math.cos(a) * spread, gy + Math.sin(a) * spread, gz - drop) }; })
+      .sort((u, v) => Math.sin(v.a) - Math.sin(u.a));
+    balls.forEach(({ p: [bx, by] }) => {
+      ctx.strokeStyle = '#b08838'; ctx.lineWidth = Math.max(1, 0.04 * M); ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(bx, by); ctx.stroke();
+      const r = 0.13 * M, bg = ctx.createRadialGradient(bx - r * 0.35, by - r * 0.35, 0, bx, by, r);
+      bg.addColorStop(0, g.powered ? '#fff0c0' : '#b0a070'); bg.addColorStop(0.45, g.powered ? '#e0b048' : '#8a7040'); bg.addColorStop(1, '#5a4010');
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.fillStyle = '#c8a050'; ctx.beginPath(); ctx.arc(hx, hy, 0.06 * M, 0, Math.PI * 2); ctx.fill(); }
   ctx.restore();
 }

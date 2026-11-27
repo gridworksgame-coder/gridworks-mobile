@@ -253,7 +253,7 @@ const EntityDefs = {
   cost:        2000,
   },
   [T.WIRE]: {
-    label:       'Wire',
+    label:       'Cable',
     upkeep:      0.05,   // $/s maintenance cost
     color:       '#1e2a38',
     glowColor:   '#00d4ff',
@@ -502,7 +502,7 @@ const EntityDefs = {
     income:       0,      // $/s when powered
     // Houses don't use wires — powered wirelessly by nearby substation
     // 2×2 (was 1×1). Houses saved at 1×1 before the change keep that
-    // footprint on load (see save.js), and Mae's Cabin stays 1×1.
+    // footprint on load (see save.js); Mae's Cabin is 2×2 too.
     width:        2,
     height:       2,
   },
@@ -2964,12 +2964,12 @@ function trimLegacyTanks() {
 // it; growing upward first keeps its front on the same street), otherwise
 // moved to the nearest free 2×2 nearby that touches a wire or another
 // building to draw power through. One with nowhere to go stays 1×1 and
-// tries again next load. Mae's Cabin stays 1×1. Returns how many changed.
+// tries again next load. Mae's Cabin grows the same way. Returns how many changed.
 function growLegacyHouses() {
   const HW = EntityDefs[T.HOUSE].width || 1, HH = EntityDefs[T.HOUSE].height || 1;
   if (HW === 1 && HH === 1) return 0;
   const legacy = Array.from(EntityRegistry.getByType(T.HOUSE)).filter(e =>
-    !e.commercialSubtype && e.width === 1 && e.height === 1 && e.businessName !== "Mae's Cabin");
+    !e.commercialSubtype && e.width === 1 && e.height === 1);
   if (!legacy.length) return 0;
   // Front rows first, left to right, so neighbours claim gaps in a fixed order.
   legacy.sort((a, b) => (b.row - a.row) || (a.col - b.col));

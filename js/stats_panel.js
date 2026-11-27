@@ -540,7 +540,7 @@ function updateStats() {
     // could be counted in GENERATED yet missing from this list. Every
     // network that contributes to the total gets its own section.
     const _labelFor = (key) => key === 'storage'    ? 'Storage Discharge'
-                             : key === 'congestion' ? 'Wire Congestion Loss'
+                             : key === 'congestion' ? 'Cable Congestion Loss'
                              : GEN_LABELS[key] || EntityDefs[key]?.label || key;
     const _byNetwork = new Map();  // networkId -> { label -> {w,count} }
     for (const _net of (s.genSources || [])) {
@@ -652,7 +652,7 @@ function updateStats() {
       }
       const stats2 = PowerNetwork.stats;
       const loadRatio = stats2.totalConsumed / Math.max(1, stats2.totalGenerated);
-      if (loadRatio > 0.95) rows.push(['Grid Stress', 'Wires may fail', true]);
+      if (loadRatio > 0.95) rows.push(['Grid Stress', 'Cables may fail', true]);
       effEl.innerHTML = `<div class="gp-row"><span class="gp-label" style="color:#ff9070;">⚠ Active Grid Effects</span></div>` +
         rows.map(([label, val, bad]) => `<div class="gp-row"><span class="gp-label">${label}</span><span class="gp-value ${bad ? 'bad' : 'good'}">${val}</span></div>`).join('');
       effEl.style.display = 'flex';

@@ -220,7 +220,184 @@ function _rsSelection(e, px, py, W, accent, t) {
   ctx.restore();
 }
 
+/* ── Research stations MK1–MK3, rendered ─────────────────────────────────
+   Built in Blender (scripts/render_research.py, sharing the coal/hydro
+   scene and materials), authored at 3x scale (1 tile = 6 m) so the details
+   hold up on these small footprints, and drawn at 1/3 (RS_K). The dome is
+   picked from 16 pre-rendered slit angles (rsdome_k, drawn over the base's
+   own dome so its shadow stays right) and the dishes from 16 aims
+   (rsdish_k). Live: progress ring round the dome, orbiting bunches, linac
+   and beam-line pulses, cryo vapour, pings, windows, lamps, plate. The
+   painted kit above is the fallback. */
+const RS_LAYOUT = {
+  1: {"frame":10.0,"off":1.6,"win":[[-0.625,-1.03,1.55,0.54,0.55],[0.125,-1.03,1.55,0.54,0.55]],"dome":[0.1,0.35,3.15,0.95],"mast":[-2.2,1.9,5.25],"anemo":[-1.6,-1.8,2.0],"lamp":[2.75,2.08,2.55],"res":420},
+  2: {"frame":16.0,"off":1.6,"win":[[-3.917,-3.48,1.7,0.696,0.9],[-2.95,-3.48,1.7,0.696,0.9],[-1.983,-3.48,1.7,0.696,0.9],[-1.017,-3.48,1.7,0.696,0.9],[-0.05,-3.48,1.7,0.696,0.9],[0.917,-3.48,1.7,0.696,0.9]],"dome":[-1.2,0.0,4.99,1.5],"dish":[[3.6,-0.7,2.57,1.5]],"conduit":[[1.8,-0.7,0.6],[2.85,-0.7,0.6]],"mast":[-3.6,3.6,7.75],"lamp":[5.05,-4.52,2.95],"plate":[0.0,-5.2,0.25],"res":608},
+  3: {"frame":24.0,"off":1.8,"ring":[0.0,0.6,5.4,1.4],"towerWin":[[-1.683,-1.083,2.6],[-0.0,-1.78,2.6],[1.683,-1.083,2.6]],"dome":[0.0,0.6,5.35,1.6],"linac":[[-6.7,0.6,1.1],[-5.7,0.6,1.1]],"beamline":[[4.101,4.701,1.1],[6.2,7.0,1.1]],"stopLamp":[6.6,7.2,2.1],"tanks":[[5.4,-6.7,3.6],[7.2,-6.7,3.6]],"dish":[[-6.4,6.2,2.32,1.4],[-6.4,-6.6,2.32,1.4]],"lamp":[8.45,-2.12,3.15],"plate":[0.0,-8.2,0.25],"res":816},
+  4: {"frame":32.0,"off":1.9,"ring":[0.0,0.3,7.5,1.4],"vessel":[0.0,0.3,3.784,2.76],"pylons":[[3.899,4.199,3.95],[-3.899,4.199,3.95],[-3.899,-3.599,3.95],[3.899,-3.599,3.95]],"win":[[-9.3,5.82,1.9,0.7,0.6],[-8.1,5.82,1.9,0.7,0.6],[-6.9,5.82,1.9,0.7,0.6]],"dome":[-8.1,7.875,4.1,1.3],"dish":[[-8.4,-8.1,2.32,1.4]],"tanks":[[4.8,-8.4,3.2],[6.6,-8.4,3.2]],"mast":[9.0,6.7,5.85],"lamp":[9.75,-9.62,3.15],"plate":[0.0,-11.499,0.25],"res":960},
+  5: {"frame":40.0,"off":1.9,"ring":[0.0,0.3,9.9,1.4],"ring2":[0.0,0.3,7.95,1.4],"vessel":[0.0,0.3,4.216,3.24],"pylons":[[5.196,3.3,3.95],[0.0,6.3,3.95],[-5.196,3.3,3.95],[-5.196,-2.7,3.95],[-0.0,-5.7,3.95],[5.196,-2.7,3.95]],"coils":[[4.24,0.3,4.216],[2.998,3.298,4.216],[0.0,4.54,4.216],[-2.998,3.298,4.216],[-4.24,0.3,4.216],[-2.998,-2.698,4.216],[-0.0,-3.94,4.216],[2.998,-2.698,4.216]],"win":[[-11.799,8.07,1.9,0.7,0.6],[-10.499,8.07,1.9,0.7,0.6],[-9.2,8.07,1.9,0.7,0.6]],"dome":[-10.499,10.274,4.1,1.3],"dish":[[-10.799,-10.799,2.32,1.4]],"tanks":[[6.9,-11.099,3.2],[8.7,-11.099,3.2],[6.9,9.9,3.2],[8.7,9.9,3.2]],"mast":[11.399,8.2,6.75],"lamp":[12.449,-12.319,3.15],"plate":[0.0,-14.499,0.25],"res":1040},
+  domeFrame: {"frame":2.6,"off":0.35},
+};
+const RS_K = 1 / 3;
+const _RS_ACC = { 1: '#b060ff', 2: '#d090ff', 3: '#e0a0ff', 4: '#ff60d0', 5: '#ffb43c' };
+function _rsIdx(a) { const n = 16, f = ((a % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); return Math.round(f / (Math.PI * 2) * n) % n; }
+function _rsArt(e, px, py, t, mk) {
+  const L = RS_LAYOUT[mk], DF = RS_LAYOUT.domeFrame;
+  const W = mk * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const cx = px + W / 2, cy = py + W / 2;
+  const on = e.powered, A = _RS_ACC[mk], fine = Camera.zoom > 0.5;
+  const dark = DayNight.darkness();
+  const F = _cwFrame(L, cx, cy, RS_K, RS_K), { P, M } = F;
+  const ring = (x, y, z, r, a0, a1, n = 48) => {
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n, [qx, qy] = P(x + Math.cos(a) * r, y + Math.sin(a) * r, z); if (i) ctx.lineTo(qx, qy); else ctx.moveTo(qx, qy); }
+  };
+  if (on && fine) drawGlowHalo(cx, cy, W * (mk === 1 ? 0.9 : 0.75), [[0, A], [1, 'transparent']], 0.18 + 0.08 * Math.sin(t * 3));
+  ctx.save();
+  F.draw(CoalWaterArt.get('rs' + mk + '_base'));
+  // windows lit from inside
+  if (on) {
+    const lit = dark > 0.3 ? 'rgba(236,214,255,0.85)' : 'rgba(214,190,255,0.35)';
+    for (const [x, y, z, w, h] of (L.win || [])) {
+      const [x0, y0] = P(x - w / 2, y, z + h / 2), [x1, y1] = P(x + w / 2, y, z - h / 2);
+      ctx.fillStyle = lit; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
+    for (const p of (L.towerWin || [])) { const [wx, wy] = P(...p); ctx.fillStyle = lit; ctx.fillRect(wx - 2 * S, wy - 2.5 * S, 4 * S, 5 * S); }
+  }
+  // the dome, its slit turning while it observes, and the progress ring round it
+  {
+    const [dx, dy, dz, dr] = L.dome, ph = mk * 0.7;
+    const a = on ? t * 0.4 + ph : ph;
+    const [ox, oy] = P(dx, dy, dz);
+    _cwFrame(DF, ox, oy, dr * RS_K, dr * RS_K).draw(CoalWaterArt.get('rsdome_' + _rsIdx(a)));
+    const p = on ? _rsClosestProgress(t) : null;
+    if (p !== null) {
+      ctx.lineWidth = 1.6 * S; ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ring(dx, dy, dz + 0.05, dr * 1.18, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 0.6 + 0.25 * Math.sin(t * 2); ctx.strokeStyle = A; ctx.lineWidth = 1.2 * S;
+      ring(dx, dy, dz + 0.05, dr * 1.18, Math.PI / 2, Math.PI / 2 - p * TAU); ctx.stroke(); ctx.globalAlpha = 1;
+    }
+  }
+  // tracking dishes, sweeping and pinging off the feed
+  (L.dish || []).forEach(([x, y, z, r], i) => {
+    const ph = 0.8 + i * 3.1, az = ph + (on ? Math.sin(t * 0.3 + ph) * 0.6 : 0);
+    const [ox, oy] = P(x, y, z);
+    _cwFrame(DF, ox, oy, r * RS_K, r * RS_K).draw(CoalWaterArt.get('rsdish_' + _rsIdx(az)));
+    if (on && fine) {
+      const [fx, fy] = P(x + Math.cos(az) * r * 0.55, y + Math.sin(az) * r * 0.55, z + r * 0.75);
+      ctx.strokeStyle = A; ctx.lineWidth = 0.8 * S;
+      for (let q = 0; q < 2; q++) { const f = (t * 1.2 + q * 0.5 + ph) % 1; ctx.globalAlpha = (1 - f) * 0.45; ctx.beginPath(); ctx.arc(fx, fy, (2 + f * 9) * S, 0, TAU); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    }
+  });
+  // mast: pings and the red aviation light
+  if (L.mast) {
+    const [mx, my] = P(...L.mast);
+    if (on && fine) { ctx.strokeStyle = A; ctx.lineWidth = 0.8 * S; for (let q = 0; q < 2; q++) { const f = (t * 1.4 + q * 0.5) % 1; ctx.globalAlpha = (1 - f) * 0.5; ctx.beginPath(); ctx.arc(mx, my, (1.5 + f * 8) * S, 0, TAU); ctx.stroke(); } ctx.globalAlpha = 1; }
+    ctx.fillStyle = on ? (Math.sin(t * 4) > 0 ? '#ff5a4a' : '#6a2018') : '#2a1a1a'; ctx.beginPath(); ctx.arc(mx, my, 1.1 * S, 0, TAU); ctx.fill();
+  }
+  if (L.anemo && fine) {
+    const [ax, ay] = P(...L.anemo), an = on ? t * 6 : 0.3;
+    ctx.fillStyle = '#2e3236';
+    for (let c = 0; c < 3; c++) { const q = an + c * TAU / 3; ctx.beginPath(); ctx.arc(ax + Math.cos(q) * 1.2 * S, ay + Math.sin(q) * 0.5 * S, 0.5 * S, 0, TAU); ctx.fill(); }
+  }
+  if (L.conduit && on && fine) {
+    const f = (t * 1.5) % 1, [qx, qy] = _cwAlong(P, L.conduit, f);
+    ctx.fillStyle = A; ctx.fillRect(qx - 0.8 * S, qy - 0.8 * S, 1.6 * S, 1.6 * S);
+  }
+  // MK3: the beam — bunches orbiting the ring, the linac feeding it, the line to the beam stop
+  if (mk === 3) {
+    const [rx, ry, R, rz] = L.ring;
+    if (on) {
+      ctx.globalAlpha = 0.3 + 0.15 * Math.sin(t * 4); ctx.strokeStyle = A; ctx.lineWidth = 1 * S;
+      ring(rx, ry, rz, R, 0, TAU, 96); ctx.stroke();
+      for (let b = 0; b < 3; b++) {
+        const a = t * 1.1 + b * TAU / 3;
+        ctx.globalAlpha = 0.75; ctx.lineWidth = 1.8 * S; ring(rx, ry, rz, R, a - 0.5, a, 12); ctx.stroke();
+        ctx.globalAlpha = 1; const [bx, by] = P(rx + Math.cos(a) * R, ry + Math.sin(a) * R, rz);
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bx, by, 1.4 * S, 0, TAU); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (fine) {
+        ctx.fillStyle = '#ffffff';
+        for (let q = 0; q < 3; q++) { const f = (t * 1.2 + q / 3) % 1, [lx, ly] = _cwAlong(P, L.linac, f); ctx.globalAlpha = 1 - f * 0.5; ctx.fillRect(lx - 0.9 * S, ly - 0.7 * S, 1.8 * S, 1.4 * S); }
+        for (let q = 0; q < 2; q++) { const f = (t * 0.9 + q / 2) % 1, [lx, ly] = _cwAlong(P, L.beamline, f); ctx.globalAlpha = 1 - f * 0.6; ctx.fillStyle = A; ctx.fillRect(lx - 0.9 * S, ly - 0.9 * S, 1.8 * S, 1.8 * S); }
+        ctx.globalAlpha = 1;
+        L.tanks.forEach(([x, y, z], k) => {
+          for (let q = 0; q < 3; q++) {
+            const f = (t * 0.5 + q / 3 + k * 0.4) % 1, [vx, vy] = P(x, y, z);
+            ctx.fillStyle = `rgba(230,240,255,${(0.35 * (1 - f)).toFixed(3)})`;
+            ctx.beginPath(); ctx.arc(vx + Math.sin(q * 2 + t) * 2 * S, vy - f * 10 * S, (1.5 + f * 3) * S, 0, TAU); ctx.fill();
+          }
+        });
+      }
+    }
+    const [sx, sy] = P(...L.stopLamp);
+    ctx.fillStyle = on ? (Math.sin(t * 3 + 1) > 0 ? A : '#3a2a5a') : RSK.dim; ctx.beginPath(); ctx.arc(sx, sy, 1.3 * S, 0, TAU); ctx.fill();
+  }
+  // MK4 / MK5: bunches round the magnet ring(s), the plasma vessel glowing
+  // through its ports, copper orbit rings turning round it, Tesla arcs off
+  // the pylons, and (MK5) sparks off the field coils into the core
+  if (mk >= 4) {
+    [L.ring, L.ring2].forEach((rg, j) => {
+      if (!rg || !on) return;
+      const [rx, ry, R, rz] = rg, dir = j ? -1 : 1;
+      ctx.globalAlpha = 0.3 + 0.15 * Math.sin(t * 4); ctx.strokeStyle = A; ctx.lineWidth = 1 * S;
+      ring(rx, ry, rz, R, 0, TAU, 128); ctx.stroke();
+      for (let b = 0; b < mk - 1; b++) {
+        const a = dir * t * (j ? 1.5 : 1.1) + b * TAU / (mk - 1);
+        ctx.globalAlpha = 0.75; ctx.lineWidth = 1.8 * S; ring(rx, ry, rz, R, a - 0.4 * dir, a, 12); ctx.stroke();
+        ctx.globalAlpha = 1; const [bx, by] = P(rx + Math.cos(a) * R, ry + Math.sin(a) * R, rz);
+        ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(bx, by, 1.4 * S, 0, TAU); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    });
+    const [vx, vy, vz, vr] = L.vessel, [ox, oy] = P(vx, vy, vz), rp = Math.abs(P(vx + vr, vy, vz)[0] - ox);
+    if (on) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, rp * 1.5), p = 0.75 + 0.2 * Math.sin(t * 5);
+      g.addColorStop(0, `rgba(255,255,255,${(0.55 * p).toFixed(3)})`); g.addColorStop(0.35, A + 'aa'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ox, oy, rp * 1.5, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+    for (let k = 0; k < mk - 1; k++) {
+      const a = (on ? t * 0.7 : 0) + k * Math.PI / (mk - 1);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 3.2 * S; ctx.beginPath(); ctx.ellipse(ox, oy + 0.6 * S, rp * 1.25, rp * 0.38, a, 0, TAU); ctx.stroke();
+      ctx.strokeStyle = on ? RSK.copper : '#6a4a30'; ctx.lineWidth = 2 * S; ctx.beginPath(); ctx.ellipse(ox, oy, rp * 1.25, rp * 0.38, a, 0, TAU); ctx.stroke();
+    }
+    if (on && fine) {
+      const arc = (x0, y0, x1, y1, seed) => {
+        const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+        ctx.beginPath(); ctx.moveTo(x0, y0);
+        for (let s = 1; s < 6; s++) { const f = s / 6, j = Math.sin(t * 47 + s * 3.7 + seed * 1.9) * 3 * S; ctx.lineTo(x0 + dx * f + nx * j, y0 + dy * f + ny * j); }
+        ctx.lineTo(x1, y1);
+        ctx.strokeStyle = A + '66'; ctx.lineWidth = 3 * S; ctx.stroke(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1 * S; ctx.stroke();
+      };
+      L.pylons.forEach(([x, y, z], i) => {
+        if (Math.sin(t * 7 + i * 2.1) <= 0.1) return;
+        const d = Math.hypot(x - vx, y - vy) || 1, [ax, ay] = P(x, y, z), [bx, by] = P(vx + (x - vx) / d * vr, vy + (y - vy) / d * vr, vz);
+        arc(ax, ay, bx, by, i);
+      });
+      (L.coils || []).forEach(([x, y, z], i) => {
+        if (Math.sin(t * 9 + i * 0.8) <= 0.55) return;
+        const [ax, ay] = P(x, y, z); ctx.strokeStyle = 'rgba(255,255,235,0.8)'; ctx.lineWidth = 1 * S;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ox + (ax - ox) * 0.3, oy + (ay - oy) * 0.3); ctx.stroke();
+      });
+      (L.tanks || []).forEach(([x, y, z], k) => { for (let q = 0; q < 2; q++) { const f = (t * 0.5 + q / 2 + k * 0.4) % 1, [qx, qy] = P(x, y, z);
+        ctx.fillStyle = `rgba(230,240,255,${(0.3 * (1 - f)).toFixed(3)})`; ctx.beginPath(); ctx.arc(qx + Math.sin(q * 2 + t) * 2 * S, qy - f * 10 * S, (1.5 + f * 3) * S, 0, TAU); ctx.fill(); } });
+    }
+  }
+  // yard lamp
+  {
+    const [lx, ly] = P(...L.lamp);
+    if (on && dark > 0.3) { const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, 14 * S); g.addColorStop(0, `rgba(240,220,255,${(0.4 * dark).toFixed(3)})`); g.addColorStop(1, 'rgba(240,220,255,0)'); ctx.fillStyle = g; ctx.fillRect(lx - 14 * S, ly - 14 * S, 28 * S, 28 * S); }
+    ctx.fillStyle = on ? (dark > 0.3 ? '#fff0ff' : A) : RSK.dim; ctx.beginPath(); ctx.arc(lx, ly, 0.9 * S, 0, TAU); ctx.fill();
+  }
+  if (L.plate) { const [qx, qy] = P(...L.plate); _rsPlate(qx, Math.min(qy, py + W - 5), mk, A, on); }
+  ctx.restore();
+  if (mk > 1) _rsSelection(e, px, py, W, A, t);
+}
+
 function renderResearch(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('rs1')) return _rsArt(e, px, py, t, 1);
     // MK1 — field observatory: a site hut under the family dome, a whip
     // antenna pinging, one rank pip, and the progress ring round the dome.
     // (The main loop draws MK1's selection outline.)
@@ -240,6 +417,7 @@ function renderResearch(e, px, py, t) {
   }
 
 function renderResearch2(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('rs2')) return _rsArt(e, px, py, t, 2);
     // MK2 — radio lab: the MK1 dome moves up onto a proper lab block, joined
     // by a tracking dish on its turret, a lattice mast and a rooftop array.
     const on = e.powered, A = '#d090ff', W = TILE*2, fine = Camera.zoom > 0.5;
@@ -281,6 +459,7 @@ function renderResearch2(e, px, py, t) {
   }
 
 function renderResearch3(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('rs3')) return _rsArt(e, px, py, t, 3);
     // MK3 — accelerator campus: the dome crowns a central lab inside a
     // particle ring, fed by a linac and dumping into a beam stop, with the
     // MK2 dishes out on the corners and cryo tanks keeping the magnets cold.
@@ -3677,6 +3856,7 @@ function renderFarm(e, px, py, w, h, t) {
 }
 
 function renderPark(e, px, py, t) {
+    if (typeof _parkArtTry === 'function' && _parkArtTry(e, px, py, t)) return;   // rendered in Blender (render_industrial.py)
     const w = (e.width || 1) * TILE, h = (e.height || 1) * TILE;
     if (e.type === T.SPLASHPAD)     { renderSplashPad(e, px, py, w, h, t);     return; }
     if (e.type === T.BASEBALLFIELD) { renderBaseballField(e, px, py, w, h, t); return; }
@@ -5157,6 +5337,7 @@ function renderRoad(e, px, py, t) {
   }
 
 function renderCellTower(e, px, py, t) {
+    if (typeof _amOK !== 'undefined' && _amOK(e, 'cell', 4, 4, ['am_cell', 'hyp_fan'])) return _amCell(e, px, py, t);   // rendered (render_grid_electric.js)
     // Cell Tower — a 4×4 fenced cell site, authored in a 40-unit tile
     // (160×160). A tapered galvanised monopole carries a three-sector antenna
     // platform (three panel antennas per sector, each with its radio head), a
@@ -5353,6 +5534,7 @@ function renderCellTower(e, px, py, t) {
   }
 
 function renderFiberHub(e, px, py, t) {
+    if (typeof _amOK !== 'undefined' && _amOK(e, 'fiber', 5, 5, ['am_fiber', 'hyp_fan', 'svdish_0'])) return _amFiber(e, px, py, t);   // rendered (render_grid_electric.js)
     // Fiber Hub — the 5×5 MK3 carrier exchange. A flat-roofed data hall
     // with rooftop chillers and the hub's spoke emblem painted on the roof,
     // a lit entrance and sign, two backhaul satellite dishes that slowly
@@ -6017,6 +6199,8 @@ function renderGovBuilding(e, px, py, t) {
     // previews in the naming modal pass their own via e._hallStyle / e._flag.
     const hallStyle = e._hallStyle || (typeof CityInfo !== 'undefined' ? CityInfo.getHallStyle() : 'beaux');
     const flagId    = e._flag      || (typeof CityInfo !== 'undefined' ? CityInfo.getFlag()      : 'gridline');
+    // The rendered hall (end of this file) when its sprites are in.
+    if (!e._ghost && (e.width||6) === 6 && (e.height||6) === 6 && _hallArt(e, px, py, t, hallStyle, flagId)) return;
     const HP = GOV_HALL_PALETTES[hallStyle] || GOV_HALL_PALETTES.beaux;
     const STONE = HP.stone, STONE_SH = HP.stoneSh, TRIM = HP.trim, SLATE = HP.slate, SLATE_HI = HP.slateHi;
     const COPPER = HP.dome, COPPER_SH = HP.domeSh, GOLD = HP.gold;
@@ -9102,6 +9286,7 @@ function renderTree(e, px, py, t) {
    input port (same convention as the Fuel Generator's inlet).
    ═══════════════════════════════════════════════════════════════════ */
 function renderGasStation(e, px, py, t) {
+  if (!e._ghost && CIV2_LAYOUT && (e.width || 6) === 6 && (e.height || 5) === 5 && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && AdvNukeArt.get('gas_base')) return _gasArt(e, px, py, t);   // rendered (end of this file)
   // Gas Station — 6×5 truck fuel stop. A concrete forecourt under a lit
   // canopy with three pump islands; a convenience store at the back; the
   // fuel-oil storage tank the refinery pipe network fills (its sight gauge
@@ -12175,6 +12360,42 @@ function renderFusionLab(e, px, py, t) {
   ctx.restore();
 }
 
+// ── Hyperion Station, rendered ──────────────────────────────────────────
+// Built in Blender (scripts/render_hyperion.py, sharing the nuclear / coal
+// scene and materials), authored 1:1 in metres (1 tile = 2 m, 1 m = 20 art
+// units of the 2560×1600 layout below), one sprite per part so each shows as
+// the build finishes it. HYP_LAYOUT is the script's LAYOUT (re-paste it after
+// a re-render): each sprite's rect [x0, x1, v0, v1] in metres from the
+// footprint's centre (x east, v = y + z·tan30 up the screen) and the anchors
+// the live effects hang on. The construction phases, and anything drawn
+// while the images load or image fills are off, stay painted.
+const HYP_LAYOUT = {"pad": {"lights": [[-60.5, 36.5, 1.75], [60.5, 36.5, 1.75], [-60.5, -31.5, 1.75], [60.5, -31.5, 1.75]], "rect": [-64, 64, -40, 40]}, "plaza": {"obelisks": [[19.344, 18.084, 5.1], [5.084, 32.344, 5.1], [-15.084, 32.344, 5.1], [-29.344, 18.084, 5.1], [-29.344, -2.084, 5.1], [-15.084, -16.344, 5.1], [5.084, -16.344, 5.1], [19.344, -2.084, 5.1]], "rect": [-33.5, 25.844, -23.402, 42.264]}, "spire": {"c": [-5.0, 8.0], "globe": [12.6, 8.4], "tip": 38.4, "drumTop": 3.35, "track": [17.5, 20.9], "terrace": 2.1, "well": [14.0, 1.1], "fins": [4.2, 13.8, 2.03], "rect": [-27.1, 32.255, -32.864, 31.232]}, "hall": {"x": [-61.0, -34.0, 13.5, 35.5], "vault": [27.3, 8.2, 3.0], "annexH": 4.5, "band": [13.5, 3.95, 1.2], "fans": [[-57.9, 16.1, 5.45], [-52.7, 16.1, 5.45], [-47.5, 16.1, 5.45], [-42.3, 16.1, 5.45], [-37.1, 16.1, 5.45]], "bush": [[-29.7, 25.0, 5.2], [-29.7, 27.3, 5.2], [-29.7, 29.6, 5.2]], "rect": [-61.8, -24.269, 7.09, 42.997]}, "fan": {"r": 1.85, "rect": [-2.2, 2.2, -2.2, 2.2]}, "bat": {"units": [[-60.3, -58.2, -18.45, -17.55, 2.89], [-56.7, -54.6, -18.45, -17.55, 2.89], [-53.1, -51.0, -18.45, -17.55, 2.89], [-49.5, -47.4, -18.45, -17.55, 2.89], [-45.9, -43.8, -18.45, -17.55, 2.89], [-42.3, -40.2, -18.45, -17.55, 2.89], [-38.7, -36.6, -18.45, -17.55, 2.89], [-35.1, -33.0, -18.45, -17.55, 2.89], [-31.5, -29.4, -18.45, -17.55, 2.89], [-60.3, -58.2, -23.85, -22.95, 2.89], [-56.7, -54.6, -23.85, -22.95, 2.89], [-53.1, -51.0, -23.85, -22.95, 2.89], [-49.5, -47.4, -23.85, -22.95, 2.89], [-45.9, -43.8, -23.85, -22.95, 2.89], [-42.3, -40.2, -23.85, -22.95, 2.89], [-38.7, -36.6, -23.85, -22.95, 2.89], [-35.1, -33.0, -23.85, -22.95, 2.89], [-31.5, -29.4, -23.85, -22.95, 2.89], [-60.3, -58.2, -29.25, -28.35, 2.89], [-56.7, -54.6, -29.25, -28.35, 2.89], [-53.1, -51.0, -29.25, -28.35, 2.89], [-49.5, -47.4, -29.25, -28.35, 2.89], [-45.9, -43.8, -29.25, -28.35, 2.89], [-42.3, -40.2, -29.25, -28.35, 2.89], [-38.7, -36.6, -29.25, -28.35, 2.89], [-35.1, -33.0, -29.25, -28.35, 2.89], [-31.5, -29.4, -29.25, -28.35, 2.89]], "trays": [[-60.7, -28.7, -19.3, 0.52], [-60.7, -28.7, -24.7, 0.52]], "rect": [-61.5, -26.494, -32.441, -11.422]}, "ctrl": {"board": [[-19.1, -24.45, 8.68], [9.1, -24.45, 8.68], [-19.1, -21.55, 12.02]], "rooflight": [-19.6, 5.0, -28.3, 8.18], "mast": [-18.4, -30.5, 16.9], "booth": [-1.8, -34.65, 1.6], "door": [-5.0, -33.0, 1.4], "curtain": [-20.5, 10.5, -32.0, 0.6, 6.7], "heli": [18.5, -26.1, 4.95, 0.36], "rect": [-21.7, 28.565, -41.0, -12.456]}, "grounds": {"wall": [27.8, 42.8, -26.78, 0.6, 2.25], "flags": [[32.2, -30.4, 6.85], [36.2, -30.4, 6.85], [40.2, -30.4, 6.85]], "lamps": [[55.3, -26.35, 6.0], [36.5, -31.3, 4.5]], "rect": [25.7, 65.212, -36.282, -15.743]}, "yard": {"bus": [[26.2, 4.4], [27.8, 4.4]], "bays": [{"tx": [[36.15, 28.8, 6.35], [36.15, 29.9, 6.35], [36.15, 31.0, 6.35], [36.15, 23.0, 6.35], [36.15, 24.1, 6.35], [36.15, 25.2, 6.35]], "brk": [[41.7, 30.5, 3.4], [41.7, 27.0, 3.4], [41.7, 23.5, 3.4]], "dis": [[44.4, 30.5, 4.75], [44.4, 27.0, 4.75], [44.4, 23.5, 4.75]], "portal": [[48.2, 30.5, 12.2], [48.2, 27.0, 12.2], [48.2, 23.5, 12.2]], "ph": [[[43.2, 30.5, 5.8], [43.3, 30.5, 4.75], [45.5, 30.5, 4.75], [48.2, 30.5, 12.2]], [[43.2, 27.0, 5.8], [43.3, 27.0, 4.75], [45.5, 27.0, 4.75], [48.2, 27.0, 12.2]], [[43.2, 23.5, 5.8], [43.3, 23.5, 4.75], [45.5, 23.5, 4.75], [48.2, 23.5, 12.2]]], "y": 27.0}, {"tx": [[36.15, 9.8, 6.35], [36.15, 10.9, 6.35], [36.15, 12.0, 6.35], [36.15, 4.0, 6.35], [36.15, 5.1, 6.35], [36.15, 6.2, 6.35]], "brk": [[41.7, 11.5, 3.4], [41.7, 8.0, 3.4], [41.7, 4.5, 3.4]], "dis": [[44.4, 11.5, 4.75], [44.4, 8.0, 4.75], [44.4, 4.5, 4.75]], "portal": [[48.2, 11.5, 12.2], [48.2, 8.0, 12.2], [48.2, 4.5, 12.2]], "ph": [[[43.2, 11.5, 5.8], [43.3, 11.5, 4.75], [45.5, 11.5, 4.75], [48.2, 11.5, 12.2]], [[43.2, 8.0, 5.8], [43.3, 8.0, 4.75], [45.5, 8.0, 4.75], [48.2, 8.0, 12.2]], [[43.2, 4.5, 5.8], [43.3, 4.5, 4.75], [45.5, 4.5, 4.75], [48.2, 4.5, 12.2]]], "y": 8.0}, {"tx": [[36.15, -9.2, 6.35], [36.15, -8.1, 6.35], [36.15, -7.0, 6.35], [36.15, -15.0, 6.35], [36.15, -13.9, 6.35], [36.15, -12.8, 6.35]], "brk": [[41.7, -7.5, 3.4], [41.7, -11.0, 3.4], [41.7, -14.5, 3.4]], "dis": [[44.4, -7.5, 4.75], [44.4, -11.0, 4.75], [44.4, -14.5, 4.75]], "portal": [[48.2, -7.5, 12.2], [48.2, -11.0, 12.2], [48.2, -14.5, 12.2]], "ph": [[[43.2, -7.5, 5.8], [43.3, -7.5, 4.75], [45.5, -7.5, 4.75], [48.2, -7.5, 12.2]], [[43.2, -11.0, 5.8], [43.3, -11.0, 4.75], [45.5, -11.0, 4.75], [48.2, -11.0, 12.2]], [[43.2, -14.5, 5.8], [43.3, -14.5, 4.75], [45.5, -14.5, 4.75], [48.2, -14.5, 12.2]]], "y": -11.0}], "masts": [[25.3, 33.2, 18.6], [50.7, 33.2, 18.6], [25.3, -17.2, 18.6], [50.7, -17.2, 18.6]], "rect": [23.2, 60.104, -28.343, 46.096]}, "pyl": {"attach": 18.6, "top": 25.3, "arm": 4.7, "phases": [-2.6, 0.0, 2.6], "rect": [-5.2, 15.121, -17.483, 19.865]}};
+const HyperionArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  const NEED = ['hyp_pad.jpg', 'hyp_plaza', 'hyp_spire', 'hyp_hall', 'hyp_fan', 'hyp_bat', 'hyp_ctrl', 'hyp_grounds', 'hyp_yard', 'hyp_pyl'];
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/${name.includes('.') ? name : name + '.png'}`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ready() {
+      if (!HYP_LAYOUT || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+      let ok = true;
+      for (const n of NEED) if (!get(n)) ok = false;
+      return ok;
+    },
+  };
+})();
+
 // ── Hyperion Station (64×40) ─────────────────────────────────────────────
 // Operation Hyperion's national interconnector (NationalProject). Authored
 // natively at 2560×1600 units — the endgame centrepiece, so it is the biggest
@@ -12242,15 +12463,29 @@ function renderMeridianStation(e, px, py, t) {
   // control room; Foundations the rest): [start, end] of the build fraction.
   const part = (a, b) => Math.max(0, Math.min(1, (build - a) / (b - a)));
   const P = { pad: part(0, 0.08), hallA: part(0.06, 0.34), hallB: part(0.26, 0.54), ctrl: part(0.18, 0.4), yard: part(0.46, 0.74), spire: part(0.66, 0.94), pylons: part(0.84, 1) };
+  // The rendered parts (HYP_LAYOUT, in metres). PA turns a point in metres
+  // (x east, y north, z up, from the footprint's centre) into art units on
+  // screen; hypSpr draws a part's sprite over its rect, moved dx, dy metres.
+  const HA = HyperionArt.ready() ? HYP_LAYOUT : null;
+  const HTAN = Math.tan(Math.PI / 6);
+  const PA = (x, y, z = 0) => [1280 + 20 * x, 800 - 20 * (y + z * HTAN)];
+  const hypSpr = (name, rect, dx = 0, dy = 0) => {
+    const im = HyperionArt.get(name); if (!im) return;
+    const [x0, x1, v0, v1] = rect;
+    ctx.drawImage(im, X(1280 + 20 * (x0 + dx)), Y(800 - 20 * (v1 + dy)), 20 * (x1 - x0) * S, 20 * (v1 - v0) * S);
+  };
 
   ctx.save();
   ctx.translate(px, py);
   ctx.scale(W / (AW*TILE/40), H / (AH*TILE/40));
   ctx.save();
-  ctx.beginPath(); ctx.rect(0, 0, AW*S, AH*S); ctx.clip();
+  // Rendered, the halls, the yard's masts and the pylons stand up past the
+  // north edge and the pylons' shadows reach past the east one.
+  ctx.beginPath(); if (HA) ctx.rect(0, -140 * S, (AW + 200) * S, (AH + 140) * S); else ctx.rect(0, 0, AW*S, AH*S); ctx.clip();
 
   // Layout
   const SX = 1180, SY = 640, SR = 430;                                                     // the Spire
+  const SYm_ = (800 - SY) / 20;                                                            // its centre's y, in metres
   const HALLS = [[60, 90, 540, 440, P.hallA, 'CONVERTER HALL A'], [60, 570, 540, 440, P.hallB, 'CONVERTER HALL B']];
   const YARD = [1760, 110, 560, 1060];
   const CTRL = [860, 1204, 640, 236];
@@ -12267,41 +12502,48 @@ function renderMeridianStation(e, px, py, t) {
   R(0, 0, AW, AH, '#6e6450');
   if (P.pad > 0) { ctx.save(); ctx.globalAlpha *= P.pad; R(0, 0, AW, AH, L('#69707a', '#20242a', '#1a1c1e')); ctx.restore(); }
   if (P.pad >= 1) {
-    R(0, 1500, AW, 100, L('#3c3f44', '#17191c', '#121314'));                                // access road
-    if (detail) for (let x = 20; x < AW; x += 70) R(x, 1546, 36, 6, L('rgba(255,255,255,0.8)', 'rgba(255,255,255,0.3)', 'rgba(90,90,90,0.4)'));
-    if (detail) {                                                                           // slab joints
+    if (HA) hypSpr('hyp_pad.jpg', HA.pad.rect);                                             // the rendered pad, road, fence and plaza paving
+    if (!HA) R(0, 1500, AW, 100, L('#3c3f44', '#17191c', '#121314'));                       // access road
+    if (detail && !HA) for (let x = 20; x < AW; x += 70) R(x, 1546, 36, 6, L('rgba(255,255,255,0.8)', 'rgba(255,255,255,0.3)', 'rgba(90,90,90,0.4)'));
+    if (detail && !HA) {                                                                    // slab joints
       ctx.strokeStyle = L('rgba(0,0,0,0.09)', 'rgba(255,255,255,0.035)', 'rgba(255,255,255,0.02)'); ctx.lineWidth = 2 * S; ctx.beginPath();
       for (let x = 160; x < AW; x += 160) { ctx.moveTo(X(x), Y(0)); ctx.lineTo(X(x), Y(1500)); }
       for (let y = 160; y < 1500; y += 160) { ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(AW), Y(y)); }
       ctx.stroke();
     }
-    R(0, 1488, AW, 12, L('#9aa0a6', '#33383e', '#222426'));                                  // kerb along the road
+    if (!HA) R(0, 1488, AW, 12, L('#9aa0a6', '#33383e', '#222426'));                         // kerb along the road
     // The Spire's plaza: a stone kerb, two bands of polished paving cut by
     // radial joints, and a surveyor's bezel round the rim — a tick every five
     // degrees, a numeral every thirty, north at the top.
-    dot(SX + 8, SY + 10, 564, 'rgba(0,0,0,0.18)');
-    dot(SX, SY, 562, lin(SX - 420, SY - 420, SX + 420, SY + 420, L('#c4cad0', '#444c56', '#2c2e31'), L('#8c939b', '#262b32', '#1c1e20')));
-    dot(SX, SY, 549, L('#434a54', '#11151a', '#111315'));
-    dot(SX, SY, 526, L('#4f5661', '#161b21', '#141618'));
+    if (!HA) {
+      dot(SX + 8, SY + 10, 564, 'rgba(0,0,0,0.18)');
+      dot(SX, SY, 562, lin(SX - 420, SY - 420, SX + 420, SY + 420, L('#c4cad0', '#444c56', '#2c2e31'), L('#8c939b', '#262b32', '#1c1e20')));
+      dot(SX, SY, 549, L('#434a54', '#11151a', '#111315'));
+      dot(SX, SY, 526, L('#4f5661', '#161b21', '#141618'));
+    }
     if (detail) {
-      ctx.strokeStyle = L('rgba(0,0,0,0.16)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0.03)'); ctx.lineWidth = 2 * S; ctx.beginPath();
-      for (let k = 0; k < 48; k++) { const a = (k + 0.5) / 48 * TAU, c = Math.cos(a), s = Math.sin(a); ctx.moveTo(X(SX + c * 504), Y(SY + s * 504)); ctx.lineTo(X(SX + c * 526), Y(SY + s * 526)); }
-      ctx.stroke();
-      ctx.strokeStyle = L('rgba(255,255,255,0.6)', 'rgba(170,205,235,0.4)', 'rgba(110,110,110,0.35)'); ctx.lineWidth = 3 * S; ctx.beginPath();
-      for (let k = 0; k < 72; k++) { const a = k / 72 * TAU, c = Math.cos(a), s = Math.sin(a), r0 = k % 6 ? 541 : 534; ctx.moveTo(X(SX + c * r0), Y(SY + s * r0)); ctx.lineTo(X(SX + c * 548), Y(SY + s * 548)); }
-      ctx.stroke();
+      if (!HA) {
+        ctx.strokeStyle = L('rgba(0,0,0,0.16)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0.03)'); ctx.lineWidth = 2 * S; ctx.beginPath();
+        for (let k = 0; k < 48; k++) { const a = (k + 0.5) / 48 * TAU, c = Math.cos(a), s = Math.sin(a); ctx.moveTo(X(SX + c * 504), Y(SY + s * 504)); ctx.lineTo(X(SX + c * 526), Y(SY + s * 526)); }
+        ctx.stroke();
+        ctx.strokeStyle = L('rgba(255,255,255,0.6)', 'rgba(170,205,235,0.4)', 'rgba(110,110,110,0.35)'); ctx.lineWidth = 3 * S; ctx.beginPath();
+        for (let k = 0; k < 72; k++) { const a = k / 72 * TAU, c = Math.cos(a), s = Math.sin(a), r0 = k % 6 ? 541 : 534; ctx.moveTo(X(SX + c * r0), Y(SY + s * r0)); ctx.lineTo(X(SX + c * 548), Y(SY + s * 548)); }
+        ctx.stroke();
+      }
       for (let k = 0; k < 12; k++) {
         if (k === 6) continue;                                                              // the Spire's name goes there
         const a = k / 12 * TAU - Math.PI / 2;
         text(k ? `${k * 30}°` : 'N', SX + Math.cos(a) * 515, SY + Math.sin(a) * 515, k ? 13 : 19, k ? L('rgba(255,255,255,0.55)', 'rgba(170,205,235,0.4)', 'rgba(110,110,110,0.4)') : BRASS, 'Arial, sans-serif');
       }
     }
-    if (P.spire < 1) dot(SX, SY, 500, L('#4c535d', '#14181d', '#121416'));
+    if (P.spire < 1) { if (!HA) dot(SX, SY, 500, L('#4c535d', '#14181d', '#121416')); }
     else {
       // A ring of still water round the Spire, in a pale stone coping. It
       // carries the Spire's light at night, and four causeways cross it on
       // the cardinals; the northern one is inlaid with the brass meridian.
-      dot(SX, SY, 504, lin(SX - 360, SY - 360, SX + 360, SY + 360, L('#e4e8ec', '#59626c', '#303236'), L('#a4abb3', '#333a42', '#202224')));
+      // Rendered, the basin is a hole in the plaza sprite: the water goes
+      // under it, the coping and causeways over it.
+      if (!HA) dot(SX, SY, 504, lin(SX - 360, SY - 360, SX + 360, SY + 360, L('#e4e8ec', '#59626c', '#303236'), L('#a4abb3', '#333a42', '#202224')));
       dot(SX, SY, 496, L('#3f93c2', '#0b2a42', '#12161a'));
       dot(SX, SY, 474, L('#2a74a6', '#071d30', '#0e1114'));
       if (on) {
@@ -12312,22 +12554,31 @@ function renderMeridianStation(e, px, py, t) {
       }
       { const ring = new Path2D(); ring.arc(X(SX), Y(SY), 496 * S, 0, TAU); ring.arc(X(SX), Y(SY), 430 * S, 0, TAU);
         BldWater.draw(ctx, ring, X(SX - 496), Y(SY - 496), 992 * S, 992 * S, now, { evenodd: true, depth: 0.25 }); }
-      for (let k = 0; k < 4; k++) {                                                         // causeways
-        ctx.save(); ctx.translate(X(SX), Y(SY)); ctx.rotate(k * Math.PI / 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(428 * S, -30 * S, 74 * S, 72 * S);
-        ctx.fillStyle = L('#cfd4d9', '#48505a', '#2a2c2f'); ctx.fillRect(428 * S, -36 * S, 74 * S, 72 * S);
-        ctx.fillStyle = L('#8f969e', '#2a3038', '#1e2022'); ctx.fillRect(428 * S, -28 * S, 74 * S, 56 * S);
-        ctx.restore();
+      if (HA) hypSpr('hyp_plaza', HA.plaza.rect);
+      else {
+        for (let k = 0; k < 4; k++) {                                                       // causeways
+          ctx.save(); ctx.translate(X(SX), Y(SY)); ctx.rotate(k * Math.PI / 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(428 * S, -30 * S, 74 * S, 72 * S);
+          ctx.fillStyle = L('#cfd4d9', '#48505a', '#2a2c2f'); ctx.fillRect(428 * S, -36 * S, 74 * S, 72 * S);
+          ctx.fillStyle = L('#8f969e', '#2a3038', '#1e2022'); ctx.fillRect(428 * S, -28 * S, 74 * S, 56 * S);
+          ctx.restore();
+        }
+        // The meridian itself: a brass line due north from the Spire to the
+        // fence, studded, with a pulse of light running out along it.
+        R(SX - 5, 52, 10, SY - 430 - 52, BRASS);
+        R(SX - 5, 52, 3, SY - 430 - 52, BRASS_HI);
+        if (detail) for (let y = 70; y < SY - 440; y += 34) dot(SX, y, 8, y % 68 < 34 ? BRASS_HI : BRASS);
+        poly([[SX, 34], [SX - 22, 74], [SX, 62], [SX + 22, 74]], BRASS);
       }
-      // The meridian itself: a brass line due north from the Spire to the
-      // fence, studded, with a pulse of light running out along it.
-      R(SX - 5, 52, 10, SY - 430 - 52, BRASS);
-      R(SX - 5, 52, 3, SY - 430 - 52, BRASS_HI);
-      if (detail) for (let y = 70; y < SY - 440; y += 34) dot(SX, y, 8, y % 68 < 34 ? BRASS_HI : BRASS);
-      poly([[SX, 34], [SX - 22, 74], [SX, 62], [SX + 22, 74]], BRASS);
       if (on) { const u = (now * (0.12 + 0.3 * live)) % 1, y = SY - 440 - u * (SY - 500); ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(SX, y, 60, ACC, 0.7 * (1 - u)); R(SX - 4, y - 16, 8, 32, `rgba(255,255,255,${(0.8 * (1 - u)).toFixed(3)})`); ctx.restore(); }
-      // Eight emitter obelisks stand round the paving.
+      // Eight emitter obelisks stand round the paving; rendered, their
+      // crystal tips light up.
       for (let k = 0; k < 8; k++) {
+        if (HA) {
+          const [ox, oy] = PA(...HA.plaza.obelisks[k]);
+          if (on) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(ox, oy, night ? 80 : 40, ACC, (night ? 0.45 : 0.3) + 0.3 * live); dot(ox, oy - 2, 4, `rgba(235,250,255,${(0.5 + 0.4 * live).toFixed(3)})`); ctx.restore(); }
+          continue;
+        }
         const a = (k + 0.5) / 8 * TAU, ox = SX + Math.cos(a) * 527, oy = SY + Math.sin(a) * 527;
         poly([[ox - 9, oy + 9], [ox + 9, oy - 9], [ox + 74, oy + 78], [ox + 62, oy + 90]], 'rgba(0,0,0,0.28)');
         poly([[ox, oy - 17], [ox + 17, oy], [ox, oy + 17], [ox - 17, oy]], L('#eef1f4', '#5c6672', '#2a2c30'));
@@ -12342,6 +12593,7 @@ function renderMeridianStation(e, px, py, t) {
     if (detail) {
       const ga = 0.08 + 0.22 * live;
       ctx.save(); if (on) ctx.globalCompositeOperation = 'lighter';
+      if (HA) { ctx.beginPath(); ctx.rect(0, 0, AW * S, 1488 * S); ctx.clip(); }             // inside the fence (the clip is wider when rendered)
       ctx.strokeStyle = on ? `rgba(${ACC},${ga.toFixed(3)})` : 'rgba(60,60,60,0.12)'; ctx.lineWidth = 3 * S;
       for (const r of [576, 700, 860, 1040]) { ctx.beginPath(); ctx.arc(X(SX), Y(SY), r * S, 0, Math.PI * 2); ctx.stroke(); }
       ctx.beginPath();
@@ -12362,13 +12614,13 @@ function renderMeridianStation(e, px, py, t) {
       }
       ctx.restore();
     }
-    // perimeter fence with a hazard band
-    ctx.strokeStyle = L('rgba(215,220,225,0.75)', 'rgba(120,130,140,0.45)', 'rgba(60,60,60,0.5)'); ctx.lineWidth = 3 * S;
-    ctx.strokeRect(X(16), Y(16), (AW - 32) * S, 1470 * S);
+    // perimeter fence with a hazard band (rendered: both in the pad sprite)
+    if (!HA) { ctx.strokeStyle = L('rgba(215,220,225,0.75)', 'rgba(120,130,140,0.45)', 'rgba(60,60,60,0.5)'); ctx.lineWidth = 3 * S;
+    ctx.strokeRect(X(16), Y(16), (AW - 32) * S, 1470 * S); }
     if (detail) {
-      ctx.save(); ctx.setLineDash([26 * S, 26 * S]);
+      if (!HA) { ctx.save(); ctx.setLineDash([26 * S, 26 * S]);
       ctx.strokeStyle = L('rgba(240,200,40,0.55)', 'rgba(180,150,30,0.4)', 'rgba(90,80,20,0.3)'); ctx.lineWidth = 8 * S;
-      ctx.strokeRect(X(30), Y(30), (AW - 60) * S, 1442 * S); ctx.restore();
+      ctx.strokeRect(X(30), Y(30), (AW - 60) * S, 1442 * S); ctx.restore(); }
       if (on && build >= 1) {                                                               // a strip of light chasing round inside the fence
         ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([70 * S, 210 * S]); ctx.lineDashOffset = -now * (60 + 160 * live) * S;
         ctx.strokeStyle = `rgba(${ACC},${(night ? 0.55 + 0.35 * live : 0.25 + 0.3 * live).toFixed(3)})`; ctx.lineWidth = 6 * S;
@@ -12784,8 +13036,50 @@ function renderMeridianStation(e, px, py, t) {
   // Each hall is a barrel vault running east–west over the valve stacks: white
   // arch ribs, a glazed lantern along the crown, and a low cooling annex along
   // the south side. The DC leaves by three wall bushings in the east gable.
+  // Rendered hall: the sprite (hall A's; hall B is the same 24 m south), the
+  // annex fans turning with the load, the valve hall's light in the crown
+  // lantern with a pulse running east along it, the name on the annex
+  // fascia, and the wall bushings' ends glowing.
+  const hypHall = (dy, label) => {
+    const HL = HA.hall, [hx0, hx1, hy0] = HL.x, [vcy, vR, vzb] = HL.vault;
+    hypSpr('hyp_hall', HL.rect, 0, dy);
+    const fan = HyperionArt.get('hyp_fan'), fr = HA.fan.rect;
+    HL.fans.forEach(([fx, fy, fz], k2) => {
+      const [ax, ay] = PA(fx, fy + dy, fz);
+      ctx.save(); ctx.translate(X(ax), Y(ay)); ctx.rotate(now * (on ? 3 + 9 * live : 0) + k2 * 1.3);
+      ctx.drawImage(fan, 20 * fr[0] * S, -20 * fr[3] * S, 20 * (fr[1] - fr[0]) * S, 20 * (fr[3] - fr[2]) * S);
+      ctx.restore();
+      if (on) dot(ax, ay, 34, 'rgba(200,214,228,0.08)');                                     // blade blur
+      if (on && night) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(ax, ay, 44, ACC, 0.14 + 0.2 * live); ctx.restore(); }
+    });
+    // the lantern along the crown
+    const vk = on ? 0.15 + 0.45 * xk * sputter + surgeK * 0.8 + startK * 0.5 : 0, lz = vzb + vR + 0.56;
+    const [lx0, ly0] = PA(hx0 + 1.1, vcy + 0.52 + dy, lz), [lx1, ly1] = PA(hx1 - 1.1, vcy - 0.52 + dy, lz);
+    if (on) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      R(lx0, ly0, lx1 - lx0, ly1 - ly0, `rgba(${ACC},${Math.min(0.9, (night ? 0.55 : 0.12) + 0.4 * vk).toFixed(3)})`);
+      const sg = ctx.createLinearGradient(0, Y(ly0 - 90), 0, Y(ly1 + 90));                    // its light spilling down both sides of the vault
+      sg.addColorStop(0, `rgba(${ACC},0)`); sg.addColorStop(0.5, `rgba(${ACC},${((night ? 0.14 : 0.03) + 0.22 * vk).toFixed(3)})`); sg.addColorStop(1, `rgba(${ACC},0)`);
+      ctx.fillStyle = sg; ctx.fillRect(X(lx0), Y(ly0 - 90), (lx1 - lx0) * S, (ly1 - ly0 + 180) * S);
+      const pu = (now * (0.15 + 0.5 * live) + dy * 0.05) % 1, pxu = lx0 + pu * (lx1 - lx0);
+      glow(pxu, (ly0 + ly1) / 2, 60, ACC, night ? 0.7 : 0.45); R(pxu - 22, (ly0 + ly1) / 2 - 4, 44, 8, 'rgba(255,255,255,0.85)');
+      ctx.restore();
+    }
+    // the name on the annex fascia
+    const [, bz, bh] = HL.band, [nx, ny] = PA((hx0 + hx1) / 2, hy0 + dy, bz);
+    if (detail) text(label, nx, ny, 10, L('#ffffff', '#f0dcc8', '#4a4c50'), 'Arial, sans-serif');
+    if (on) { const [, ty] = PA(0, hy0 + dy, bz + bh / 2 + 0.05); ctx.save(); ctx.globalCompositeOperation = 'lighter'; R(X0h(hx0), ty - 1, 20 * (hx1 - hx0), 2, `rgba(${ACC},${(0.35 + 0.4 * live + 0.25 * surgeK).toFixed(3)})`); ctx.restore(); }
+    // the wall bushings' ends
+    for (const [bx, by, bz2] of HL.bush) {
+      const [ex, ey] = PA(bx, by + dy, bz2);
+      dot(ex, ey, 5, on ? `rgba(${ACC},0.95)` : '#26282a');
+      if (on) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(ex, ey, 50, ACC, 0.25 + 0.4 * live + 0.5 * surgeK); ctx.restore(); }
+    }
+  };
+  const X0h = x => 1280 + 20 * x;
   const hall = (x, y, w, h, k, label) => {
     if (k < 1) { site(x, y, w, h, k, L('#27507f', '#152a44', '#222428')); return; }
+    if (HA) return hypHall(-(y - 90) / 20, label);
     const vh = h - 112, cy = y + vh / 2;                                                     // the vault, and its crown
     R(x + 34, y + 42, w, vh, 'rgba(0,0,0,0.16)');                                            // the vault stands tall: a long shadow
     R(x + 14, y + 18, w, h, 'rgba(0,0,0,0.3)');
@@ -12867,7 +13161,25 @@ function renderMeridianStation(e, px, py, t) {
   // ── Battery array under the halls ──
   // A marked compound of storage containers, three rows of nine, with a
   // cable tray between the rows carrying their charge east.
-  if (P.hallB >= 1) {
+  if (P.hallB >= 1 && HA) {
+    // Rendered: the containers, with each one's charge meter on its roof
+    // panel and the charge running east along the two cable trays.
+    const HB = HA.bat;
+    hypSpr('hyp_bat', HB.rect);
+    if (on && detail) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([18 * S, 40 * S]); ctx.lineDashOffset = -now * (40 + 90 * live) * S;
+      ctx.strokeStyle = `rgba(${ACC},${(0.45 + 0.4 * live).toFixed(3)})`; ctx.lineWidth = 4 * S; ctx.beginPath();
+      for (const [tx0, tx1, ty, tz] of HB.trays) { const [ax, ay] = PA(tx0, ty, tz), [bx] = PA(tx1, ty, tz); ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(ay)); }
+      ctx.stroke(); ctx.restore();
+      HB.units.forEach(([ux0, ux1, uy0, uy1, uz], i) => {
+        const c = i % 9, r = Math.floor(i / 9), lv = 0.5 + 0.5 * Math.sin(now * 0.8 + c * 0.6 + r * 1.7);
+        const [ax, ay] = PA(ux0, uy1, uz), [bx, by] = PA(ux1, uy0, uz), sw = (bx - ax) / 5;
+        for (let q = 0; q < 5; q++) R(ax + q * sw + 1.5, ay + 2, sw - 3, by - ay - 4, q / 5 < lv ? (gold ? '#ffd890' : '#7ae0a0') : 'rgba(20,30,30,0.6)');
+        if (night) glow((ax + bx) / 2, (ay + by) / 2, 34, gold ? '255,216,144' : '122,224,160', 0.16);
+      });
+    }
+    if (detail) text('GRID STORAGE · 27 UNITS', 386, 1424, 17, L('rgba(255,255,255,0.6)', 'rgba(170,205,235,0.4)', 'rgba(110,110,110,0.4)'), 'Arial, sans-serif');
+  } else if (P.hallB >= 1) {
     RR(56, 1076, 660, 332, 8, L('#3e434a', '#14171b', '#131415'));
     ctx.strokeStyle = L('rgba(240,200,40,0.7)', 'rgba(170,140,30,0.45)', 'rgba(90,80,20,0.3)'); ctx.lineWidth = 3 * S;
     ctx.strokeRect(X(61), Y(1081), 650 * S, 322 * S);
@@ -12903,7 +13215,44 @@ function renderMeridianStation(e, px, py, t) {
   // ── Control building, status board, radar dish, helipad ──
   const [CX0, CY0, CW, CH] = CTRL;
   if (P.ctrl < 1) site(CX0, CY0, CW, CH, P.ctrl, L('#1e2a3a', '#0e1620', '#121416'));
-  else {
+  else if (HA) {
+    // Rendered: the building, board, radome, mast, canopy, gate and helipad.
+    // Live: the board's glow (its text is drawn with the status below), the
+    // rooflight and the curtain wall lit after dark, the mast's beacon, the
+    // door and booth, and the helipad's chase lights.
+    const HC = HA.ctrl;
+    hypSpr('hyp_ctrl', HC.rect);
+    const [b0, b1, b2] = HC.board.map(p => PA(...p));
+    if (on) {
+      const bg = ctx.createLinearGradient(0, Y(b2[1]), 0, Y(b0[1]));
+      bg.addColorStop(0, `rgba(${ACC},0.16)`); bg.addColorStop(0.5, `rgba(${ACC},0.04)`); bg.addColorStop(1, `rgba(${ACC},0.12)`);
+      ctx.fillStyle = bg; ctx.fillRect(X(b0[0]), Y(b2[1]), (b1[0] - b0[0]) * S, (b0[1] - b2[1]) * S);
+      if (detail) R(b0[0], b2[1] + ((now * 26) % (b0[1] - b2[1] - 3)), b1[0] - b0[0], 3, `rgba(${ACC},0.10)`);       // a scan line
+      ctx.strokeStyle = `rgba(${ACC},${(0.45 + 0.3 * live).toFixed(3)})`; ctx.lineWidth = 2 * S;
+      ctx.strokeRect(X(b0[0]), Y(b2[1]), (b1[0] - b0[0]) * S, (b0[1] - b2[1]) * S);
+    }
+    const [rx0, rx1, ry, rz] = HC.rooflight, [ra, rb] = PA(rx0, ry + 0.65, rz), [rc, rd] = PA(rx1, ry - 0.65, rz);
+    R(ra, rb, rc - ra, rd - rb, on ? (gold ? 'rgba(255,216,144,0.7)' : night ? 'rgba(154,220,255,0.75)' : 'rgba(127,180,220,0.35)') : 'rgba(20,22,24,0.5)');
+    if (on && night) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      glow((ra + rc) / 2, (rb + rd) / 2, 160, ACC, 0.25);
+      const [cx0, cx1, cy0, cz0, cz1] = HC.curtain, [wa, wb] = PA(cx0, cy0, cz1), [wc, wd] = PA(cx1, cy0, cz0);
+      R(wa, wb, wc - wa, wd - wb, 'rgba(255,226,160,0.28)');                                  // the offices lit behind the curtain wall
+      const [dx2, dy2] = PA(...HC.door); glow(dx2, dy2, 110, '255,236,190', 0.35);
+      const [bx2, by2] = PA(...HC.booth); glow(bx2, by2, 40, '255,230,170', 0.5);
+      ctx.restore();
+    }
+    { const [mx, my2] = PA(...HC.mast), bl = on && Math.sin(now * 3) > 0;
+      dot(mx, my2, 4, bl ? '#ff4030' : '#601810'); if (bl && night) glow(mx, my2, 44, '255,60,40', 0.55); }
+    if (on && detail) {
+      const [hx, hy, hr2, hz] = HC.heli;
+      for (let k2 = 0; k2 < 12; k2++) {
+        const a = k2 / 12 * Math.PI * 2, lit = (Math.floor(now * 3) + k2) % 12 < 3, [lx, ly] = PA(hx + Math.cos(a) * hr2, hy + Math.sin(a) * hr2, hz);
+        dot(lx, ly, 4, lit ? '#ffe080' : '#6a5a20');
+        if (lit && night) glow(lx, ly, 26, '255,210,100', 0.5);
+      }
+    }
+  } else {
     // the walk from the front door to the gate on the road
     R(CX0 + CW / 2 - 34, CY0 + CH, 68, 1488 - CY0 - CH, L('#8f969e', '#2a3038', '#1e2022'));
     R(CX0 + CW / 2 - 34, CY0 + CH, 4, 1488 - CY0 - CH, BRASS); R(CX0 + CW / 2 + 30, CY0 + CH, 4, 1488 - CY0 - CH, BRASS);
@@ -12985,7 +13334,23 @@ function renderMeridianStation(e, px, py, t) {
   // ── The grounds, once the builders have gone ──
   // Where the laydown yard stood: a lawn with the project's name on a stone
   // wall, three flags and a ring of trees, and the staff car park beside it.
-  if (build >= 1) {
+  if (build >= 1 && HA) {
+    // Rendered: lawn, name wall, trees, flags, car park. Live: the lettering
+    // on the wall, its uplights and the lamps after dark.
+    const HG = HA.grounds;
+    hypSpr('hyp_grounds', HG.rect);
+    const [wx0, wx1, wy, wz0, wz1] = HG.wall, [ta, tb] = PA(wx0, wy, wz1), [tc, td] = PA(wx1, wy, wz0), tm = (ta + tc) / 2;
+    if (detail) {
+      text('OPERATION HYPERION', tm, tb + (td - tb) * 0.4, Math.min(16, (td - tb) * 0.55), L('#f4f1e6', '#d4ecff', '#5a6470'));
+      text('NATIONAL GRID INTERCONNECTOR', tm, tb + (td - tb) * 0.82, Math.min(7, (td - tb) * 0.24), L('#d8c07a', '#b8a060', '#4a5460'), 'Arial, sans-serif');
+    }
+    if (on && night) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (const u of [0.15, 0.5, 0.85]) glow(ta + (tc - ta) * u, td, 70, '255,236,190', 0.3);
+      for (const lp of HG.lamps) { const [lx, ly] = PA(...lp); glow(lx, ly, 190, '255,236,190', 0.22); dot(lx, ly, 5, '#fff6d8'); }
+      ctx.restore();
+    }
+  } else if (build >= 1) {
     const GX = 1800, GY = 1204;
     RR(GX, GY, 420, 246, 16, L('#c4cad0', '#3c434c', '#26282a'));
     RR(GX + 6, GY + 6, 408, 234, 11, lin(GX, GY, GX + 420, GY + 246, L('#74a85a', '#16271b', '#1e231f'), L('#56894a', '#0f1c13', '#181c19')));
@@ -13035,7 +13400,56 @@ function renderMeridianStation(e, px, py, t) {
   // Going in: the gravel bed is spread from the north, plinths are cast, and
   // the kit is set down on them one piece at a time.
   if (P.yard <= 0) blueprint(YARD[0], YARD[1], YARD[2], YARD[3]);
-  else {
+  else if (P.yard >= 1 && HA) {
+    // Rendered: gravel, fence, busbars, the three bays, lightning masts.
+    // Live: the transformers warming with the wave of current, the current
+    // running east along each phase and down the busbars, the portals' glow,
+    // the masts' beacons, and the commissioning arcs.
+    const HY = HA.yard, [YX, YY, YW, YH] = YARD, hot = on && (xk > 0.01 || firing);
+    hypSpr('hyp_yard', HY.rect);
+    HY.bays.forEach((bay, b) => {
+      const [, qyA] = PA(0, bay.y);
+      const wave = hot ? xk * sputter * (0.1 + 0.4 * Math.max(0, Math.sin(now * 2.6 - b * 0.7))) + 0.45 * surgeK + 0.5 * startK : 0;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (const t3 of bay.tx) { const [tx, ty] = PA(...t3); dot(tx, ty, 3.5, on ? `rgba(${ACC},0.9)` : '#2a2c2e'); }
+      if (wave > 0) for (const k3 of [0, 3]) { const [tx, ty] = PA(...bay.tx[k3 + 1]); glow(tx - 100, ty + 20, 120, ACC, 0.5 * wave); }
+      for (const p3 of bay.portal) { const [ox, oy] = PA(...p3); dot(ox, oy, 4, on ? `rgba(${ACC},${(0.6 + 0.4 * live).toFixed(3)})` : '#2a2c2e'); }
+      if (on) { const [ox, oy] = PA(...bay.portal[1]); glow(ox, oy, 130, ACC, 0.1 + 0.2 * live + 0.4 * wave); }
+      ctx.restore();
+      if (hot && detail) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([26 * S, 54 * S]); ctx.lineDashOffset = -now * 220 * S;
+        ctx.strokeStyle = `rgba(${ACC},${(0.6 + 0.4 * surgeK).toFixed(3)})`; ctx.lineWidth = 4 * S; ctx.beginPath();
+        for (const ph of bay.ph) ph.forEach((p3, i) => { const [ax, ay] = PA(...p3); i ? ctx.lineTo(X(ax), Y(ay)) : ctx.moveTo(X(ax), Y(ay)); });
+        ctx.stroke(); ctx.restore();
+      }
+    });
+    if (hot && detail) {                                                                    // down the busbars from the Spire's feed
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([26 * S, 54 * S]); ctx.lineDashOffset = -now * 220 * S;
+      ctx.strokeStyle = `rgba(${ACC},${(0.5 + 0.4 * surgeK).toFixed(3)})`; ctx.lineWidth = 4 * S; ctx.beginPath();
+      for (const [bx, bz] of HY.bus) {
+        const [ax, ay] = PA(bx, SYm_, bz), [, at] = PA(bx, (YY - 800) / -20 - 1.4, bz), [, ab] = PA(bx, (YY + YH - 800) / -20 + 1.4, bz);
+        ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(ax), Y(at)); ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(ax), Y(ab));
+      }
+      ctx.stroke(); ctx.restore();
+    }
+    for (const m3 of HY.masts) {
+      const [mx, my2] = PA(...m3), bl = on && Math.sin(now * 3 + mx) > 0;
+      dot(mx, my2, 3, bl ? '#ff4030' : '#601810'); if (bl && night) glow(mx, my2, 40, '255,60,40', 0.5);
+    }
+    if (detail) text('SWITCHYARD · 400 kV', YX + YW / 2 + 30, YY + 40, 18, L('rgba(255,255,255,0.75)', 'rgba(170,205,235,0.45)', 'rgba(110,110,110,0.4)'), 'Arial, sans-serif');
+    if ((firing || surgeFx > 0) && detail) {                                                // commissioning surge: arcs racing across the yard
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = 'rgba(122,216,255,1)'; ctx.shadowBlur = 20 * S;
+      ctx.strokeStyle = `rgba(210,245,255,${Math.max(surgeK, surgeFx).toFixed(3)})`; ctx.lineWidth = 3.4 * S;
+      for (let k2 = 0; k2 < 7; k2++) {
+        let x0 = YX + 20 + Math.random() * (YW - 40), y0 = YY - 140 + Math.random() * 980;
+        ctx.beginPath(); ctx.moveTo(X(x0), Y(y0));
+        for (let j = 0; j < 7; j++) { x0 += (Math.random() - 0.5) * 100; y0 += 24 + Math.random() * 40; ctx.lineTo(X(x0), Y(y0)); }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  } else {
     const [YX, YY, YW, YH] = YARD, PH3 = [-70, 0, 70];
     const KIT = [];
     PYL.forEach(([, qy], b) => {
@@ -13198,6 +13612,46 @@ function renderMeridianStation(e, px, py, t) {
     }
   } else {
     const spin = on ? now * (0.05 + 0.12 * live) : 0;
+    // Where the effects hang. Painted, everything is flat round (SX, SY).
+    // Rendered, the globe stands on its pedestal (its centre shows higher up
+    // the screen) and the rings of light sit on the drum's top.
+    const HS = HA && HA.spire;
+    const [GX, GY] = HS ? PA(HS.c[0], HS.c[1], HS.globe[0]) : [SX, SY];
+    const [DX, DY] = HS ? PA(HS.c[0], HS.c[1], HS.drumTop) : [SX, SY];
+    const GR = HS ? HS.globe[1] * 20 : 172;
+    if (HS) {
+      hypSpr('hyp_spire', HS.rect);
+      const [cx, cy] = HS.c;
+      if (on) {
+        // Under the globe: the well's light, the conduit fins' slits and the
+        // terrace's rim, cut away where the globe stands in front of them.
+        ctx.save(); ctx.beginPath(); ctx.rect(X(SX - 560), Y(SY - 900), 1120 * S, 1500 * S); ctx.arc(X(GX), Y(GY), GR * S, 0, TAU); ctx.clip('evenodd');
+        ctx.globalCompositeOperation = 'lighter';
+        const [wx, wy] = PA(cx, cy, HS.well[1]); glow(wx, wy, HS.well[0] * 20, ACC, 0.16 + 0.26 * live);
+        const [f0, f1, fz] = HS.fins;
+        ctx.strokeStyle = `rgba(${ACC},${(0.3 + 0.5 * live).toFixed(3)})`; ctx.lineWidth = 5 * S; ctx.beginPath();
+        for (let k2 = 0; k2 < 12; k2++) {
+          const a = k2 / 12 * TAU, [ax, ay] = PA(cx + Math.cos(a) * (f0 + 0.3), cy + Math.sin(a) * (f0 + 0.3), fz), [bx, by] = PA(cx + Math.cos(a) * (f1 - 0.3), cy + Math.sin(a) * (f1 - 0.3), fz);
+          ctx.moveTo(X(ax), Y(ay)); ctx.lineTo(X(bx), Y(by));
+        }
+        ctx.stroke();
+        const [tx, ty] = PA(cx, cy, HS.terrace + 0.85);
+        ctx.strokeStyle = `rgba(${ACC},${((night ? 0.4 : 0.2) + 0.4 * live).toFixed(3)})`; ctx.lineWidth = 4 * S;
+        ctx.beginPath(); ctx.arc(X(tx), Y(ty), HS.track[0] * 20 * S, 0, TAU); ctx.stroke();
+        ctx.restore();
+      }
+      // Lights running round the track ring's white segments.
+      if (on && detail) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const rT = (HS.track[0] + HS.track[1]) / 2;
+        for (let k2 = 0; k2 < 36; k2 += 3) {
+          const a = k2 / 36 * TAU, [lx, ly] = PA(cx + Math.cos(a) * rT, cy + Math.sin(a) * rT, HS.drumTop + 0.02);
+          const b = 0.25 + 0.65 * ((Math.sin(now * (1.5 + 2.5 * live) - k2 * 0.35) + 1) / 2) * (0.4 + 0.6 * live);
+          dot(lx, ly, 8, `rgba(${ACC},${b.toFixed(3)})`); glow(lx, ly, 34, ACC, 0.5 * b);
+        }
+        ctx.restore();
+      }
+    } else {
     // It stands tall: a long soft shadow over the pool and the paving.
     dot(SX + 44, SY + 56, SR - 8, 'rgba(0,0,0,0.15)');
     dot(SX + 22, SY + 28, SR + 4, 'rgba(0,0,0,0.3)');
@@ -13249,9 +13703,9 @@ function renderMeridianStation(e, px, py, t) {
       if (on) { ctx.fillStyle = `rgba(${ACC},${(0.3 + 0.5 * live).toFixed(3)})`; ctx.fillRect(204 * S, -3 * S, 70 * S, 6 * S); }
       ctx.restore();
     }
+    }
     // the globe: seen from the pole, so its parallels are rings and its
     // meridians run radially from the core, turning slowly
-    const GR = 172;
     // Two brass armillary rings swing round the globe, each tilting as it
     // turns: the far half passes behind the globe, the near half in front,
     // and a bead of light rides each one.
@@ -13259,20 +13713,25 @@ function renderMeridianStation(e, px, py, t) {
       const A = i ? 262 : 228, ph = (on ? now * (i ? -0.13 : 0.17) : 0.4) + i * 1.3, B = A * (0.34 + 0.2 * Math.sin((on ? now * 0.21 : 0) + i * 2.4));
       const a0 = front ? 0 : Math.PI, a1 = front ? Math.PI : TAU;
       ctx.save(); ctx.lineCap = 'butt';
-      if (front) { ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 12 * S; ctx.beginPath(); ctx.ellipse(X(SX + 5), Y(SY + 8), A * S, B * S, ph, a0, a1); ctx.stroke(); }
+      if (front) { ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 12 * S; ctx.beginPath(); ctx.ellipse(X(GX + 5), Y(GY + 8), A * S, B * S, ph, a0, a1); ctx.stroke(); }
       ctx.strokeStyle = front ? BRASS : L('#a88440', '#5e4a22', '#2a261c'); ctx.lineWidth = (front ? 12 : 9) * S;
-      ctx.beginPath(); ctx.ellipse(X(SX), Y(SY), A * S, B * S, ph, a0, a1); ctx.stroke();
-      if (front) { ctx.strokeStyle = BRASS_HI; ctx.lineWidth = 3 * S; ctx.beginPath(); ctx.ellipse(X(SX), Y(SY), (A - 3) * S, Math.max(1, B - 3) * S, ph, a0, a1); ctx.stroke(); }
+      ctx.beginPath(); ctx.ellipse(X(GX), Y(GY), A * S, B * S, ph, a0, a1); ctx.stroke();
+      if (front) { ctx.strokeStyle = BRASS_HI; ctx.lineWidth = 3 * S; ctx.beginPath(); ctx.ellipse(X(GX), Y(GY), (A - 3) * S, Math.max(1, B - 3) * S, ph, a0, a1); ctx.stroke(); }
       if (on) {
         const u = now * (i ? 0.9 : -0.7) + i * 2;
         if ((Math.sin(u) > 0) === front) {
-          const ex = Math.cos(u) * A, ey = Math.sin(u) * B, bx = SX + ex * Math.cos(ph) - ey * Math.sin(ph), by = SY + ex * Math.sin(ph) + ey * Math.cos(ph);
+          const ex = Math.cos(u) * A, ey = Math.sin(u) * B, bx = GX + ex * Math.cos(ph) - ey * Math.sin(ph), by = GY + ex * Math.sin(ph) + ey * Math.cos(ph);
           ctx.globalCompositeOperation = 'lighter'; glow(bx, by, 54, ACC, 0.8); dot(bx, by, 7, '#ffffff');
         }
       }
       ctx.restore();
     };
+    // Rendered, the far halves would show through the solid globe: only the
+    // part outside it is drawn.
+    if (HS) { ctx.save(); ctx.beginPath(); ctx.rect(X(GX - 400), Y(GY - 400), 800 * S, 800 * S); ctx.arc(X(GX), Y(GY), GR * S, 0, TAU); ctx.clip('evenodd'); }
     armil(0, false); armil(1, false);
+    if (HS) ctx.restore();
+    if (!HS) {
     // The globe: a dark glass sphere, lit from the north-west.
     dot(SX + 8, SY + 12, GR + 2, 'rgba(0,0,0,0.35)');
     const gg = ctx.createRadialGradient(X(SX - 60), Y(SY - 66), 8 * S, X(SX), Y(SY), GR * S);
@@ -13280,22 +13739,23 @@ function renderMeridianStation(e, px, py, t) {
     ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(X(SX), Y(SY), GR * S, 0, Math.PI * 2); ctx.fill();
     arc(SX, SY, GR - 2, L('rgba(170,210,250,0.5)', 'rgba(110,160,220,0.35)', 'rgba(255,255,255,0.06)'), 4);
     ell(SX - 66, SY - 78, 56, 28, L('rgba(255,255,255,0.22)', 'rgba(200,230,255,0.10)', 'rgba(255,255,255,0.03)'), -0.75);
+    }
     if (on) {
       // The globe itself is a hologram: a wireframe sphere of meridians and
       // parallels, tipped toward the viewer and turning, with three sparks
       // of power riding its surface.
       const HR = GR * 0.9, rot = now * (0.25 + 0.55 * live), ct = Math.cos(0.5), st = Math.sin(0.5);
-      const pt = (lat, lon) => { const cl = Math.cos(lat), y = Math.sin(lat), z = cl * Math.cos(lon); return [SX + cl * Math.sin(lon) * HR, SY - (y * ct - z * st) * HR]; };
+      const pt = (lat, lon) => { const cl = Math.cos(lat), y = Math.sin(lat), z = cl * Math.cos(lon); return [GX + cl * Math.sin(lon) * HR, GY - (y * ct - z * st) * HR]; };
       const N = detail ? 24 : 12, TAU = Math.PI * 2;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      glow(SX, SY, GR * 1.1, ACC, 0.22 + 0.25 * live);
+      glow(GX, GY, GR * 1.1, ACC, 0.22 + 0.25 * live);
       ctx.strokeStyle = `rgba(${ACC},${(0.5 + 0.4 * live).toFixed(3)})`; ctx.lineWidth = 2.6 * S; ctx.lineJoin = 'round';
       ctx.beginPath();
       for (let m = 0; m < (detail ? 6 : 3); m++) for (let s2 = 0; s2 <= N; s2++) { const [qx, qy] = pt(s2 / N * TAU, rot + m / (detail ? 6 : 3) * Math.PI); s2 ? ctx.lineTo(X(qx), Y(qy)) : ctx.moveTo(X(qx), Y(qy)); }
       for (const lat of [-1.0, -0.5, 0, 0.5, 1.0]) for (let s2 = 0; s2 <= N; s2++) { const [qx, qy] = pt(lat, s2 / N * TAU); s2 ? ctx.lineTo(X(qx), Y(qy)) : ctx.moveTo(X(qx), Y(qy)); }
       ctx.stroke();
       ctx.strokeStyle = `rgba(235,250,255,${(0.35 + 0.4 * live).toFixed(3)})`; ctx.lineWidth = 4 * S;             // the rim
-      ctx.beginPath(); ctx.arc(X(SX), Y(SY), HR * S, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(X(GX), Y(GY), HR * S, 0, TAU); ctx.stroke();
       if (detail) for (let k2 = 0; k2 < 3; k2++) {
         const [qx, qy] = pt(Math.sin(now * 0.7 + k2 * 2.1) * 0.9, rot * 2.2 + k2 * 2.094);
         dot(qx, qy, 6, '#f4fcff'); glow(qx, qy, 34, ACC, 0.7);
@@ -13305,7 +13765,7 @@ function renderMeridianStation(e, px, py, t) {
         const a = -now * (0.5 + 1.6 * live) + k2 * 2.094;
         for (let j = 0; j < 7; j++) {
           ctx.strokeStyle = `rgba(${j ? ACC : '255,255,255'},${(0.9 * (1 - j / 7)).toFixed(3)})`; ctx.lineWidth = (12 - j) * S;
-          ctx.beginPath(); ctx.arc(X(SX), Y(SY), (SR - 45) * S, a + j * 0.07, a + (j + 1) * 0.07 + 0.005); ctx.stroke();
+          ctx.beginPath(); ctx.arc(X(DX), Y(DY), (SR - 45) * S, a + j * 0.07, a + (j + 1) * 0.07 + 0.005); ctx.stroke();
         }
       }
       // Plasma arcing from the globe out to the ring: a couple when the
@@ -13315,8 +13775,12 @@ function renderMeridianStation(e, px, py, t) {
         ctx.strokeStyle = `rgba(225,245,255,${(0.6 + 0.4 * surgeK).toFixed(3)})`; ctx.lineWidth = 3 * S; ctx.beginPath();
         for (let b = 0; b < bolts; b++) {
           let a = Math.random() * TAU;
-          ctx.moveTo(X(SX + Math.cos(a) * HR), Y(SY + Math.sin(a) * HR));
-          for (let j = 1; j <= 6; j++) { a += (Math.random() - 0.5) * 0.22; const r = HR + (SR - 80 - HR) * j / 6; ctx.lineTo(X(SX + Math.cos(a) * r), Y(SY + Math.sin(a) * r)); }
+          ctx.moveTo(X(GX + Math.cos(a) * HR), Y(GY + Math.sin(a) * HR));
+          for (let j = 1; j <= 6; j++) {
+            a += (Math.random() - 0.5) * 0.22; const u = j / 6, r = HR + (SR - 80 - HR) * u;
+            const ox = GX + (DX - GX) * u, oy = GY + (DY - GY) * u;                        // out from the globe to the drum's rim
+            ctx.lineTo(X(ox + Math.cos(a) * r), Y(oy + Math.sin(a) * r));
+          }
         }
         ctx.stroke();
       }
@@ -13327,17 +13791,17 @@ function renderMeridianStation(e, px, py, t) {
     const coreK = on ? (0.25 + (NP && NP.complete ? 0.65 : 0.45) * xk) * sputter + surgeK * 0.7 + surgeFx * 0.6 + stageK * 0.8 + startK * 0.9 : 0;
     if (coreK > 0) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      glow(SX, SY, 520, ACC, 0.32 * coreK);
-      glow(SX, SY, 150, '255,255,255', 0.6 * Math.min(1, coreK));
+      glow(GX, GY, 520, ACC, 0.32 * coreK);
+      glow(GX, GY, 150, '255,255,255', 0.6 * Math.min(1, coreK));
       // the ring of light turning in the gap
       ctx.shadowColor = `rgba(${ACC},1)`; ctx.shadowBlur = 28 * S;
       ctx.strokeStyle = `rgba(${ACC},${Math.min(1, 0.4 + 0.5 * coreK).toFixed(3)})`; ctx.lineWidth = 10 * S;
       const a0 = _meridianRingA;
-      for (let k2 = 0; k2 < 3; k2++) { ctx.beginPath(); ctx.arc(X(SX), Y(SY), (GR + 42) * S, a0 + k2 * 2.094, a0 + k2 * 2.094 + 1.3); ctx.stroke(); }
+      for (let k2 = 0; k2 < 3; k2++) { ctx.beginPath(); ctx.arc(X(GX), Y(GY), (GR + 42) * S, a0 + k2 * 2.094, a0 + k2 * 2.094 + 1.3); ctx.stroke(); }
       ctx.restore();
       // The core's star: four long rays and four short, turning slowly and
       // stretching with the load.
-      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(X(SX), Y(SY)); ctx.rotate(now * 0.12);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(X(GX), Y(GY)); ctx.rotate(now * 0.12);
       for (let k2 = 0; k2 < 8; k2++) {
         const len = (k2 % 2 ? 150 : 300 + 60 * Math.sin(now * 2.3 + k2)) * (0.5 + 0.6 * Math.min(1.4, coreK)) * S, wd = (k2 % 2 ? 7 : 11) * S;
         const g = ctx.createLinearGradient(0, 0, len, 0);
@@ -13354,13 +13818,13 @@ function renderMeridianStation(e, px, py, t) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.setLineDash([110 * S, 34 * S]); ctx.lineDashOffset = now * 90 * S;
       ctx.strokeStyle = `rgba(${ACC},${(0.7 * Math.min(1, xk * 1.5) * sputter).toFixed(3)})`; ctx.lineWidth = 5 * S;
       const sweep = Math.PI * 2 * Math.min(1, xk * 1.25);
-      ctx.beginPath(); ctx.arc(X(SX), Y(SY), (SR + 50) * S, -Math.PI / 2, -Math.PI / 2 + sweep); ctx.stroke(); ctx.restore();
+      ctx.beginPath(); ctx.arc(X(DX), Y(DY), (SR + 50) * S, -Math.PI / 2, -Math.PI / 2 + sweep); ctx.stroke(); ctx.restore();
     }
     // Switching on: a flash off the core and a shockwave rolling out across
     // the station from the Spire.
     if (startK > 0) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      glow(SX, SY, 760, '255,255,255', 0.45 * startK * startK);
+      glow(GX, GY, 760, '255,255,255', 0.45 * startK * startK);
       const u = 1 - startK;
       for (let k2 = 0; k2 < 2; k2++) {
         const uk = Math.max(0, u - k2 * 0.18); if (uk <= 0) continue;
@@ -13369,23 +13833,53 @@ function renderMeridianStation(e, px, py, t) {
       }
       ctx.restore();
     }
-    dot(SX, SY, 46, on ? (gold ? '#fff0c8' : '#e0f6ff') : '#2a2c30');
+    dot(GX, GY, 46, on ? (gold ? '#fff0c8' : '#e0f6ff') : '#2a2c30');
+    // The needle's tip: an aviation light, and the station's light at night.
+    if (HS) {
+      const [nx, ny] = PA(HS.c[0], HS.c[1], HS.tip), bl = on && Math.sin(now * 2.4) > 0;
+      dot(nx, ny, 4, bl ? '#ff4030' : '#601810');
+      if (bl && night) glow(nx, ny, 50, '255,60,40', 0.55);
+      if (on) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(nx, ny + 30, 70, ACC, (night ? 0.3 : 0.12) + 0.2 * live); ctx.restore(); }
+    }
     // Stage progress round the rim.
     if (NP && !NP.complete && NP.stage >= 1 && on) {
       ctx.save(); ctx.lineCap = 'butt';
       ctx.strokeStyle = 'rgba(20,40,60,0.8)'; ctx.lineWidth = 16 * S;
-      ctx.beginPath(); ctx.arc(X(SX), Y(SY), (SR + 30) * S, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(X(DX), Y(DY), (SR + 30) * S, 0, Math.PI * 2); ctx.stroke();
       ctx.shadowColor = `rgba(${ACC},1)`; ctx.shadowBlur = 24 * S;
       ctx.strokeStyle = `rgba(${ACC},0.95)`; ctx.lineWidth = 12 * S;
-      ctx.beginPath(); ctx.arc(X(SX), Y(SY), (SR + 30) * S, -Math.PI / 2, -Math.PI / 2 + NP.progress * Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(X(DX), Y(DY), (SR + 30) * S, -Math.PI / 2, -Math.PI / 2 + NP.progress * Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
-    if (detail) text('HYPERION SPIRE', SX, SY + 516, 15, L('#c8d0d8', '#8a96a4', '#3a3c40'), 'Arial, sans-serif');
+    if (detail && HS) { const [lx, ly] = PA(HS.c[0], HS.c[1] - 21.6, 1.5); text('HYPERION SPIRE', lx, ly, 15, L('#e8eef4', '#b8c8d8', '#3a3c40'), 'Arial, sans-serif'); }   // on the drum's south wall
+    else if (detail) text('HYPERION SPIRE', SX, SY + 516, 15, L('#c8d0d8', '#8a96a4', '#3a3c40'), 'Arial, sans-serif');
   }
 
   // ── Pylons on the east edge: lattice towers seen from above, banded red
   // and white, a crossarm carrying three phases, an insulator glowing at each ──
   // lines from each bay's portal out to its pylon
+  if (HA && P.pylons >= 1) {
+    // Rendered: the three export pylons (one sprite), then each bay's three
+    // conductors sagging from its portal to the pylon's insulators, glowing
+    // with the export; the insulators lit and the peak beacons blinking.
+    const HP = HA.pyl, px0 = (2450 - 1280) / 20;
+    for (const [, qy] of PYL) hypSpr('hyp_pyl', HP.rect, px0, (800 - qy) / 20);
+    HA.yard.bays.forEach((bay, b) => {
+      const qyM = (800 - PYL[b][1]) / 20;
+      const span = bay.portal.map((p3, i) => [PA(...p3), PA(px0, qyM + HP.phases[i], HP.attach)]);
+      const sag = (a, c, t) => [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t + 34 * 4 * t * (1 - t)];
+      const wire = new Path2D();
+      for (const [a, c] of span) { for (let j = 0; j <= 10; j++) { const [x, y] = sag(a, c, j / 10); j ? wire.lineTo(X(x), Y(y)) : wire.moveTo(X(x), Y(y)); } }
+      ctx.strokeStyle = L('rgba(30,34,40,0.9)', 'rgba(170,180,192,0.6)', 'rgba(60,60,62,0.6)'); ctx.lineWidth = 2.5 * S; ctx.stroke(wire);
+      if (on && xk > 0.01) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(${ACC},${(0.25 + 0.4 * xk * sputter).toFixed(3)})`; ctx.lineWidth = 5 * S; ctx.stroke(wire); ctx.restore(); }
+      HP.phases.forEach(d => {
+        const [ix, iy] = PA(px0, qyM + d, HP.attach);
+        dot(ix, iy, 4.5, on ? `rgba(${ACC},0.95)` : '#26282a');
+        if (on) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(ix, iy, 60, ACC, (0.22 + 0.35 * live) * (night ? 1 : 0.5)); ctx.restore(); }
+      });
+      if (on) { const [tx, ty] = PA(px0, qyM, HP.top), bl = Math.sin(now * 3 + b * 2) > 0; dot(tx, ty, 4, bl ? '#ff4030' : '#601810'); if (bl && night) glow(tx, ty, 40, '255,60,40', 0.5); }
+    });
+  } else {
   if (P.pylons >= 1 && P.yard >= 1) {
     for (const [c, w, o] of [['rgba(0,0,0,0.2)', 4, 9], [L('rgba(30,34,40,0.9)', 'rgba(170,180,192,0.6)', 'rgba(60,60,62,0.6)'), 3, 0]]) {
       ctx.strokeStyle = c; ctx.lineWidth = w * S;
@@ -13419,6 +13913,7 @@ function renderMeridianStation(e, px, py, t) {
       glow(qx, qy, 130, ACC, (0.22 + 0.35 * live) * (night ? 1 : 0.45));
       for (const e2 of [-92, 92]) { const bl = Math.sin(now * 3 + qy + e2) > 0; dot(qx, qy + e2, 5, bl ? '#ff4030' : '#601810'); if (bl && night) glow(qx, qy + e2, 40, '255,60,40', 0.5); }
     }
+  }
   }
 
   // Trucks on the access road once the pad is down.
@@ -13470,14 +13965,21 @@ function renderMeridianStation(e, px, py, t) {
     else if (NP.standby) { msg = 'STANDING BY · INITIATE FROM THE DOSSIER'; col = Math.sin(now * 2) > 0 ? '#ffd060' : '#c8a040'; }
     else { msg = `EXPORTING ${(NP.exportKW / 1000).toFixed(0)} MW · ${Math.ceil(NP.hoursLeft)}H TO GO`; col = gold ? '#ffe0a0' : '#8ad8ff'; }
     ctx.font = `bold ${32 * S}px Arial, sans-serif`;
-    const w = ctx.measureText(msg).width / S, size = w > 520 ? 32 * 520 / w : 32;
-    text(msg, CX0 + CW / 2 - 20, CY0 + 76, size, col, 'Arial, sans-serif');
+    const w = ctx.measureText(msg).width / S;
+    if (HA) {                                                                               // on the rendered board, raked over the roof
+      const [b0, b1, b2] = HA.ctrl.board.map(p => PA(...p)), bw = (b1[0] - b0[0]) * 0.92, bh = b0[1] - b2[1];
+      const size = Math.min(bh * 0.5, w > bw ? 32 * bw / w : 32);
+      text(msg, (b0[0] + b1[0]) / 2, (b0[1] + b2[1]) / 2, size, col, 'Arial, sans-serif');
+    } else {
+      const size = w > 520 ? 32 * 520 / w : 32;
+      text(msg, CX0 + CW / 2 - 20, CY0 + 76, size, col, 'Arial, sans-serif');
+    }
   }
 
   // After dark, searchlights at the four corners sweep in across the pad.
   if (on && night && build >= 1 && detail) {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    [[70, 70], [AW - 70, 70], [70, 1430], [AW - 70, 1430]].forEach(([cx, cy], k) => {
+    (HA ? HA.pad.lights.map(p => PA(...p)) : [[70, 70], [AW - 70, 70], [70, 1430], [AW - 70, 1430]]).forEach(([cx, cy], k) => {
       const a = Math.atan2(SY - cy, SX - cx) + Math.sin(now * 0.45 + k * 1.7) * 0.55, len = 1250, wd = 0.07;
       const g = ctx.createRadialGradient(X(cx), Y(cy), 0, X(cx), Y(cy), len * S);
       g.addColorStop(0, `rgba(${ACC},${(0.08 + 0.06 * live).toFixed(3)})`); g.addColorStop(1, `rgba(${ACC},0)`);
@@ -13503,7 +14005,7 @@ function renderMeridianStation(e, px, py, t) {
     for (let j = 1; j < n; j++) { const u = j / n, o = (Math.random() - 0.5) * 2 * jit * Math.sin(u * Math.PI); ctx.lineTo(X(x0 + dx * u + nx * o), Y(y0 + dy * u + ny * o)); }
     ctx.lineTo(X(x1), Y(y1)); ctx.stroke();
   };
-  const OBEL = k => { const a = (k + 0.5) / 8 * TAU; return [SX + Math.cos(a) * 527, SY + Math.sin(a) * 527, a]; };
+  const OBEL = k => { const a = (k + 0.5) / 8 * TAU; if (HA) { const [ox, oy] = PA(...HA.plaza.obelisks[k]); return [ox, oy, Math.atan2(oy - SY, ox - SX)]; } return [SX + Math.cos(a) * 527, SY + Math.sin(a) * 527, a]; };
   if (NP && NP.stage === 1 && on && build >= 1) {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     if (spinUp) {
@@ -13683,7 +14185,10 @@ function renderMeridianLines(t) {
   const HOLD = 0.15;                                          // fraction of LEN at full strength
   const fade = u => { const v = Math.max(0, (u - HOLD) / (1 - HOLD)); return v >= 1 ? 0 : (1 - v) * (1 - v); };
   const PULSES = Math.round(5 * LEN / 4800), SPEED = 0.22 * 4800 / LEN;   // the same spacing and pace as on the old, short lines
-  const PYL = [[2450, 260], [2450, 640], [2450, 1020]];
+  // Rendered pylons carry the lines on insulators ~19 m up, which shows that
+  // much higher up the screen: the lines leave from there.
+  const lift = HyperionArt.ready() ? HYP_LAYOUT.pyl.attach * Math.tan(Math.PI / 6) * 20 : 0;
+  const PYL = [[2450, 260], [2450, 640], [2450, 1020]].map(([x, y]) => [x, y - lift]);
   const now = t, z = Camera.zoom;
   const vw = window.innerWidth / z, vh = window.innerHeight / z;
   ctx.save();
@@ -13694,7 +14199,7 @@ function renderMeridianLines(t) {
     const W = (e.width || EntityDefs[T.NATIONALGRID].width) * TILE, H = (e.height || EntityDefs[T.NATIONALGRID].height) * TILE;
     const kx = W / (AW * S), ky = H / (AH * S);              // the sprite's own stretch
     const px = e.col * TILE, py = e.row * TILE;
-    const x0 = px + 2450 * S * kx, x1 = px + (2450 + LEN) * S * kx, pad = 60 * S * ky;
+    const x0 = px + 2450 * S * kx, x1 = px + (2450 + LEN) * S * kx, pad = (60 + lift) * S * ky;
     if (x1 < Camera.x || x0 > Camera.x + vw || py + H + pad < Camera.y || py - pad > Camera.y + vh) continue;
     // How far the power has got along the lines (NationalProject._xUpdate):
     // switched on, a bright front runs out from the pylons and the line is
@@ -13780,4 +14285,252 @@ function renderAirportFlights(t) {
   }
   ctx.globalAlpha = 1;
   ctx.restore();
+}
+
+
+/* ── Gas Station, rendered (scripts/render_civic2.py gas) ──
+   Forecourt, fuel-oil tank, mart, canopy and pump islands are the sprite;
+   live: the tank gauge, the lit mart window with its shelves (clipped
+   behind the canopy), OPEN sign, door glow, the MART / GAS STATION /
+   price boards, canopy LED strip, pump screens and bands (green while a
+   truck is filling), fuel running down the hoses, island light pools at
+   night, and the FUEL IN pipe on the left face. Default size only. */
+const CIV2_LAYOUT = {"gas":{"gauge":[-0.76,-0.64,1.05,0.55,1.75],"martSign":[[2.0,0.06,2.28],[4.1,0.06,2.28],[2.0,0.06,2.82]],"glass":[0.7,4.2,0.1,0.2,2.1],"door":[4.9,0.1,1.05],"openSign":[1.65,0.09,0.65],"canopySign":[[-2.2,-2.55,2.7],[2.2,-2.55,2.7],[-2.2,-2.55,3.2]],"canopyLed":[-5.3,5.3,-2.56,2.56],"canopyTop":[0,-0.5,3.14],"pumps":[{"screen":[-3.95,-3.25,-3.28,1.12,1.58],"band":[-3.6,-3.28,1.85],"hose":[[-3.1,-3.0,1.5],[-2.95,-3.3,0.6]],"light":[-3.6,-3.0,0.2]},{"screen":[-0.35,0.35,-3.28,1.12,1.58],"band":[0.0,-3.28,1.85],"hose":[[0.5,-3.0,1.5],[0.65,-3.3,0.6]],"light":[0.0,-3.0,0.2]},{"screen":[3.25,3.95,-3.28,1.12,1.58],"band":[3.6,-3.28,1.85],"hose":[[4.1,-3.0,1.5],[4.25,-3.3,0.6]],"light":[3.6,-3.0,0.2]}],"price":[[4.9,-3.59,2.28],[5.8,-3.59,2.28],[4.9,-3.59,3.02]],"frame":[-6,6,-5,5],"rect":[-6.3,7.941,-7.331,7.725]},"coalw":{"aerator":[-4.075,-4.55,0.74,0.35],"pond":[-7.0,-2.4,-6.0,-3.1,0.53],"cell":[-0.9,6.7,-5.8,-3.5,0.73],"hallDoor":[-4.7,1.04,1.6],"hallWins":[[-6.75,1.06,2.2],[-2.65,1.06,2.2]],"officeWins":[[-3.8,-1.65,1.4],[-2.9,-1.65,1.4]],"burner":[6.4,1.8,1.5],"kiln":[-0.7,5.5,1.8,1.5,0.78],"cells":[[0.163,5.25,3.82],[1.188,5.25,3.82],[2.213,5.25,3.82],[3.238,5.25,3.82],[0.163,4.25,3.82],[1.188,4.25,3.82],[2.213,4.25,3.82],[3.238,4.25,3.82]],"stack":[6.4,3.1,7.05],"silos":[[0.5,-1.3,4.0],[2.8,-1.3,4.0]],"gauge":[4.32,4.48,-1.36,0.15,1.75],"frame":[-8,8,-7,7],"rect":[-8.3,11.112,-10.782,11.457],"dozerRect":[-1.3,1.769,-1.68,1.793],"ashRect":[-4.2,4.2,-1.6,1.889]},"oilw":{"clar":[-3.2,3.42,1.1,3.05],"digesters":[[4.16,5.58,2.85,1.5],[4.16,1.08,2.85,1.5]],"fans":[[-5.363,-3.63,3.62,0.55],[-2.477,-3.63,3.62,0.55]],"wins":[[-6.778,-6.178,-6.71,1.48,1.92],[-5.598,-4.998,-6.71,1.48,1.92],[-4.417,-3.817,-6.71,1.48,1.92],[-3.236,-2.636,-6.71,1.48,1.92],[-2.055,-1.455,-6.71,1.48,1.92]],"gauge":[-0.32,-0.16,-4.2,0.2,2.2],"lagoon":[1.04,5.52,-7.34,-2.2,0.63],"flare":[6.96,-6.48,7.1],"frame":[-8,8,-9,9],"rect":[-8.3,11.151,-12.83,13.515]},"cc":{"fans":[[-8.25,6.3,3.62,0.78],[-6.05,6.3,3.62,0.78],[-3.85,6.3,3.62,0.78],[-1.65,6.3,3.62,0.78],[0.55,6.3,3.62,0.78],[2.75,6.3,3.62,0.78],[-8.25,2.8,3.62,0.78],[-6.05,2.8,3.62,0.78],[-3.85,2.8,3.62,0.78],[-1.65,2.8,3.62,0.78],[0.55,2.8,3.62,0.78],[2.75,2.8,3.62,0.78]],"catwalk":[-8.9,2.8,4.05,1.7],"desorber":[5.3,1.5,9.7],"jacket":[5.3,0.82,4.7],"cyls":[[7.7,7.8,1.09,1.1,6.1],[8.55,8.65,1.09,1.1,6.1],[9.4,9.5,1.09,1.1,6.1]],"hallVents":[[-2.8,-1.9,4.0],[1.4,-1.9,4.0]],"hallSign":[[-2.7,-5.55,2.84],[1.3,-5.55,2.84],[-2.7,-5.55,3.26]],"hallWins":[[-3.0,-5.55,1.4],[-1.467,-5.55,1.4],[0.067,-5.55,1.4],[1.6,-5.55,1.4]],"wins":[[-8.75,-4.65,2.2],[-7.99,-4.65,2.2],[-7.23,-4.65,2.2],[-6.47,-4.65,2.2],[-5.71,-4.65,2.2],[-4.95,-4.65,2.2]],"door":[-6.85,-4.66,1.0],"board":[[-9.15,-6.42,0.26],[-4.55,-6.42,0.26],[-9.15,-5.381,0.86]],"well":[5.6,-5.1,0.2],"frame":[-10,10,-8,8],"rect":[-10.3,14.167,-13.088,14.016]}};
+function _civText(F, pts, txt, col, bold = true) {
+  const [b0, b1, b2] = pts.map(p => F.P(...p)), x = b0[0], y = b2[1], w = b1[0] - b0[0], h = b0[1] - b2[1];
+  if (w < 4) return;
+  let fs = h * 0.8; ctx.font = `${bold ? 'bold ' : ''}${fs.toFixed(1)}px Arial, sans-serif`;
+  const tw = ctx.measureText(txt).width; if (tw > w * 0.92) { fs *= w * 0.92 / tw; ctx.font = `${bold ? 'bold ' : ''}${fs.toFixed(1)}px Arial, sans-serif`; }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = col; ctx.fillText(txt, x + w / 2, y + h / 2 + fs * 0.04);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+function _gasArt(e, px, py, t) {
+  const L = CIV2_LAYOUT.gas, F = _anFrame(e, px, py), { P, M } = F, w = F.W, u = w / 240;
+  const on = !!e.powered, night = DayNight.darkness() > 0.35;
+  const fill = Math.min(1, (e._fuelStored || 0) / (EntityDefs[T.GASSTATION].storageCapacity || 400));
+  const PUMPS = [48, 120, 192], active = new Set();
+  for (const trk of EntityRegistry.getByType(T.TRUCK)) {
+    if (trk._refuelTarget !== e) continue;
+    const tx = ((trk._wx || trk.col * TILE) + TILE / 2 - px) / u; let best = 0;
+    PUMPS.forEach((p, i) => { if (Math.abs(p - tx) < Math.abs(PUMPS[best] - tx)) best = i; }); active.add(best);
+  }
+  ctx.save();
+  F.draw(AdvNukeArt.get('gas_base'), L.rect);
+  // the mart window: lit shelves, clipped behind the canopy
+  { const [g0, g1, gy, z0, z1] = L.glass, [ax, ay] = P(g0, gy, z1), [bx, by] = P(g1, gy, z0), cTop = P(...L.canopyTop)[1];
+    ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, bx - ax, Math.min(by, cTop) - ay); ctx.clip();
+    if (on) { ctx.fillStyle = 'rgba(244,230,190,0.75)'; ctx.fillRect(ax, ay, bx - ax, by - ay);
+      const SH = ['#c8403a', '#3a78c0', '#e0b030', '#4a9a5a', '#8a5ac0'], cw = (bx - ax) / 9, rh = (by - ay) / 4;
+      for (let r = 0; r < 3; r++) for (let k = 0; k < 9; k++) { ctx.fillStyle = SH[(k + r * 2) % SH.length]; ctx.fillRect(ax + k * cw + cw * 0.15, ay + rh * (0.5 + r), cw * 0.7, rh * 0.55); }
+      if (night) { ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = 'rgba(255,230,170,0.25)'; ctx.fillRect(ax, ay, bx - ax, by - ay); } }
+    ctx.restore(); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const cTop = P(...L.canopyTop)[1];   // anything lower on screen is behind the canopy
+  { const [dx, dy] = P(...L.door); if (dy < cTop) _anGlow(dx, dy, 0.6 * M, '255,236,190', on ? (night ? 0.6 : 0.2) : 0); }
+  if (on) { const [ox, oy] = P(...L.openSign); if (oy < cTop) _anGlow(ox, oy, 0.5 * M, '255,80,90', 0.5 + 0.2 * Math.sin(t * 3)); }
+  { const [c0, c1, cy, cz] = L.canopyLed, [ax, ay] = P(c0, cy, cz), [bx] = P(c1, cy, cz);
+    ctx.fillStyle = on ? (active.size ? `rgba(90,220,120,${(0.6 + 0.25 * Math.sin(t * 4)).toFixed(3)})` : `rgba(255,250,230,${night ? 0.9 : 0.6})`) : 'rgba(0,0,0,0)';
+    ctx.fillRect(ax, ay - 0.04 * M, bx - ax, 0.08 * M); }
+  if (on && night) L.pumps.forEach(p => { const [lx, ly] = P(...p.light); _anGlow(lx, ly, 2.0 * M, '255,248,225', 0.3); });
+  ctx.restore();
+  // pumps: screens, status bands, fuel down the hose
+  L.pumps.forEach((p, i) => {
+    const pumping = on && active.has(i), [s0, s1, sy, z0, z1] = p.screen, [ax, ay] = P(s0, sy, z1), [bx, by] = P(s1, sy, z0);
+    if (on) { ctx.font = `bold ${Math.max(4, (by - ay) * 0.4).toFixed(1)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = pumping ? '#60ff90' : '#ffb040'; ctx.fillText(pumping ? 'PUMP' : 'READY', (ax + bx) / 2, (ay + by) / 2); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; }
+    const [kx, ky] = P(...p.band); ctx.fillStyle = pumping ? '#3aa050' : '#c8322a'; ctx.fillRect(kx - 0.48 * M, ky - 0.05 * M, 0.96 * M, 0.1 * M);
+    if (pumping) { const [h0, h1] = p.hose.map(q => P(...q)); for (let k = 0; k < 4; k++) { const f = (t * 1.2 + k / 4) % 1;
+      ctx.fillStyle = '#ffc040'; ctx.beginPath(); ctx.arc(h0[0] + (h1[0] - h0[0]) * f, h0[1] + (h1[1] - h0[1]) * f, Math.max(0.8, 0.05 * M), 0, Math.PI * 2); ctx.fill(); } }
+  });
+  // tank gauge
+  { const [g0, g1, gy, z0, z1] = L.gauge, [ax, ay] = P(g0, gy, z1), [bx, by] = P(g1, gy, z0), gh = (by - ay) * fill;
+    ctx.fillStyle = fill < 0.15 ? (Math.sin(t * 6) > 0 ? '#e04020' : '#802010') : '#e0b020'; ctx.fillRect(ax, by - gh, bx - ax, gh); }
+  // the boards
+  _civText(F, L.martSign, 'MART', '#fff4dc');
+  _civText(F, L.canopySign, 'GAS STATION', '#fff4dc');
+  if (on) { const [p0, p1, p2] = L.price, mid = [(p0[0] + p1[0]) / 2, p0[1], (p0[2] + p2[2]) / 2];
+    _civText(F, [p0, [p1[0], p1[1], p1[2]], [p2[0], p2[1], mid[2]]], '3.52', '#ffb040');
+    _civText(F, [[p0[0], p0[1], mid[2]], [p1[0], p1[1], mid[2]], p2], '3.40', '#ffb040'); }
+  // FUEL IN on the left face, as the painted station
+  { const X = v => px + v * u, Y = v => py + v * u, conn = !!e._fuelConnected;
+    const ln = (x1, y1, x2, y2, c, lw) => { ctx.strokeStyle = c; ctx.lineWidth = lw * u; ctx.beginPath(); ctx.moveTo(X(x1), Y(y1)); ctx.lineTo(X(x2), Y(y2)); ctx.stroke(); };
+    const inlet = (yU, x1U, labelled) => {
+      ln(-15, yU, x1U, yU, conn ? '#5a4a30' : '#4a4640', 7); ln(-15, yU - 2, x1U, yU - 2, 'rgba(255,255,255,0.18)', 1.2);
+      if (conn && on) { ctx.save(); ctx.setLineDash([2.5 * u, 3.5 * u]); ctx.lineDashOffset = -t * 16 * u; ln(-15, yU, x1U, yU, '#ffc040', 2); ctx.restore(); }
+      for (const fx of [1, x1U - 2]) { ctx.fillStyle = conn ? '#7a6a50' : '#5e5a54'; ctx.fillRect(X(fx - 1.5), Y(yU - 6), 3 * u, 12 * u); }
+      if (labelled) { ctx.fillStyle = conn ? '#2a2010' : '#1e1c18'; ctx.fillRect(X(-1), Y(yU + 7), 20 * u, 7 * u);
+        ctx.font = `bold ${Math.max(4, Math.round(4.6 * u))}px Arial, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = conn ? '#ffc040' : '#8a7a5a'; ctx.fillText('FUEL IN', X(9), Y(yU + 10.6)); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; }
+    };
+    inlet(60, 23, true);
+    if (typeof GasStationPorts !== 'undefined' && GasStationPorts.legacyInUse(e)) inlet(100, 14, false); }
+  ctx.restore();
+}
+
+/* ── City Hall, rendered ─────────────────────────────────────────────────
+   The 15 hall styles built in Blender (scripts/render_cityhall.py, on the
+   houses' kit), authored at 3x (the 6x6 lot = 36 m) and drawn at 1/3:
+   hall_<style>.png, and hall_<style>_lit.png holding only the window glass,
+   lit, which is laid into each window by the same office / evening schedule
+   as the painted hall. HALL_ART_LAYOUT (the script's hall_layout.json, in
+   authored metres) places the live parts: the clock hands on game time, the
+   city flag on the mast and the forecourt poles, the name on the frieze,
+   lamps and floodlights after dark, visitors on the steps, the turbine,
+   saucer lights, aircraft beacon and pools. Until the sprites load (or with
+   image fills off, ghosted, or another size) the painted hall draws. */
+const HALL_ART_LAYOUT = {"beaux":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[-16.017,-15.117,-5.72,11.6,13.0,0],[-12.55,-11.65,-5.72,11.6,13.0,0],[-9.083,-8.183,-5.72,11.6,13.0,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[8.183,9.083,-5.72,11.6,13.0,0],[11.65,12.55,-5.72,11.6,13.0,0],[15.117,16.017,-5.72,11.6,13.0,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-0.3,0.3,3.3,28.8,29.8,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,35.05],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,14.814],[6.4,17.8,-7.0,14.814],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"gothic":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[-13.1,-11.1,-6.1,12.3,14.3,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[11.1,13.1,-6.1,12.3,14.3,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-0.18,0.18,1.18,26.15,27.05,1],[-0.18,0.18,1.78,29.15,30.05,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,39.85],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,16.892],[6.4,17.8,-7.0,16.892],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"deco":{"win":[[-16.48,-15.52,-6.0,2.2,5.2,0],[-16.48,-15.52,-6.0,6.8,9.5,0],[-13.88,-12.92,-6.0,2.2,5.2,0],[-13.88,-12.92,-6.0,6.8,9.5,0],[-11.28,-10.32,-6.0,2.2,5.2,0],[-11.28,-10.32,-6.0,6.8,9.5,0],[-8.68,-7.72,-6.0,2.2,5.2,0],[-8.68,-7.72,-6.0,6.8,9.5,0],[7.72,8.68,-6.0,2.2,5.2,0],[7.72,8.68,-6.0,6.8,9.5,0],[10.32,11.28,-6.0,2.2,5.2,0],[10.32,11.28,-6.0,6.8,9.5,0],[12.92,13.88,-6.0,2.2,5.2,0],[12.92,13.88,-6.0,6.8,9.5,0],[15.52,16.48,-6.0,2.2,5.2,0],[15.52,16.48,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-0.2,0.2,3.35,28.8,30.0,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[1.3,4.0,33.65],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,14.583],[6.4,17.8,-7.0,14.583],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"byzantine":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.485,-1.715,1.1,21.42,23.905,1],[-1.085,-0.315,1.1,21.42,23.905,1],[0.315,1.085,1.1,21.42,23.905,1],[1.715,2.485,1.1,21.42,23.905,1],[-1.72,-1.28,1.65,24.8,25.8,1],[-0.72,-0.28,1.65,24.8,25.8,1],[0.28,0.72,1.65,24.8,25.8,1],[1.28,1.72,1.65,24.8,25.8,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,34.45],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,14.583],[6.4,17.8,-7.0,14.583],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"modern":{"win":[[-16.5,-7.7,-4.0,1.2,3.6,0],[-16.8,-15.233,-6.12,4.4,7.0,0],[-15.233,-13.667,-6.12,4.4,7.0,0],[-13.667,-12.1,-6.12,4.4,7.0,0],[-12.1,-10.533,-6.12,4.4,7.0,0],[-10.533,-8.967,-6.12,4.4,7.0,0],[-8.967,-7.4,-6.12,4.4,7.0,0],[-16.8,-15.233,-6.12,7.6,10.2,0],[-15.233,-13.667,-6.12,7.6,10.2,0],[-13.667,-12.1,-6.12,7.6,10.2,0],[-12.1,-10.533,-6.12,7.6,10.2,0],[-10.533,-8.967,-6.12,7.6,10.2,0],[-8.967,-7.4,-6.12,7.6,10.2,0],[7.7,16.5,-4.0,1.2,3.6,0],[7.4,8.967,-6.12,4.4,7.0,0],[8.967,10.533,-6.12,4.4,7.0,0],[10.533,12.1,-6.12,4.4,7.0,0],[12.1,13.667,-6.12,4.4,7.0,0],[13.667,15.233,-6.12,4.4,7.0,0],[15.233,16.8,-6.12,4.4,7.0,0],[7.4,8.967,-6.12,7.6,10.2,0],[8.967,10.533,-6.12,7.6,10.2,0],[10.533,12.1,-6.12,7.6,10.2,0],[12.1,13.667,-6.12,7.6,10.2,0],[13.667,15.233,-6.12,7.6,10.2,0],[15.233,16.8,-6.12,7.6,10.2,0],[-7.0,-5.0,-6.05,1.2,5.6,1],[-7.0,-5.0,-6.05,5.6,9.2,0],[-7.0,-5.0,-6.05,9.2,12.0,0],[-5.0,-3.0,-6.05,1.2,5.6,1],[-5.0,-3.0,-6.05,5.6,9.2,0],[-5.0,-3.0,-6.05,9.2,12.0,0],[-3.0,-1.0,-6.05,1.2,5.6,1],[-3.0,-1.0,-6.05,5.6,9.2,0],[-3.0,-1.0,-6.05,9.2,12.0,0],[-1.0,1.0,-6.05,1.2,5.6,1],[-1.0,1.0,-6.05,5.6,9.2,0],[-1.0,1.0,-6.05,9.2,12.0,0],[1.0,3.0,-6.05,1.2,5.6,1],[1.0,3.0,-6.05,5.6,9.2,0],[1.0,3.0,-6.05,9.2,12.0,0],[3.0,5.0,-6.05,1.2,5.6,1],[3.0,5.0,-6.05,5.6,9.2,0],[3.0,5.0,-6.05,9.2,12.0,0],[5.0,7.0,-6.05,1.2,5.6,1],[5.0,7.0,-6.05,5.6,9.2,0],[5.0,7.0,-6.05,9.2,12.0,0],[-1.8,1.8,0.97,14.25,16.15,0],[-1.8,1.8,0.97,17.25,19.15,0],[-1.8,1.8,0.97,20.25,22.15,0],[-1.8,1.8,0.97,23.25,25.15,0],[-1.8,1.8,0.97,26.25,28.15,0]],"clock":[0,0.83,31.8,1.6],"name":[-4.0,4.0,-10.22,6.62,7.0],"mast":[2.6,4.0,38.05],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.3,-6.9,-6.0,13.428],[6.9,17.3,-6.0,13.428],[-8.4,8.4,-10.2,17.583],[-3,3,1.0,34.135]],"pools":[[-9.1,-2.5,-14.9,-13.1,0.36],[2.9,9.5,-14.9,-13.1,0.36]],"beacon":[-1.2,4.0,46.2]},"colonial":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-0.65,0.65,-8.9,12.75,14.05,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-1.38,-0.82,1.9,25.1,26.7,1],[-0.28,0.28,1.9,25.1,26.7,1],[0.82,1.38,1.9,25.1,26.7,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,35.95],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,14.929],[6.4,17.8,-7.0,14.929],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"chateau":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[-14.888,-13.888,-5.92,11.4,13.0,0],[-10.312,-9.312,-5.92,11.4,13.0,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[9.312,10.312,-5.92,11.4,13.0,0],[13.888,14.888,-5.92,11.4,13.0,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-0.6,0.6,-8.72,12.5,14.5,0],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-1.75,-1.05,1.28,25.55,26.85,1],[1.05,1.75,1.28,25.55,26.85,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,36.75],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,16.604],[6.4,17.8,-7.0,16.604],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"pagoda":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,37.3],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,15.16],[6.4,17.8,-7.0,15.16],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"mission":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-0.8,0.8,-8.55,14.1,15.7,1],[-2.485,-1.715,1.1,21.42,23.905,1],[-1.085,-0.315,1.1,21.42,23.905,1],[0.315,1.085,1.1,21.42,23.905,1],[1.715,2.485,1.1,21.42,23.905,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,31.75],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,14.352],[6.4,17.8,-7.0,14.352],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"solarpunk":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[-1.6,4.0,25.85],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,13.89],[6.4,17.8,-7.0,13.89],[-6.0,6.0,7.928,27.207],[-7.9,7.9,-9.2,19.315]],"turbine":[1.4,0.5,32.0,5.5]},"tudor":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.3,7.1,9.8,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.3,7.1,9.8,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.3,7.1,9.8,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.3,7.1,9.8,0],[-12.9,-11.3,-6.3,12.0,13.8,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.3,7.1,9.8,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.3,7.1,9.8,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.3,7.1,9.8,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.3,7.1,9.8,0],[11.3,12.9,-6.3,12.0,13.8,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-1.7,1.7,1.98,24.8,26.8,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[2.2,3.0,31.25],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,16.892],[6.4,17.8,-7.0,16.892],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"brutalist":{"win":[[-16.3,-7.9,-3.0,1.2,3.8,0],[-16.45,-15.75,-7.2,6.0,9.6,0],[-14.45,-13.75,-7.2,6.0,9.6,0],[-12.45,-11.75,-7.2,6.0,9.6,0],[-10.45,-9.75,-7.2,6.0,9.6,0],[-8.45,-7.75,-7.2,6.0,9.6,0],[7.9,16.3,-3.0,1.2,3.8,0],[7.75,8.45,-7.2,6.0,9.6,0],[9.75,10.45,-7.2,6.0,9.6,0],[11.75,12.45,-7.2,6.0,9.6,0],[13.75,14.45,-7.2,6.0,9.6,0],[15.75,16.45,-7.2,6.0,9.6,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-1.65,-1.15,0.58,21.8,25.0,1],[-0.25,0.25,0.58,21.8,25.0,1],[1.15,1.65,0.58,21.8,25.0,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,30.45],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-18.0,-6.2,-7.6,14.236],[6.2,18.0,-7.6,14.236],[-6.0,6.0,7.928,27.207],[-7.9,7.9,-9.2,19.315]]},"stave":{"win":[[-16.5,-15.5,-6.0,2.2,4.6,0],[-16.5,-15.5,-6.0,6.8,8.9,0],[-13.9,-12.9,-6.0,2.2,4.6,0],[-13.9,-12.9,-6.0,6.8,8.9,0],[-11.3,-10.3,-6.0,2.2,4.6,0],[-11.3,-10.3,-6.0,6.8,8.9,0],[-8.7,-7.7,-6.0,2.2,4.6,0],[-8.7,-7.7,-6.0,6.8,8.9,0],[7.7,8.7,-6.0,2.2,4.6,0],[7.7,8.7,-6.0,6.8,8.9,0],[10.3,11.3,-6.0,2.2,4.6,0],[10.3,11.3,-6.0,6.8,8.9,0],[12.9,13.9,-6.0,2.2,4.6,0],[12.9,13.9,-6.0,6.8,8.9,0],[15.5,16.5,-6.0,2.2,4.6,0],[15.5,16.5,-6.0,6.8,8.9,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1],[-0.98,-0.62,2.58,27.55,28.45,1],[-0.18,0.18,2.58,27.55,28.45,1],[0.62,0.98,2.58,27.55,28.45,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,40.75],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,17.181],[6.4,17.8,-7.0,17.181],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]]},"prairie":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[0,4.0,27.35],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,13.89],[6.4,17.8,-7.0,13.89],[-6.0,6.0,7.928,27.207],[-7.9,7.9,-9.2,19.315]]},"atomic":{"win":[[-16.75,-15.25,-6.0,2.2,5.2,0],[-16.75,-15.25,-6.0,6.8,9.5,0],[-14.15,-12.65,-6.0,2.2,5.2,0],[-14.15,-12.65,-6.0,6.8,9.5,0],[-11.55,-10.05,-6.0,2.2,5.2,0],[-11.55,-10.05,-6.0,6.8,9.5,0],[-8.95,-7.45,-6.0,2.2,5.2,0],[-8.95,-7.45,-6.0,6.8,9.5,0],[7.45,8.95,-6.0,2.2,5.2,0],[7.45,8.95,-6.0,6.8,9.5,0],[10.05,11.55,-6.0,2.2,5.2,0],[10.05,11.55,-6.0,6.8,9.5,0],[12.65,14.15,-6.0,2.2,5.2,0],[12.65,14.15,-6.0,6.8,9.5,0],[15.25,16.75,-6.0,2.2,5.2,0],[15.25,16.75,-6.0,6.8,9.5,0],[-1.0,1.0,-6.12,6.45,7.45,1],[-4.25,-2.95,-6.1,1.25,4.75,1],[2.95,4.25,-6.1,1.25,4.75,1],[-2.38,-1.353,1.1,21.42,24.033,1],[-0.513,0.513,1.1,21.42,24.033,1],[1.353,2.38,1.1,21.42,24.033,1]],"clock":[0,0.83,18.4,1.9],"name":[-4.0,4.0,-8.77,10.65,11.75],"mast":[3.8,4.0,34.75],"flags":[[-14.7,-15.6,7.9],[-12.9,-15.6,7.9],[12.9,-15.6,7.9],[14.7,-15.6,7.9]],"lamps":[[-11.2,-12.2,4.9],[-10.2,-12.2,5.3],[-9.2,-12.2,4.9],[9.2,-12.2,4.9],[10.2,-12.2,5.3],[11.2,-12.2,4.9]],"door":[0,-6.1,1.2],"masses":[[-17.8,-6.4,-7.0,15.391],[6.4,17.8,-7.0,15.391],[-6.0,6.0,7.928,29.228],[-7.9,7.9,-9.2,19.315]],"saucer":[0,4.0,31.9,4.4]},"_frame":{"frame":52.0,"off":5.5}};   // from render_cityhall.py (hall_layout.json)
+const HallArt = (() => {
+  const ims = new Map();
+  function get(name) {
+    let im = ims.get(name);
+    if (!im) { im = new Image(); im._bad = false; im.onerror = () => { im._bad = true; }; im.src = `img/${name}.png`; ims.set(name, im); }
+    return !im._bad && im.complete && im.naturalWidth ? im : null;
+  }
+  return { get };
+})();
+function _hallArt(e, px, py, t, style, flagId) {
+  if (!HALL_ART_LAYOUT || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  const L = HALL_ART_LAYOUT[style]; if (!L) return false;
+  const base = HallArt.get(`hall_${style}`), litIm = HallArt.get(`hall_${style}_lit`);
+  if (!base || !litIm) return false;
+  const W = TILE*6, cx = px + W/2, cy = py + W/2, K = 1/3;
+  const F = _cwFrame(HALL_ART_LAYOUT._frame, cx, cy, K, K), P = F.P, m = F.M*K;   // m: screen px per authored metre
+  const on = e.powered, hr = DayNight.hour(), dark = DayNight.darkness();
+  const office = on && hr >= 8 && hr < 17, evening = on && hr >= 17 && hr < 22, nightLit = on && dark > 0.3;
+  const clamp01 = v => Math.max(0, Math.min(1, v));
+  const hash = (k) => { const v = Math.sin((e.col||0)*12.9898 + (e.row||0)*78.233 + k*37.719)*43758.5453; return v - Math.floor(v); };
+  const zoomOK = Camera.zoom > 0.5;
+  ctx.save();
+  F.draw(base);
+  // Lit windows: the lit sprite, clipped to each window that's in use.
+  const sx = litIm.naturalWidth / F.fw, sy = litIm.naturalHeight / F.fh;
+  L.win.forEach(([x0, x1, y, z0, z1, g], i) => {
+    let a = 0;
+    if (g) a = nightLit ? 0.95 : (office ? 0.25 : 0);
+    else { const hv = hash(i + 1); if ((office && hv > 0.12) || (evening && hv > 0.72)) a = dark > 0.3 ? 0.95 : 0.4 + 0.05*Math.sin(t*1.2 + hv*9); }
+    if (a <= 0.01) return;
+    const [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+    const rx = ax - 0.5, ry = ay - 0.5, rw = bx - ax + 1, rh = by - ay + 1;
+    if (rw <= 0 || rh <= 0) return;
+    ctx.globalAlpha = a;
+    ctx.drawImage(litIm, (rx - F.fx)*sx, (ry - F.fy)*sy, rw*sx, rh*sy, rx, ry, rw, rh);
+  });
+  ctx.globalAlpha = 1;
+  // Night: floodlit facade, lamp standards, the door and the clock glowing.
+  if (nightLit && zoomOK) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (const fx of [-11, 0, 11]) { const [gx, gy] = P(fx, -6, 4); _anGlow(gx, gy, 9*m, '255,226,170', 0.18); }
+    for (const l of L.lamps) { const [lx, ly] = P(...l); _anGlow(lx, ly, 2.2*m, '255,214,140', 0.55); }
+    if (L.door) { const [dx, dy] = P(L.door[0], L.door[1], L.door[2] + 2.5); _anGlow(dx, dy, 3*m, '255,212,140', 0.35); }
+    if (L.clock) { const [kx, ky] = P(L.clock[0], L.clock[1], L.clock[2]); _anGlow(kx, ky, L.clock[3]*2.2*m, '255,236,180', 0.4); }
+    ctx.restore();
+  }
+  // Clock hands on game time, in the plane of the face.
+  if (L.clock && Camera.zoom > 0.3) {
+    const [kx, ky, kz, r] = L.clock;
+    const hand = (ang, len, w) => {
+      const [ax, ay] = P(kx, ky, kz), [bx, by] = P(kx + Math.sin(ang)*len, ky, kz + Math.cos(ang)*len);
+      ctx.strokeStyle = '#1e1a14'; ctx.lineWidth = Math.max(0.6, w*m); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.lineCap = 'butt';
+    };
+    if (nightLit) { const [ax, ay] = P(kx, ky, kz); ctx.fillStyle = 'rgba(255,244,214,0.55)'; ctx.beginPath(); ctx.ellipse(ax, ay, r*m, r*m*_CW_TAN, 0, 0, Math.PI*2); ctx.fill(); }
+    hand((hr % 12) * Math.PI/6, r*0.52, 0.16);
+    hand(((hr*60) % 60) * Math.PI/30, r*0.82, 0.1);
+  }
+  // The name on the frieze.
+  if (L.name && zoomOK) {
+    const [x0, x1, y, z0, z1] = L.name, [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0);
+    const col = { pagoda: '#e8c050', tudor: '#efe6d2', stave: '#e8cc90', modern: '#3a4652', brutalist: '#3a3a36', solarpunk: '#3e3424' }[style] || '#5a5242';
+    let fs = (by - ay)*0.85; ctx.font = `bold ${fs.toFixed(1)}px Georgia, serif`;
+    const tw = ctx.measureText('CITY HALL').width; if (tw > (bx - ax)*0.95) { fs *= (bx - ax)*0.95/tw; ctx.font = `bold ${fs.toFixed(1)}px Georgia, serif`; }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = col;
+    ctx.fillText('CITY HALL', (ax + bx)/2, (ay + by)/2 + fs*0.05);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+  // Waving flags: the city's design laid on in strips, each dropped by the
+  // wave at its own x, so the design rides the cloth.
+  const flag = ([x, y, z], wM, hM, ph) => {
+    if (typeof CityInfo === 'undefined' || Camera.zoom < 0.35) return;
+    const [fx, fy] = P(x, y, z), fw = wM*m, fh = hM*m, N = Camera.zoom > 0.8 ? 8 : 4;
+    for (let i = 0; i < N; i++) {
+      const s = (i + 0.5)/N, dy = Math.sin(t*2.4 + ph - s*3.2)*fh*0.14*s + s*fh*0.08;
+      ctx.save(); ctx.beginPath(); ctx.rect(fx + fw*i/N - 0.3, fy - fh, fw/N + 0.6, fh*3); ctx.clip();
+      CityInfo.drawFlag(ctx, flagId, fx, fy + dy, fw, fh);
+      ctx.restore();
+    }
+  };
+  if (L.mast) flag(L.mast, 3.4, 2.0, 0);
+  (L.flags || []).forEach((p, k) => flag(p, 2.4, 1.4, k*1.3));
+  // Style extras.
+  if (L.turbine) {
+    const [hx, hy, hz, r] = L.turbine, spin = on ? t*2.2 : 0.4, [ox, oy] = P(hx, hy, hz);
+    ctx.strokeStyle = '#f4f6f8'; ctx.lineWidth = Math.max(1, 0.35*m); ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) { const a = spin + k*Math.PI*2/3, [bx, by] = P(hx + Math.cos(a)*r, hy, hz + Math.sin(a)*r); ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(bx, by); ctx.stroke(); }
+    ctx.lineCap = 'butt'; ctx.fillStyle = '#c8ccd0'; ctx.beginPath(); ctx.arc(ox, oy, 0.4*m, 0, Math.PI*2); ctx.fill();
+  }
+  if (L.saucer && on) {
+    const [sx0, sy0, sz0, sr] = L.saucer;
+    for (let k = 0; k < 9; k++) {
+      const a = Math.PI + (k + 0.5)*Math.PI/9, [lx, ly] = P(sx0 + Math.cos(a)*sr, sy0 + Math.sin(a)*sr, sz0);
+      ctx.fillStyle = Math.sin(t*4 + k) > 0 ? '#fff4b0' : '#b23e33'; ctx.beginPath(); ctx.arc(lx, ly, Math.max(0.8, 0.2*m), 0, Math.PI*2); ctx.fill();
+    }
+  }
+  if (L.beacon) { const [bx, by] = P(...L.beacon), lit = on && Math.sin(t*3) > 0;
+    ctx.fillStyle = lit ? '#ff3a30' : '#6a2a26'; ctx.beginPath(); ctx.arc(bx, by, Math.max(0.8, 0.3*m), 0, Math.PI*2); ctx.fill();
+    if (lit && dark > 0.2) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(bx, by, 1.6*m, '255,60,40', 0.5); ctx.restore(); } }
+  if (L.pools) for (const [x0, x1, y0, y1, z] of L.pools) {
+    const [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z);
+    const wg = ctx.createLinearGradient(0, ay, 0, by);
+    if (nightLit) { wg.addColorStop(0, '#1d6a86'); wg.addColorStop(1, '#2fa6c8'); } else { wg.addColorStop(0, '#3e7fa6'); wg.addColorStop(1, '#7cc0dc'); }
+    ctx.fillStyle = wg; ctx.fillRect(ax, ay, bx - ax, by - ay);
+    if (typeof BldWater !== 'undefined') BldWater.draw(ctx, 'rect', ax, ay, bx - ax, by - ay, t, { depth: 0.4, glow: nightLit ? '120,210,240' : null });
+    if (on) for (let j = 0; j < 5; j++) {
+      const jx = x0 + (x1 - x0)*(j + 0.5)/5, hgt = 1.0 + Math.sin(t*3 + j*1.3 + x0)*0.25, [p0x, p0y] = P(jx, (y0 + y1)/2, z), [p1x, p1y] = P(jx, (y0 + y1)/2, z + hgt);
+      ctx.strokeStyle = 'rgba(235,248,255,0.85)'; ctx.lineWidth = Math.max(0.5, 0.08*m); ctx.beginPath(); ctx.moveTo(p0x, p0y); ctx.lineTo(p1x, p1y); ctx.stroke();
+    }
+  }
+  // Visitors climbing to the doors and strollers crossing the plaza, as the
+  // painted hall: 7 through office hours, 2 in the evening, fading in and out.
+  if (Camera.zoom > 0.35) {
+    const SKIN = ['#f0d0b0', '#c89870', '#8a5a3a', '#e0b890', '#6a4630', '#d8a878'];
+    const CLOTHES = ['#2a3040', '#3a3a3e', '#1e2a3a', '#5a3a2a', '#8a2a2a', '#2a5a7a', '#6a6a3a', '#c8b89a'];
+    const ramp = (a, b) => clamp01((hr - a)/0.5)*clamp01((b - hr)/0.5);
+    const visitors = on ? Math.max(7*ramp(8, 17), 2*ramp(16.5, 22)) : 0;
+    const DY = L.door ? L.door[1] : -6.1, walkers = [];
+    for (let p = 0; p < 7; p++) {
+      const present = clamp01(visitors - p); if (present <= 0) continue;
+      const cyc = (t*0.05 + hash(p + 60)) % 1, f = hash(p + 70) < 0.55 ? cyc : 1 - cyc;
+      const a = present*clamp01((1 - f)/0.012)*clamp01(f/0.1); if (a <= 0.01) continue;
+      const y = -17 + f*(DY + 17), z = y < -11 ? 0 : y > -8.7 ? 1.2 : (y + 11)/2.3*1.2;
+      const toDoor = clamp01((f - 0.7)/0.25), x = (-1.8 + hash(p + 80)*3.6 + Math.sin(f*5 + p)*0.3)*(1 - toDoor) + (-0.8 + hash(p + 80)*1.6)*toDoor;
+      walkers.push({ x, y, z, k: p, dir: 0, a });
+    }
+    const strollers = 1 + 3*clamp01((0.45 - dark)/0.2);
+    for (let p = 0; p < 4; p++) {
+      const present = clamp01(strollers - p); if (present <= 0) continue;
+      const dir = p % 2 ? -1 : 1, along = ((t*(0.012 + hash(p + 90)*0.008)*dir + hash(p + 95)) % 1 + 1) % 1;
+      const a = present*clamp01(along/0.06)*clamp01((1 - along)/0.06); if (a <= 0.01) continue;
+      walkers.push({ x: -17 + along*34, y: -12.5 - (p % 3)*1.4, z: 0, k: p + 20, dir, a });
+    }
+    walkers.sort((a, b) => b.y - a.y);
+    for (const w of walkers) {
+      const [wx, wy] = P(w.x, w.y, w.z), s = m*0.95, stride = Math.sin(t*7 + w.k*1.3);
+      ctx.globalAlpha = w.a;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(wx + 0.2*s, wy, 0.5*s, 0.2*s, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#1e1e22'; ctx.fillRect(wx - 0.3*s + stride*0.08*s, wy - 0.7*s, 0.22*s, 0.7*s); ctx.fillRect(wx + 0.06*s - stride*0.08*s, wy - 0.7*s, 0.22*s, 0.7*s);
+      ctx.fillStyle = CLOTHES[w.k % CLOTHES.length]; ctx.fillRect(wx - 0.36*s, wy - 1.75*s, 0.72*s, 1.1*s);
+      ctx.fillStyle = SKIN[w.k % SKIN.length]; ctx.beginPath(); ctx.arc(wx, wy - 2.05*s, 0.3*s, 0, Math.PI*2); ctx.fill();
+      if (w.k % 4 === 1) { ctx.fillStyle = '#4a3222'; ctx.fillRect(wx + (w.dir < 0 ? -0.8 : 0.36)*s, wy - 1.0*s, 0.44*s, 0.4*s); }
+    }
+    ctx.globalAlpha = 1;
+  }
+  // Without power: shade the hall's own masses, as the painted one.
+  if (!on) {
+    dimPainted('rgba(8,6,4,0.45)', L.masses.map(([x0, x1, v0, v1]) => [cx + x0*m, cy - v1*m, (x1 - x0)*m, (v1 - v0)*m]));
+    ctx.fillStyle = 'rgba(255,90,70,0.85)';
+    ctx.font = `bold ${Math.max(6, Math.round(1.6*m))}px Courier New`; ctx.textAlign = 'center';
+    ctx.fillText('NO POWER', cx, P(0, -15, 0)[1]); ctx.textAlign = 'left';
+  }
+  ctx.restore();
+  return true;
 }

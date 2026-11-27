@@ -1484,8 +1484,11 @@ const MenuSystem = (() => {
     c.fillStyle = '#6f8f58'; c.fillRect(0, 0, cv.width, cv.height);
     const saved = ctx;
     try {
-      const s = cv.width / (TILE*6 + 12);
-      c.setTransform(s, 0, 0, s, 6*s, 50*s);
+      // The rendered hall (HallArt) stands taller than the painted one: fit its spires in.
+      const art = typeof HALL_ART_LAYOUT !== 'undefined' && HALL_ART_LAYOUT && HallArt.get(`hall_${style}`) && HallArt.get(`hall_${style}_lit`);
+      const s = art ? Math.min(cv.width / (TILE*6 + 12), cv.height / (TILE*8.8)) : cv.width / (TILE*6 + 12);
+      if (art) c.setTransform(s, 0, 0, s, (cv.width - TILE*6*s) / 2, TILE*2.35*s);
+      else c.setTransform(s, 0, 0, s, 6*s, 50*s);
       ctx = c;
       renderGovBuilding({ width: 6, height: 6, powered: true, col: 3, row: 5, _hallStyle: style, _flag: cnFlag }, 0, 0, t);
     } catch (err) { console.warn('[CityNaming] hall preview failed', err); }

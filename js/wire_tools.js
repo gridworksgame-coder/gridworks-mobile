@@ -40,7 +40,7 @@ const WireRepairSelector = (() => {
     _repairing = true;
     _repairProgress = 0;
     _lastTickTime = performance.now();
-    showToast(`🔧 Repairing ${_selected.size} wire${_selected.size!==1?'s':''}... (${total.toLocaleString()})`, '#c06020', '#100800', '#503010');
+    showToast(`🔧 Repairing ${_selected.size} cable${_selected.size!==1?'s':''}... (${total.toLocaleString()})`, '#c06020', '#100800', '#503010');
     return true;
   }
 
@@ -60,7 +60,7 @@ const WireRepairSelector = (() => {
                                LightningDamageSystem.clearWireFire?.(e); });
       PowerNetwork.recomputeWireHops();
       if (typeof GridBreakWatch !== 'undefined') GridBreakWatch.noteChanged();
-      showToast(`✅ All wires repaired`, '#40c060', '#001408', '#0a4020');
+      showToast(`✅ All cables repaired`, '#40c060', '#001408', '#0a4020');
       _repairing = false;
       _repairProgress = 0;
       _selected.clear();
@@ -132,7 +132,7 @@ const WireInspector = (() => {
       bodyEl().innerHTML =
         netRow(deadReason ? `None: ${deadReason}` : 'None, not connected', 'bad') +
         (target.outOfRange
-          ? `<div class="wp-row"><span class="wp-label">Wire hops</span><span class="wp-val bad">OUT OF RANGE</span></div>`
+          ? `<div class="wp-row"><span class="wp-label">Cable hops</span><span class="wp-val bad">OUT OF RANGE</span></div>`
           : '');
     } else {
 
@@ -184,13 +184,13 @@ const WireInspector = (() => {
         LightningDamageSystem.clearWireFire?.(target);
         PowerNetwork.recomputeWireHops();
         if (typeof GridBreakWatch !== 'undefined') GridBreakWatch.noteChanged();
-        showToast('✅ Wire repaired', '#40c060', '#001408', '#0a4020');
+        showToast('✅ Cable repaired', '#40c060', '#001408', '#0a4020');
         refresh();
       });
       panel().appendChild(_rb);
     }
     if (target._weatherFailed && !WireRepairSelector.has(target)) {
-      _rb.textContent = `⚡ Repair Wire: $${WireRepairSelector.costPer()}`;
+      _rb.textContent = `⚡ Repair Cable: $${WireRepairSelector.costPer()}`;
       _rb.style.display = 'block';
     } else {
       _rb.style.display = 'none';

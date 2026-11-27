@@ -1605,7 +1605,7 @@ const WorldMapSystem = (() => {
     }
     if (!hit) return;
     const net = netOf.get(hit);
-    const name = EntityDefs[hit.type]?.label || 'Wire';
+    const name = EntityDefs[hit.type]?.label || 'Cable';
     const netTxt = net ? `Network ${net.num} · ${net.running ? 'running' : 'no power'}` : 'not connected';
     let label = `${name}: ${netTxt}`;
     if (hit.failed || hit._weatherFailed) label = `${name}: FAULTED · ${netTxt}`;
@@ -2125,7 +2125,7 @@ const WorldMapSystem = (() => {
         swatch: n.running ? 'line' : 'dash', color: n.hue,
         label: `Network ${n.num} · ${n.running ? 'running' : 'no power'}`, kind: 'powernet', type: n.id,
       }));
-      if (faulted) entries.push({ swatch: 'line', color: '#ff4040', label: 'Faulted wire', kind: 'powernet', type: 'fault', count: faulted });
+      if (faulted) entries.push({ swatch: 'line', color: '#ff4040', label: 'Faulted cable', kind: 'powernet', type: 'fault', count: faulted });
       // The dots along the lines, so they're named too.
       for (const t of [T.POLE, T.POWERTOWER]) {
         if (t === undefined || !EntityRegistry.getByType(t).size) continue;

@@ -732,7 +732,7 @@ const CoolingTowerSystem = (() => {
       return best;
     };
     const wire = nearest([...EntityRegistry.getByType(T.WIRE)].filter(w => w.failed));
-    if (wire) return { text: `A wire is broken at (${wire.col}, ${wire.row}): repair it to get the Water Extractors past it running again.`, at: wire, wire };
+    if (wire) return { text: `A cable is broken at (${wire.col}, ${wire.row}): repair it to get the Water Extractors past it running again.`, at: wire, wire };
     const ex = nearest([...EntityRegistry.getByType(T.WATEREXTRACTOR)].filter(x => !x.powered));
     if (ex) return { text: `The Water Extractor at (${ex.col}, ${ex.row}) has no power.`, at: ex };
     return { text: 'Its water supply ran short.', at: tower };

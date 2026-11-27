@@ -21,6 +21,7 @@
 const _GF_ACCENT = '#fff0c0';
 
 function renderGraphiteFurnace(e, px, py, t) {
+  if (typeof _cbOK !== 'undefined' && _cbOK(e, 'gf', 12, 8, ['gf_base', 'gf_crane', 'gf_block'])) return _gfArt(e, px, py, t);   // rendered (render_coke_oven.js)
   const def = EntityDefs[T.GRAPHITEFURNACE];
   const w = (e.width || def.width) * TILE, h = (e.height || def.height) * TILE;
   const on = !!e.powered, active = on && !!e._running;

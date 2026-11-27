@@ -35,6 +35,11 @@ function _fcPorts(px, py, h, S, t) {
     ctx.textBaseline = 'alphabetic';
   };
   const belt = (tx, label, connected, up, moving, cargo, trim, row = 0.9) => {
+    if (_portReady()) {
+      _portBeltArt({ face: 'bottom', x: tx, y: y0, dx: 0, dy: 1 }, S, t, { belt: trim, on: connected, out: !up, moving: connected && moving });
+      pill(label, tx, y1 - Math.max(9, S*8)*row, connected, trim);
+      return;
+    }
     const bw = S*16, x0 = tx - bw/2;
     ctx.fillStyle = connected ? trim : '#8a8a84';
     ctx.fillRect(x0 - S*1.5, y1, S*2, stubLen);
@@ -62,6 +67,11 @@ function _fcPorts(px, py, h, S, t) {
     pill(label, tx, y1 - Math.max(9, S*8)*row, connected, trim);
   };
   const pipe = (x, label, conn, lit, mid, dark, chevron, row = 2.5) => {
+    if (_portReady()) {
+      _portPipeArt({ face: 'bottom', x, y: y0, dx: 0, dy: 1 }, S, t, { fluid: lit, on: conn, out: /OUT/.test(label), flow: conn });
+      pill(label, x, y1 - Math.max(9, S*8)*row, conn, lit);
+      return;
+    }
     const bw = S*7;
     const g = ctx.createLinearGradient(x - bw/2, 0, x + bw/2, 0);
     g.addColorStop(0, conn ? dark : '#5a5c62'); g.addColorStop(0.45, conn ? mid : '#a8aab0'); g.addColorStop(1, conn ? dark : '#4a4c52');
@@ -97,6 +107,7 @@ function _fcBeltAt(stub) {
 // spools stack up with the tape buffer. Stands on a concrete yard
 // (SiteYard). Stubs: SuperconductorMillSystem.getStubs.
 function renderSuperconductorMill(e, px, py, t) {
+  if (_fcOK(e, 'scm', 12, 10, ['scm_base', 'scm_spool', 'hyp_fan'])) return _scmArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.SCMILL];
   const w = (e.width || def.width) * TILE, h = (e.height || def.height) * TILE;
   const on = !!e.powered, active = on && !!e._running;
@@ -269,6 +280,7 @@ function renderSuperconductorMill(e, px, py, t) {
 // drones land on the pad and trucks back up to the dock. Stands on a
 // concrete yard (SiteYard). Stub: CoreWorksSystem.getStubs.
 function renderCoreWorks(e, px, py, t) {
+  if (_fcOK(e, 'cw', 12, 10, ['cw_base', 'cw_crane', 'cw_core', 'cw_core_spent'])) return _cwArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.COREWORKS];
   const w = (e.width || def.width) * TILE, h = (e.height || def.height) * TILE;
   const on = !!e.powered, charging = on && !!e._charging;
@@ -786,5 +798,228 @@ function renderFieldCoreAura(e, cx, cy, R, outline, S, k, t) {
       }
     }
   }
+  ctx.restore();
+}
+
+
+/* ── The chain, rendered (scripts/render_fieldcore.py rem / lp / scm / cw) ──
+   Each plant's base sprite stands on the SiteYard; its bottom-face ports,
+   nameplate and lamp stay drawn live as before. Moving and stock-driven
+   parts are their own sprites: the dredge at 7 swing angles and the ore
+   carts (Rare Earth Mine), bulk bags and tailings drums (Leach Plant),
+   finished spools on the dispatch rack (Superconductor Mill), cores in the
+   test cells and the gantry crane (Core Works). Live: pond ripples and the
+   cutter's plume, the separator drum turning, the gamma monitor; the kiln's
+   burner, stack and calciner smoke, the thickener's rake, leach tank churn,
+   calciner ports, the hopper readout and tailings gauge; the deposition
+   chamber's plasma, the LN2 bath, vaporiser mist, chiller fans; mandrel
+   winding, cell charge rings and glow, busbars, capacitor lights, the drone
+   pad chase, the dock sign; lit windows after dark. Default sizes only;
+   ghosts and resized plants keep the painted art. */
+const FC_LAYOUT = {"rem":{"pond":[0.0,2.2,0.45,3.6,1.9],"dredge":[-0.288,2.01,0.46],"spirals":[[-3.075,-1.25,2.1],[-2.0,-1.25,2.1],[-0.925,-1.25,2.1]],"drum":[0.46,3.38,-1.4,0.75,0.42],"rail":[-3.52,3.52,-4.2,0.25],"gamma":[-3.36,-2.8,1.12],"frame":[-4,4,-5,5],"rect":[-4.3,5.316,-6.557,6.801],"dredges":[{"cutter":[-0.718,1.486,0.15],"win":[0.022,-0.045,0.62],"rect":[-1.7,1.7,-1.3,2.993]},{"cutter":[-0.488,1.576,0.15],"win":[0.015,-0.048,0.62],"rect":[-1.7,1.7,-1.3,2.993]},{"cutter":[-0.247,1.631,0.15],"win":[0.007,-0.049,0.62],"rect":[-1.7,1.7,-1.3,2.993]},{"cutter":[0.0,1.65,0.15],"win":[0.0,-0.05,0.62],"rect":[-1.7,1.7,-1.3,2.993]},{"cutter":[0.247,1.631,0.15],"win":[-0.007,-0.049,0.62],"rect":[-1.7,1.7,-1.3,2.993]},{"cutter":[0.488,1.576,0.15],"win":[-0.015,-0.048,0.62],"rect":[-1.7,1.7,-1.3,2.993]},{"cutter":[0.718,1.486,0.15],"win":[-0.022,-0.045,0.62],"rect":[-1.7,1.7,-1.3,2.993]}],"cartRect":[-0.85,1.162,-1.087,1.162]},"lp":{"burner":[1.7,5.5,1.5],"kiln":[-8.3,0.3,5.5,1.5,0.82],"stack":[4.0,7.76,7.15],"thick":[7.1,5.1,1.12,2.05],"pug":[-8.2,-5.4,3.0,4.0,1.32],"tanks":[[-2.9,0.24,2.3,0.98],[-0.3,0.24,2.3,0.98],[2.3,0.24,2.3,0.98]],"calPorts":[[-0.145,-3.88,0.75],[0.513,-3.88,0.75],[1.17,-3.88,0.75],[1.827,-3.88,0.75],[2.485,-3.88,0.75]],"calStack":[2.485,-2.5,2.8],"hopperBoard":[[4.15,-4.29,2.75],[5.75,-4.29,2.75],[4.15,-4.29,3.25]],"bags":[[-0.08,-4.8,0],[1.02,-4.8,0],[2.12,-4.8,0],[-0.08,-5.76,0],[1.02,-5.76,0],[2.12,-5.76,0]],"drums":[[7.35,-1.95,0.1],[8.23,-1.95,0.1],[9.11,-1.95,0.1],[7.35,-2.925,0.1],[8.23,-2.925,0.1],[9.11,-2.925,0.1],[7.35,-3.9,0.1],[8.23,-3.9,0.1],[9.11,-3.9,0.1],[7.35,-4.875,0.1],[8.23,-4.875,0.1],[9.11,-4.875,0.1],[7.35,-5.85,0.1],[8.23,-5.85,0.1],[9.11,-5.85,0.1]],"gauge":[9.14,9.38,-1.29,0.3,1.3],"mccWin":[[-7.87,0.6,1.8],[-7.87,-1.0,1.8],[-7.87,-2.6,1.8],[-7.87,-4.2,1.8]],"frame":[-10,10,-9,9],"rect":[-10.3,13.19,-12.879,13.572],"rakeRect":[-0.6,2.6,-0.7,0.787],"bagRect":[-0.8,1.249,-1.306,1.414],"drumRect":[-0.65,1.021,-1.109,1.198]},"scm":{"chamber":[-6.45,-0.15,4.7,5.02],"bath":[1.7,4.7,4.73],"reels":[[-8.6,4.7,4.7],[4.0,4.7,4.7]],"glaze":[-9.9,5.1,3.1,6.3,5.0],"strip":[-4.584,-0.216,8.2,5.16],"wins":[[-8.7,0.74,2.8],[-6.9,0.74,2.8],[-5.1,0.74,2.8],[-3.3,0.74,2.8],[-1.5,0.74,2.8],[0.3,0.74,2.8],[2.1,0.74,2.8],[3.9,0.74,2.8]],"slots":[[6.8,7.45,0.55],[8.6,7.45,0.55],[10.4,7.45,0.55],[6.8,5.75,0.55],[8.6,5.75,0.55],[10.4,5.75,0.55],[6.8,4.05,0.55],[8.6,4.05,0.55],[10.4,4.05,0.55],[6.8,2.35,0.55],[8.6,2.35,0.55],[10.4,2.35,0.55]],"rackLabel":[8.6,1.0,0],"vapor":[3.8,-2.05,3.0],"fans":[[6.7,-1.0,1.72,0.62],[8.6,-1.0,1.72,0.62],[10.5,-1.0,1.72,0.62]],"frame":[-12,12,-10,10],"rect":[-12.3,14.605,-13.153,13.706],"spoolRect":[-0.85,1.143,-1.213,1.283]},"cw":{"mandrel":[-8.575,-3.858,4.95,4.05,0.42],"wins":[[-9.238,1.04,2.6],[-7.313,1.04,2.6],[-5.388,1.04,2.6],[-3.463,1.04,2.6]],"cells":[{"c":[2.025,6.425,0.33],"lamp":[4.55,8.05,2.2]},{"c":[8.075,6.425,0.33],"lamp":[10.6,8.05,2.2]},{"c":[2.025,2.675,0.33],"lamp":[4.55,4.3,2.2]},{"c":[8.075,2.675,0.33],"lamp":[10.6,4.3,2.2]}],"crane":[-0.4,10.5,4.55,2.8],"spool":[-9.0,-1.3,0.72,1.3],"caps":[[-6.262,-4.492,0.9],[-5.401,-4.492,0.9],[-4.54,-4.492,0.9],[-3.679,-4.492,0.9]],"bus":[[[-5.2,-1.4,0.6],[-5.2,0.2,0.6],[0.4,0.2,0.6],[0.4,0.7,0.6]],[[-4.8,-1.4,0.6],[-4.8,-0.1,0.6],[6.4,-0.1,0.6],[6.4,0.7,0.6]]],"pad":[2.4,-2.7,0.24,2.14],"dockSign":[[7.3,-2.15,2.23],[9.9,-2.15,2.23],[7.3,-2.15,2.67]],"frame":[-12,12,-10,10],"rect":[-12.3,14.409,-12.911,13.418],"craneRect":[-0.9,1.095,-4.642,4.689],"coreRect":[-1.1,1.588,-1.705,1.822],"coreTop":[0,0,1.23],"coreSpentRect":[-1.1,1.588,-1.705,1.822]}};
+const _FC_TN = Math.tan(Math.PI / 6);
+function _fcOK(e, key, w, h, imgs) {
+  if (e._ghost || e.col !== e.col || !FC_LAYOUT || !FC_LAYOUT[key] || (e.width || w) !== w || (e.height || h) !== h) return false;
+  if (typeof AdvNukeArt === 'undefined' || typeof _amDraw === 'undefined' || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  for (const n of imgs) if (!AdvNukeArt.get(n)) return false;
+  return true;
+}
+const _fcSpr = (F, name, rect, x, y, z = 0, k = 1) => _amDraw(F, AdvNukeArt.get(name), rect, k, x, y + z * _FC_TN);
+function _fcNightWins(F, wins, on, rgb = '255,214,140') {
+  if (!on || DayNight.darkness() < 0.3) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  wins.forEach(([x, y, z]) => { const [wx, wy] = F.P(x, y, z); _anGlow(wx, wy, 0.6 * F.M, rgb, 0.45); });
+  ctx.restore();
+}
+function _fcText(F, x, y, z, txt, col, size) {
+  const [tx, ty] = F.P(x, y, z);
+  ctx.font = `bold ${Math.max(5, size * F.M).toFixed(1)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillText(txt, tx + 0.04 * F.M, ty + 0.04 * F.M);
+  ctx.fillStyle = col; ctx.fillText(txt, tx, ty);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+}
+
+// ── Rare Earth Mine ──
+function _remArt(e, px, py, t) {
+  const L = FC_LAYOUT.rem, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, w = F.W, h = F.H;
+  const dry = e._linkedDeposit && typeof isDepositExhausted === 'function' && isDepositExhausted(e._linkedDeposit);
+  const on = !!e.powered && !dry;
+  ctx.save();
+  F.draw(AdvNukeArt.get('rem_base'), L.rect);
+  const [dx, dy, dz] = L.dredge, sweep = on ? Math.sin(t * 0.6) * 0.45 : 0.1;
+  const k = Math.max(0, Math.min(6, Math.round((sweep + 0.45) / 0.9 * 6))), D = L.dredges[k];
+  // ripples and the turbid plume round the cutter
+  if (on) {
+    const [cx, cy] = P(dx + D.cutter[0], dy + D.cutter[1], dz);
+    ctx.save(); ctx.globalCompositeOperation = 'source-over';
+    const tg = ctx.createRadialGradient(cx, cy, 1, cx, cy, 0.7 * M); tg.addColorStop(0, 'rgba(200,130,80,0.55)'); tg.addColorStop(1, 'rgba(200,130,80,0)');
+    ctx.fillStyle = tg; ctx.beginPath(); ctx.ellipse(cx, cy, 0.7 * M, 0.45 * M, 0, 0, Math.PI * 2); ctx.fill();
+    const [rx, ry] = P(dx, dy, dz);
+    for (let q = 0; q < 3; q++) { const ph = (t * 0.4 + q / 3) % 1;
+      ctx.strokeStyle = `rgba(220,240,240,${(0.35 * (1 - ph)).toFixed(3)})`; ctx.lineWidth = Math.max(0.6, 0.04 * M);
+      ctx.beginPath(); ctx.ellipse(rx, ry, (0.6 + ph * 1.2) * M, (0.3 + ph * 0.6) * M, 0, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.restore();
+  }
+  _fcSpr(F, 'rem_dredge_' + k, D.rect, dx, dy, dz);
+  if (on) { const [wx, wy] = P(dx + D.win[0], dy + D.win[1], dz + D.win[2]); _amLed(wx, wy, 0.2 * M, '255,214,140', 0.55 + 0.2 * Math.sin(t * 3)); }
+  // separator drum turning
+  if (on) {
+    const [x0, x1, y, z, r] = L.drum, [ax, ay] = P(x0, y, z + r), [bx, by] = P(x1, y - r, z);
+    ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, bx - ax, by - ay); ctx.clip();
+    ctx.fillStyle = 'rgba(30,24,20,0.35)'; const st = 0.25 * M, off = (t * 0.7 * M) % st;
+    for (let x = ax - st + off; x < bx; x += st) ctx.fillRect(x, ay, st * 0.35, by - ay);
+    ctx.restore();
+    for (let q = 0; q < 4; q++) { const ph = (t * 1.4 + q / 4) % 1, [gx, gy] = P(x0 + (x1 - x0) * (q % 2 ? 0.25 : 0.75), y - r - 0.1, Math.max(0, z - r - ph * 0.4));
+      ctx.fillStyle = q % 2 ? '#2a2018' : '#e0884a'; ctx.beginPath(); ctx.arc(gx, gy, Math.max(0.8, 0.04 * M), 0, Math.PI * 2); ctx.fill(); }
+  }
+  // ore carts shuttling on the rail toward the OUT end
+  { const portRight = ((e._rotation || 0) % 2) === 0, [r0, r1, ry, rz] = L.rail;
+    const a = portRight ? r0 : r0 + 1.3, b = portRight ? r1 - 1.3 : r1, len = Math.max(0, b - a - 1.1);
+    [0, 0.5].forEach(off => { const ph = on ? ((t * 0.08 + off) % 1) : off * 0.6 + 0.15, tri = ph < 0.5 ? ph * 2 : 2 - ph * 2;
+      _fcSpr(F, 'rem_cart', L.cartRect, a + 0.55 + tri * len, ry, 0); }); }
+  { const [gx, gy] = P(...L.gamma), click = on && ((t * 2.2) % 1) < 0.25; _amLed(gx, gy, 0.15 * M, click ? '255,208,160' : '176,90,48', on ? (click ? 1 : 0.4) : 0); }
+  _wfPlate('RARE EARTH MINE', px + w * 0.50, py + h * 0.035, S, _RE_ACCENT, on);
+  _wfLamp(px + w - 7 * S, py + h * 0.50, S, t, _RE_ACCENT, on);
+  if (typeof RareEarthSystem !== 'undefined' && e.col !== undefined) _coalMineOutStub(e, px, py, w, h, t, on, null, RareEarthSystem.outputPort(e));
+  ctx.restore();
+}
+
+// ── Leach Plant ──
+function _lpArt(e, px, py, t) {
+  const L = FC_LAYOUT.lp, def = EntityDefs[T.LEACHPLANT], F = _anFrame(e, px, py), { P, M } = F, w = F.W, h = F.H;
+  const on = !!e.powered, active = on && !!e._running;
+  const oxFill = Math.min(1, (e._oxide || 0) / (def.oxideCapacity || 300)), tailFill = Math.min(1, (e._tailings || 0) / (def.tailingsCapacity || 100));
+  const S = (TILE / 40) * Math.max(1, Math.min(w / (8 * TILE), h / (7 * TILE)));
+  ctx.save();
+  F.draw(AdvNukeArt.get('lp_base'), L.rect);
+  // thickener rake bridge turning over the basin
+  { const [cx, cy, z, r] = L.thick, a = active ? t * 0.35 : 0.8, [ox, oy] = P(cx, cy, z), [ex, ey] = P(cx + Math.cos(a) * r, cy + Math.sin(a) * r, z);
+    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 0.32 * M; ctx.beginPath(); ctx.moveTo(ox + 0.1 * M, oy + 0.1 * M); ctx.lineTo(ex + 0.1 * M, ey + 0.1 * M); ctx.stroke();
+    ctx.strokeStyle = '#d8b030'; ctx.lineWidth = 0.26 * M; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.strokeStyle = '#6a5010'; ctx.lineWidth = 0.04 * M; ctx.setLineDash([0.12 * M, 0.18 * M]); ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke(); ctx.setLineDash([]);
+    const [hx, hy] = P(cx, cy, z + 0.75); ctx.fillStyle = '#2a6aa8'; ctx.beginPath(); ctx.arc(hx, hy, 0.15 * M, 0, Math.PI * 2); ctx.fill(); }
+  // leach tank churn
+  if (active) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = 'rgba(255,230,210,0.4)'; ctx.lineWidth = Math.max(0.6, 0.04 * M);
+    L.tanks.forEach(([cx, cy, z, r], i) => { const [tx, ty] = P(cx, cy, z);
+      for (let q = 0; q < 2; q++) { const a = t * 2.2 * (i % 2 ? -1 : 1) + q * Math.PI; ctx.beginPath(); ctx.ellipse(tx, ty, r * 0.55 * M, r * 0.55 * M, 0, a, a + 1.4); ctx.stroke(); } });
+    ctx.restore(); }
+  // burner, calciner ports, smoke
+  { const [bx, by] = P(...L.burner), fl = active ? 0.75 + 0.2 * Math.sin(t * 9) + 0.08 * Math.sin(t * 23) : on ? 0.2 : 0;
+    _amLed(bx, by, 1.1 * M, '255,140,60', fl * 0.7); _amLed(bx, by, 0.35 * M, '255,210,140', fl); }
+  L.calPorts.forEach(([x, y, z], q) => { const [cx, cy] = P(x, y, z); _amLed(cx, cy, 0.3 * M, `255,${130 + q * 18},60`, active ? 0.55 + 0.3 * Math.sin(t * 3 + q * 1.3) : on ? 0.12 : 0); });
+  { const [sx, sy] = P(...L.stack); _wfSmoke(sx, sy, S * 0.9, t, '235,235,228', active, 0.3); }
+  { const [sx, sy] = P(...L.calStack); _wfSmoke(sx, sy, S * 0.7, t, '225,215,235', active, 0.25); }
+  // bulk bags and tailings drums fill with the stores
+  const bags = Math.round(oxFill * 6);
+  for (let q = bags - 1; q >= 0; q--) { const [x, y] = L.bags[q]; _fcSpr(F, 'lp_bag', L.bagRect, x, y, 0); }
+  const drums = Math.round(tailFill * L.drums.length);
+  for (let q = 0; q < drums; q++) { const [x, y, z] = L.drums[q]; _fcSpr(F, 'lp_drum', L.drumRect, x, y, z); }
+  { const [g0, g1, gy, gz0, gz1] = L.gauge, [ax, ay] = P(g0, gy, gz1), [bx, by] = P(g1, gy, gz0);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = on ? 'rgba(232,200,32,0.8)' : 'rgba(0,0,0,0)';
+    ctx.fillRect(ax + (bx - ax) * 0.2, by - (by - ay) * tailFill, (bx - ax) * 0.6, (by - ay) * tailFill); ctx.restore(); }
+  _amBoardText(F, L.hopperBoard, [[`REO ${Math.round(oxFill * 100)}%`, '232,220,255', 1]], on);
+  _fcNightWins(F, L.mccWin, on);
+  const TH = TILE / 2, Pp = _fcPorts(px, py, h, S, t);
+  const oxOut = typeof LeachPlantSystem !== 'undefined' && e.col !== undefined ? LeachPlantSystem.getStubs(e).oxideOut : null;
+  Pp.belt(px + TILE * 1 + TH, 'ORE IN', !!e._hasOre, true, active, '#e08a5a', '#ff9a5a');
+  Pp.pipe(px + TILE * 3 + TH, 'ACID IN', !!e._hasAcid, '#f0f060', '#f4f060', '#8a8a10', 'rgba(60,60,0,0.8)');
+  Pp.belt(px + TILE * 7 + TH, 'OXIDE OUT', _fcBeltAt(oxOut), false, on && oxFill > 0, '#d8cce8', '#c8b0f0');
+  _wfPlate('LEACH PLANT', px + w * 0.50, py + h * 0.045, S, _RE_ACCENT, on);
+  _wfLamp(px + w - 9 * S, py + 9 * S, S, t, _RE_ACCENT, on);
+  ctx.restore();
+}
+
+// ── Superconductor Mill ──
+function _scmArt(e, px, py, t) {
+  const L = FC_LAYOUT.scm, def = EntityDefs[T.SCMILL], F = _anFrame(e, px, py), { P, M } = F, w = F.W, h = F.H;
+  const on = !!e.powered, active = on && !!e._running, fill = Math.min(1, (e._tape || 0) / (def.tapeCapacity || 300));
+  const S = (TILE / 40) * Math.max(1, Math.min(w / (8 * TILE), h / (7 * TILE))), accent = '#c8b0f0';
+  ctx.save();
+  F.draw(AdvNukeArt.get('scm_base'), L.rect);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  { const [x0, x1, y, z] = L.chamber, [ax, ay] = P(x0, y, z), [bx] = P(x1, y, z), p = active ? 0.6 + 0.4 * Math.sin(t * 5) : 0;
+    if (p > 0) { const g = ctx.createLinearGradient(ax, 0, bx, 0);
+      g.addColorStop(0, 'rgba(200,120,255,0)'); g.addColorStop(0.5, `rgba(235,180,255,${(0.9 * p).toFixed(3)})`); g.addColorStop(1, 'rgba(200,120,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(ax, ay - 0.15 * M, bx - ax, 0.3 * M);
+      _anGlow((ax + bx) / 2, ay, (bx - ax) * 0.6, '200,140,255', 0.22 * p); } }
+  if (active) { const [x, y, z] = L.bath, [bx, by] = P(x, y, z);
+    for (let q = 0; q < 4; q++) { const ph = (t * 0.5 + q / 4) % 1; _anGlow(bx + (q - 1.5) * 0.25 * M, by - ph * 0.4 * M, (0.08 + ph * 0.12) * M, '235,245,255', 0.4 * (1 - ph)); } }
+  L.reels.forEach(([x, y, z], i) => { const [rx, ry] = P(x, y, z); _anGlow(rx, ry, 0.12 * M, '159,216,255', on ? 0.7 : 0); });
+  { const [s0, s1, y, z] = L.strip, [ax, ay] = P(s0, y, z), [bx] = P(s1, y, z);
+    ctx.fillStyle = active ? `rgba(200,160,255,${(0.7 + 0.3 * Math.sin(t * 2)).toFixed(3)})` : on ? 'rgba(90,74,122,0.6)' : 'rgba(0,0,0,0)'; ctx.fillRect(ax, ay - 0.06 * M, bx - ax, 0.12 * M); }
+  ctx.restore();
+  L.fans.forEach(([x, y, z, r], k) => _anFan(F, x, y, z, r, on ? t * 8 + k : k));
+  if (active) { const [vx, vy] = P(...L.vapor); _wfSmoke(vx, vy, S * 0.7, t, '240,248,255', true, 0.3); }
+  // finished spools fill the dispatch rack from the bottom row up
+  const lit = Math.round(fill * 12);
+  L.slots.forEach(([x, y, z], i) => { const r = Math.floor(i / 3), c = i % 3, idx = (3 - r) * 3 + c; if (idx < lit) _fcSpr(F, 'scm_spool', L.spoolRect, x, y, z); });
+  { const [x, y, z] = L.rackLabel; _fcText(F, x, y, z, `TAPE ${Math.round(fill * 100)}%`, on ? accent : '#5a5466', 0.45); }
+  _fcNightWins(F, L.wins, on, '230,220,255');
+  const Pp = _fcPorts(px, py, h, S, t), TH = TILE / 2;
+  const tapeOut = typeof SuperconductorMillSystem !== 'undefined' && e.col !== undefined ? SuperconductorMillSystem.getStubs(e).tapeOut : null;
+  Pp.belt(px + TILE * 1 + TH, 'OXIDE IN', !!e._hasOxide, true, active, '#d8cce8', '#c8b0f0');
+  Pp.pipe(px + TILE * 4 + TH, 'H₂ IN', !!e._hasHydrogen, '#80d8ff', '#a8e8ff', '#2a6a8a', 'rgba(10,40,60,0.8)');
+  Pp.pipe(px + TILE * 6 + TH, 'N₂ IN', !!e._hasNitrogen, '#a0a8ff', '#c0c4ff', '#3a408a', 'rgba(20,20,60,0.8)', 1.0);
+  Pp.belt(px + TILE * 10 + TH, 'TAPE OUT', _fcBeltAt(tapeOut), false, on && (e._tape || 0) > 0, '#c8a060', '#e0c080');
+  _wfPlate('SUPERCONDUCTOR MILL', px + w * 0.50, py + h * 0.04, S, accent, on);
+  _wfLamp(px + w - 9 * S, py + 9 * S, S, t, accent, on);
+  ctx.restore();
+}
+
+// ── Core Works ──
+function _cwArt(e, px, py, t) {
+  const L = FC_LAYOUT.cw, def = EntityDefs[T.COREWORKS], F = _anFrame(e, px, py), { P, M } = F, w = F.W, h = F.H;
+  const on = !!e.powered, charging = on && !!e._charging, accent = '#9fd8ff';
+  const bays = Array.isArray(e._bays) ? e._bays : [], stock = Math.min(1, (e._tapeStock || 0) / (def.tapeCapacity || 300));
+  const winding = on && bays.some(c => c.state === 'charging' && (c.charge || 0) < 0.12);
+  const S = (TILE / 40) * Math.max(1, Math.min(w / (8 * TILE), h / (7 * TILE)));
+  ctx.save();
+  F.draw(AdvNukeArt.get('cw_base'), L.rect);
+  // mandrel winding
+  if (winding) { const [x0, x1, y, z, r] = L.mandrel, [ax, ay] = P(x0, y, z + r), [bx, by] = P(x1, y - r, z);
+    ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, bx - ax, by - ay); ctx.clip(); ctx.fillStyle = 'rgba(210,170,100,0.6)';
+    const st = 0.25 * M, off = (t * 0.8 * M) % st; for (let x = ax - st + off; x < bx; x += st) ctx.fillRect(x, ay, st * 0.4, by - ay); ctx.restore(); }
+  // spool stand: the stock wound on the reel
+  { const [x, y, z, r] = L.spool, [sx, sy] = P(x, y, z), rr = r * (0.35 + 0.6 * stock) * M;
+    ctx.fillStyle = '#c8a060'; ctx.beginPath(); ctx.ellipse(sx, sy, rr, rr, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,60,20,0.5)'; ctx.lineWidth = 0.5;
+    for (let q = 0.45; q < 0.35 + 0.6 * stock; q += 0.12) { ctx.beginPath(); ctx.arc(sx, sy, r * q * M, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.fillStyle = '#1a181e'; ctx.beginPath(); ctx.arc(sx, sy, r * 0.3 * M, 0, Math.PI * 2); ctx.fill(); }
+  // cores in the cells
+  L.cells.forEach(({ c: [cx, cy, cz], lamp }, i) => {
+    const c = bays[i] || { state: 'empty' };
+    if (c.state !== 'empty') {
+      _fcSpr(F, c.state === 'spent' ? 'cw_core_spent' : 'cw_core', L.coreRect, cx, cy, cz);
+      const [tx, ty] = P(cx + L.coreTop[0], cy + L.coreTop[1], cz + L.coreTop[2]), br = 0.72 * M;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      if (c.state === 'charging') {
+        ctx.strokeStyle = charging ? '#9fd8ff' : '#4a6a80'; ctx.lineWidth = 0.1 * M;
+        ctx.beginPath(); ctx.arc(tx, ty, br * 0.85, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (c.charge || 0)); ctx.stroke();
+        if (charging) { const a = 0.4 + 0.4 * Math.sin(t * 5 + i); _anGlow(tx, ty, br * 1.6, '160,220,255', a * 0.5); _anGlow(tx, ty, br * 0.3, '190,235,255', a); }
+      } else if (c.state === 'charged') { const p = 0.6 + 0.4 * Math.sin(t * 1.5 + i);
+        ctx.strokeStyle = `rgba(160,230,255,${p.toFixed(3)})`; ctx.lineWidth = 0.08 * M; ctx.beginPath(); ctx.arc(tx, ty, br * 0.85, 0, Math.PI * 2); ctx.stroke();
+        _anGlow(tx, ty, br * 0.35, '160,230,255', 0.7 * p); }
+      ctx.restore();
+      if (c.state === 'spent' && c.quenched) { ctx.strokeStyle = '#ff7040'; ctx.lineWidth = 0.07 * M; ctx.beginPath(); ctx.moveTo(tx - br * 0.4, ty - br * 0.4); ctx.lineTo(tx + br * 0.4, ty + br * 0.4); ctx.stroke(); }
+    }
+    const col = c.state === 'charging' ? (charging ? '64,200,255' : '42,90,122') : c.state === 'charged' ? '64,224,112' : c.state === 'spent' ? '224,160,48' : null;
+    const [lx, ly] = P(...lamp); if (col) _amLed(lx, ly, 0.15 * M, col, 0.95);
+  });
+  // gantry crane drifting along the cells
+  { const [x0, x1, y, z] = L.crane, u = charging ? 0.5 + 0.45 * Math.sin(t * 0.25) : 0.18; _fcSpr(F, 'cw_crane', L.craneRect, x0 + (x1 - x0) * u, y, z); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (charging) { ctx.strokeStyle = `rgba(150,220,255,${(0.5 + 0.3 * Math.sin(t * 6)).toFixed(3)})`; ctx.lineWidth = Math.max(1, 0.08 * M); ctx.lineCap = 'round';
+    L.bus.forEach(pts => { ctx.beginPath(); pts.forEach((p, i) => { const [bx, by] = P(...p); i ? ctx.lineTo(bx, by) : ctx.moveTo(bx, by); }); ctx.stroke(); }); }
+  L.caps.forEach(([x, y, z], k) => { const [cx, cy] = P(x, y, z); _anGlow(cx, cy, 0.25 * M, '120,200,255', charging ? 0.5 + 0.4 * Math.sin(t * 4 + k) : 0); });
+  { const [x, y, z, r] = L.pad;
+    for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, litp = on && ((Math.floor(t * 4) + k) % 8 < 2), [lx, ly] = P(x + Math.cos(a) * r, y + Math.sin(a) * r, z);
+      _anGlow(lx, ly, 0.12 * M, litp ? '127,255,176' : '42,122,80', on ? (litp ? 0.95 : 0.4) : 0); } }
+  ctx.restore();
+  _amBoardText(F, L.dockSign, [['CORE DOCK', '159,216,255', 1]], on);
+  _fcNightWins(F, L.wins, on, '200,230,255');
+  const Pp = _fcPorts(px, py, h, S, t), TH = TILE / 2;
+  Pp.belt(px + TILE * 1 + TH, 'TAPE IN', !!e._hasTape, true, on, '#c8a060', '#e0c080');
+  _wfPlate('CORE WORKS', px + w * 0.50, py + h * 0.04, S, accent, on);
+  _wfLamp(px + w - 9 * S, py + 9 * S, S, t, charging ? '#9fd8ff' : accent, on);
   ctx.restore();
 }

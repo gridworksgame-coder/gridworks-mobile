@@ -201,6 +201,12 @@
 // They depend only on which sides connect, never on the entity or the clock.
 // Draws through the global ctx, so it can run live or into a bake canvas.
 function _convStaticLayers(cx, cy, drawArms, straight) {
+    if (_bpReady('belt')) {                               // the rendered belt (render_beltpipe.py)
+      let m = 0;
+      for (const a of drawArms) { if (a.stub) continue; const dc = Math.round(Math.cos(a.ang)), dr = Math.round(Math.sin(a.ang)); m |= dr < 0 ? 1 : dr > 0 ? 2 : dc < 0 ? 4 : 8; }
+      const im = CoalWaterArt.get('belt_' + m);
+      if (im && im.complete && im.naturalWidth) { _bpDraw(im, cx, cy, BELTPIPE_LAYOUT.beltZ); return; }
+    }
     const S = TILE / 40;
     const beltHalfW  = TILE*0.18;
     const frameHalfW = beltHalfW + 3*S;
@@ -1001,7 +1007,254 @@ function renderAquifer(e, px, py, t) {
     ctx.textAlign = 'left';
   }
 
+// Coal Mine MK1 as rendered sprites (COAL_WATER_LAYOUT.mine, authored at
+// 4x4 and stretched to the mine's footprint). The yard's photo ground is
+// drawn here as before; the heap is one of four sprites by what's left in
+// the seam; the sheave turns in its plane, the cage rides the shaft, the
+// carts run the rail.
+// Coal riding a covered belt, seen through a glazed inspection strip along
+// the gallery: a dark glass slot with a sheen, irregular lit lumps passing
+// behind it (clipped to the slot).
+function _coalSlit(P, path, t, running, s, speed, n, seed) {
+  const pts = path.map(p => P(...p));
+  ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const slot = () => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); };
+  ctx.strokeStyle = 'rgba(8,10,12,0.85)'; ctx.lineWidth = 3.4 * s; slot(); ctx.stroke();
+  if (running) {
+    ctx.beginPath();
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[i + 1], dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1, nx = -dy / l * 1.5 * s, ny = dx / l * 1.5 * s;
+      ctx.moveTo(ax + nx, ay + ny); ctx.lineTo(bx + nx, by + ny); ctx.lineTo(bx - nx, by - ny); ctx.lineTo(ax - nx, ay - ny); ctx.closePath();
+    }
+    ctx.save(); ctx.clip();
+    for (let k = 0; k < n; k++) {
+      const f = (t * speed + k / n) % 1, [x, y] = _cwAlong(P, path, f);
+      const v = Math.sin((k + seed) * 12.9898) * 43758.5, j = v - Math.floor(v), r = (0.9 + 0.8 * j) * s;
+      ctx.fillStyle = '#0c0b0a'; ctx.beginPath();
+      for (let q = 0; q < 5; q++) { const a = q * 1.2566 + j * 3, rr = r * (0.7 + 0.35 * Math.sin(q * 2.3 + k)); if (q) ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); else ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(150,160,178,0.55)'; ctx.fillRect(x - r * 0.45, y - r * 0.55, r * 0.5, r * 0.3);
+    }
+    ctx.restore();
+  }
+  ctx.strokeStyle = 'rgba(190,210,225,0.22)'; ctx.lineWidth = 0.7 * s; ctx.save(); ctx.translate(-0.6 * s, -0.8 * s); slot(); ctx.stroke(); ctx.restore();
+  ctx.restore();
+}
+// A stream of coal lumps falling from (x0, y0) to (x1, y1).
+function _coalFall(x0, y0, x1, y1, t, n, s, r) {
+  for (let k = 0; k < n; k++) {
+    const f = (t * 1.8 + k / n) % 1, jx = Math.sin(k * 7.1 + t) * 0.9 * s;
+    const x = x0 + (x1 - x0) * f + jx, y = y0 + (y1 - y0) * (f * f);
+    ctx.fillStyle = '#0d0c0b'; ctx.fillRect(x - r * 0.5 * s, y - r * 0.5 * s, r * s, r * s);
+    ctx.fillStyle = 'rgba(160,170,185,0.5)'; ctx.fillRect(x - r * 0.5 * s, y - r * 0.5 * s, r * 0.4 * s, r * 0.3 * s);
+  }
+}
+// One mine cart's round: load under the chute, haul out (eased), tip at the
+// heap, return empty, a short wait. pos 0 = the bin end, 1 = the heap end.
+function _cartCycle(t, period, offset) {
+  const tt = ((t / period + offset) % 1) * period, ease = (k) => k * k * (3 - 2 * k);
+  const a = period * 0.12, b = period * 0.42, c = period * 0.54, d = period * 0.86;
+  if (tt < a) return { pos: 0, full: tt > a * 0.5, stage: 'load', moving: false, k: tt / a };
+  if (tt < b) return { pos: ease((tt - a) / (b - a)), full: true, stage: 'haul', moving: true, k: (tt - a) / (b - a) };
+  if (tt < c) return { pos: 1, full: tt < (b + c) / 2, stage: 'tip', moving: false, k: (tt - b) / (c - b) };
+  if (tt < d) return { pos: 1 - ease((tt - c) / (d - c)), full: false, stage: 'back', moving: true, k: (tt - c) / (d - c) };
+  return { pos: 0, full: false, stage: 'wait', moving: false, k: 0 };
+}
+function _coalMineArt(e, px, py, t) {
+  const L = COAL_WATER_LAYOUT.mine;
+  const w = (e.width || 4) * TILE, h = (e.height || 4) * TILE, S = TILE / 40;
+  const kx = w / (160 * S), ky = h / (160 * S), s = Math.min(kx, ky) * S;
+  const on = e.powered, dep = e._linkedDeposit;
+  const pct = dep && dep.coalMax > 0 ? (dep.coalAmount || 0) / dep.coalMax : 0;
+  const out = e._coalRate || 0, running = on && pct > 0;
+  const F = _cwFrame(L, px + w / 2, py + h / 2, kx, ky), { P, D, M } = F;
+  const dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0, lamps = on && dark > 0.3;
+  const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
+  const detail = Camera.zoom >= 0.45;
+  const TAU = Math.PI * 2;
+  const glow = (x, y, r, rgb, a) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  ctx.save();
+  if (Sp) {
+    // yard: the coal deposit's scanned ground, stained with coal dust
+    const imgOK = !_imageFillsOff && typeof PhotoGround !== 'undefined';
+    ctx.beginPath(); ctx.roundRect(px + w * 0.02, py + h * 0.02, w * 0.96, h * 0.96, 4 * s);
+    const yg = ctx.createRadialGradient(px + w * 0.5, py + h * 0.55, 0, px + w * 0.5, py + h * 0.55, Math.max(w, h) * 0.7);
+    yg.addColorStop(0, '#4a3e2e'); yg.addColorStop(1, '#2e271e');
+    ctx.fillStyle = yg; ctx.fill();
+    const yard = imgOK ? PhotoGround.pattern(ctx, 'ground_coal_rim', 128) : null;
+    if (yard) {
+      ctx.fillStyle = yard; ctx.fill();
+      const dust = ctx.createRadialGradient(px + w * 0.55, py + h * 0.62, 0, px + w * 0.55, py + h * 0.62, Math.max(w, h) * 0.62);
+      dust.addColorStop(0, 'rgba(24,18,12,0.7)'); dust.addColorStop(1, 'rgba(44,34,22,0.5)');
+      ctx.fillStyle = dust; ctx.fill();
+    }
+    F.draw(CoalWaterArt.get('coalmine1_base'));
+    if (pct > 0) F.draw(CoalWaterArt.get('coalmine1_heap_' + Math.min(3, Math.floor(pct * 4))));
+    // windows: lamp room and winding house, lit after dark while it runs
+    const lit = on ? (dark > 0.3 ? 'rgba(255,200,110,0.85)' : null) : null;
+    if (lit) {
+      for (const [x, y, z] of L.lampRoom.win) { const [wx, wy] = P(x, y, z); ctx.fillStyle = lit; ctx.fillRect(wx - 0.17 * M * kx, wy - 0.19 * M * ky, 0.34 * M * kx, 0.38 * M * ky); }
+      L.winding.win.forEach(([x, y, z], k) => {
+        const [wx, wy] = P(x, y, z);
+        ctx.fillStyle = `rgba(255,190,90,${(0.6 + 0.15 * Math.sin(t * 2 + k)).toFixed(3)})`;
+        ctx.fillRect(wx - 0.16 * M * kx, wy - 0.6 * M * ky, 0.32 * M * kx, 1.3 * M * ky);
+      });
+      const [gx, gy] = P(2.1, 0.9, 1.2); glow(gx, gy, 30 * s, '255,190,100', 0.18);
+    }
+  }
+  if (Ap) {
+    // smoke: winding-house stack while it runs, the lamp room's stovepipe while powered
+    if (running) {
+      const [sx, sy] = P(...L.winding.stack);
+      for (let q = 0; q < 5; q++) {
+        const ph = (t * 0.3 + q / 5) % 1;
+        ctx.fillStyle = `rgba(${dark > 0.3 ? '70,64,60' : '96,88,80'},${((1 - ph) * 0.45).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(sx + (ph * 6 + Math.sin(t + q) * 2) * s, sy - ph * 22 * s, (2 + ph * 7) * s, 0, TAU); ctx.fill();
+      }
+    }
+    if (on) {
+      const [sx, sy] = P(...L.lampRoom.pipe);
+      for (let q = 0; q < 3; q++) {
+        const ph = (t * 0.25 + q / 3) % 1;
+        ctx.fillStyle = `rgba(150,140,130,${((1 - ph) * 0.3).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(sx + ph * 3 * s, sy - ph * 10 * s, (1.2 + ph * 3) * s, 0, TAU); ctx.fill();
+      }
+    }
+    // glints on the heap
+    if (pct > 0 && detail) {
+      const [hx, hy] = P(L.heap[0], L.heap[1], 0.3);
+      for (let g = 0; g < 7; g++) {
+        const a = Math.sin(g * 12.9898 + (e.col || 0)) * 43758.5, b = Math.sin(g * 78.233 + (e.row || 0)) * 24634.6;
+        const gx = hx + ((a - Math.floor(a)) - 0.5) * 2.4 * M * kx, gy = hy - (b - Math.floor(b)) * (0.4 + 1.1 * pct) * M * ky * 0.6;
+        ctx.fillStyle = `rgba(190,200,215,${(0.35 + 0.4 * Math.max(0, Math.sin(t * 1.3 + g * 2.1))).toFixed(3)})`;
+        ctx.fillRect(gx, gy, 0.9 * s, 0.9 * s);
+      }
+    }
+    // coal up the covered belt and down the chute
+    _coalSlit(P, L.belt, t, running, s, 0.5, 9, e.col);
+    // ore carts shuttling between the bin and the heap
+    {
+      const [c0, c1] = L.cartRange, cyc = _cartCycle(running ? t : 0, 14, (e.col * 0.37) % 1);
+      const x = c0 + cyc.pos * (c1 - c0), bob = running && cyc.moving ? Math.abs(Math.sin(t * 18)) * 0.35 * s : 0;
+      F.draw(CoalWaterArt.get(cyc.full ? 'coalmine1_cart_full' : 'coalmine1_cart'), x * M * kx, -bob);
+      if (running) {
+        const [cx, cy] = P(x, L.cartY, 0.9);
+        if (cyc.stage === 'load') {
+          const [hx, hy] = P(...L.chute);
+          _coalFall(hx, hy, cx, cy, t, 6, s, 1.6);
+        } else if (cyc.stage === 'tip') {
+          _coalFall(cx, cy, cx + 3.5 * s, cy + 7 * s, t, 5, s, 1.4);
+          ctx.fillStyle = `rgba(60,54,48,${(0.25 * Math.sin(cyc.k * Math.PI)).toFixed(3)})`;
+          ctx.beginPath(); ctx.arc(cx + 4 * s, cy + 4 * s, (3 + 5 * cyc.k) * s, 0, TAU); ctx.fill();
+        }
+      }
+    }
+    // the cage riding the shaft, its rope, the sheave turning
+    const Sh = L.sheave, [hx, hy] = P(...Sh.hub);
+    const lift = running ? 4.2 * (0.5 + 0.5 * Math.sin(t * 0.6)) : 0;
+    const [cgx, cgy] = P(L.cage[0], L.cage[1], L.cage[2] + lift);
+    ctx.strokeStyle = 'rgba(200,180,130,0.9)'; ctx.lineWidth = 0.55 * s;
+    ctx.beginPath(); ctx.moveTo(hx - Sh.R * M * kx * 0.1, hy + Sh.R * M * ky * 0.5); ctx.lineTo(cgx, cgy);
+    const [rx, ry] = P(...Sh.ropeTo); ctx.moveTo(hx + Sh.R * 0.4 * M * kx, hy - Sh.R * 0.6 * M * ky); ctx.lineTo(rx, ry); ctx.stroke();
+    F.draw(CoalWaterArt.get('coalmine1_cage'), 0, -lift * _CW_TAN * M * ky);
+    _cwTurned(CoalWaterArt.get('coalmine1_sheave'), [D(...Sh.u), D(...Sh.v)], running ? t * 2.2 : 0, hx, hy, F);
+    // lamps after dark
+    const [fl, fly] = P(...L.frameLamp);
+    ctx.fillStyle = lamps ? '#ffe6a8' : '#4a4038'; ctx.beginPath(); ctx.arc(fl, fly, 1.2 * s, 0, TAU); ctx.fill();
+    if (lamps) glow(fl, fly, 18 * s, '255,220,150', 0.3);
+    for (const p of L.lamps) {
+      const [lx, ly] = P(...p);
+      ctx.fillStyle = lamps ? '#ffe6a8' : '#5a5048'; ctx.beginPath(); ctx.arc(lx, ly, 1.3 * s, 0, TAU); ctx.fill();
+      if (lamps) glow(lx, ly + 4 * s, 34 * s, '255,220,150', 0.18);
+    }
+    _coalMineOutStub(e, px, py, w, h, t, running);
+    if (!e._ghost) {
+      ctx.fillStyle = running ? 'rgba(255,150,60,0.9)' : '#8a6a48';
+      ctx.font = `${Math.max(7, Math.round(9 / Camera.zoom))}px Courier New`;
+      ctx.textAlign = 'center';
+      const labelX = CoalSystem.isYardMine(e) ? 0.5 : 0.26;
+      ctx.fillText(running ? `${out.toFixed(1)} t/s` : (pct <= 0 ? 'EMPTY' : 'OFFLINE'), px + w * labelX, py + h - 5);
+      ctx.textAlign = 'left';
+    }
+  }
+  ctx.restore();
+}
+
+// Water Extractor as a rendered sprite (COAL_WATER_LAYOUT.water): ripples
+// and the intake's swirl and bubbles, the roof fan, gauge needle, beacon and
+// plate drawn live. The output stub keeps its own deferred pass.
+function _waterxArt(e, px, py, t) {
+  const L = COAL_WATER_LAYOUT.water;
+  const tw = TILE * (e.width || 4), th = TILE * (e.height || 4), S = TILE / 40, TAU = Math.PI * 2;
+  const cx = px + tw / 2, cy = py + th / 2;
+  const on = e.powered, running = on && (e._waterRate || 0) > 0;
+  const F = _cwFrame(L, cx, cy), { P, M } = F;
+  ctx.save();
+  if (running) {
+    for (let i = 0; i < 3; i++) {
+      const rp = ((t * 0.4 + i * 0.34) % 1);
+      ctx.strokeStyle = `rgba(160,245,240,${0.45 * (1 - rp)})`; ctx.lineWidth = 1.2 * S;
+      ctx.beginPath(); ctx.ellipse(cx, cy, tw * (0.46 + rp * 0.12), th * (0.44 + rp * 0.12), 0, 0, TAU); ctx.stroke();
+    }
+  }
+  F.draw(CoalWaterArt.get('waterx_base'));
+  // intake: glow, swirl and bubbles in the caged well
+  {
+    const [ix, iy0, iz, ir] = L.intake, [ox, oy] = P(ix, iy0, iz), R = ir * M * 0.85;
+    if (running) {
+      if (Camera.zoom > 0.5) drawGlowHalo(ox, oy, R * 1.6, [[0, '#20d4c8'], [1, 'transparent']], 0.18 + 0.06 * Math.sin(t * 2));
+      ctx.save(); ctx.beginPath(); ctx.ellipse(ox, oy, R, R, 0, 0, TAU); ctx.clip();
+      ctx.translate(ox, oy); ctx.rotate(t * 2.5);
+      ctx.strokeStyle = 'rgba(200,255,250,0.55)'; ctx.lineWidth = 1.4 * S; ctx.lineCap = 'round';
+      for (let b = 0; b < 4; b++) { ctx.rotate(Math.PI / 2); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(R * 0.4, -R * 0.3, R * 0.85, 0); ctx.stroke(); }
+      ctx.restore();
+      for (let i = 0; i < 6; i++) {
+        const p = ((t * 0.9 + i * 0.21) % 1);
+        ctx.fillStyle = `rgba(220,255,250,${0.8 * (1 - p)})`;
+        ctx.beginPath(); ctx.arc(ox + Math.sin(i * 2.1 + t) * R * 0.5, oy - p * R * 0.7, (0.8 + (1 - p) * 0.8) * S, 0, TAU); ctx.fill();
+      }
+      // water rising up the riser
+      const p = (t * 0.8) % 1, [rx, ry] = _cwAlong(P, L.riser, p);
+      ctx.fillStyle = 'rgba(120,240,230,0.9)'; ctx.beginPath(); ctx.arc(rx, ry, 1.2 * S, 0, TAU); ctx.fill();
+    }
+  }
+  // roof fan: the rendered blades turned in the roof plane, the wire guard over them
+  {
+    const [fx, fy, fz] = L.fan, [ox, oy] = P(fx, fy, fz), { D } = F;
+    _cwTurned(CoalWaterArt.get('waterx_fan'), [D(1, 0, 0), D(0, 1, 0)], running ? t * 7 : 0.3, ox, oy, F);
+    if (running) {   // the blades blurring as they spin
+      const R = L.fan[3] * M * 0.95, g = ctx.createRadialGradient(ox, oy, R * 0.25, ox, oy, R);
+      g.addColorStop(0, 'rgba(210,216,218,0.28)'); g.addColorStop(0.8, 'rgba(200,206,210,0.18)'); g.addColorStop(1, 'rgba(200,206,210,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ox, oy, R, 0, TAU); ctx.fill();
+    }
+    F.draw(CoalWaterArt.get('waterx_fanguard'));
+  }
+  // gauge needle, beacon
+  {
+    const [gx, gy, gz, gr] = L.gauge, [ox, oy] = P(gx, gy, gz), R = gr * M;
+    const na = -Math.PI * 0.75 + (running ? (0.55 + 0.15 * Math.sin(t * 3)) : 0.05) * Math.PI * 1.5;
+    ctx.strokeStyle = '#c02010'; ctx.lineWidth = 0.9 * S;
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + Math.cos(na) * R * 0.8, oy + Math.sin(na) * R * 0.8); ctx.stroke();
+    const blink = running && Math.sin(t * 4) > 0, [bx, by] = P(...L.beacon);
+    ctx.fillStyle = blink ? '#60ffe0' : (on ? '#1a4844' : '#0a1818');
+    ctx.beginPath(); ctx.arc(bx, by, 1.8 * S, 0, TAU); ctx.fill();
+    if (blink) { ctx.fillStyle = 'rgba(96,255,224,0.3)'; ctx.beginPath(); ctx.arc(bx, by, 5 * S, 0, TAU); ctx.fill(); }
+  }
+  _wfPlate(running ? `WATER ${(e._waterRate || 0).toFixed(0)}/s` : on ? 'IDLE' : 'OFF', cx, py + th * 0.95, S, running ? '#40e8dc' : '#5a8a88', on);
+  if (InspectionPanel.isOpen() && InspectionPanel.target === e) {
+    ctx.save(); ctx.strokeStyle = '#20d4c8'; ctx.lineWidth = 2 / Camera.zoom;
+    ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
+    ctx.strokeRect(px + 1, py + 1, tw - 2, th - 2); ctx.restore();
+  }
+  ctx.restore();
+}
+
 function renderWaterExtractor(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('water')) return _waterxArt(e, px, py, t);
     // Water Extractor (4×4, on a lake): a floating pump barge — rounded hull
     // with hazard bumpers, a pump house with fan, gauge and beacon, and an
     // intake cage dropped into rippling, bubbling water. The rotatable pipe
@@ -1134,6 +1387,38 @@ function renderWaterExtractorStub(e, px, py, t) {
     const isH = ddy === 0; // stub runs horizontally (E/W) vs vertically (N/S)
     const running = lit && (e._waterRate || 0) > 0;
 
+    if (typeof _portReady === 'function' && _portReady() && CoalWaterArt.ready('pipe')) {
+      // The same recessed nozzle as every plant's ports, set into the
+      // barge's deck at the hull edge, and a length of the line's own pipe
+      // across the water to the footprint edge, where its flange meets the
+      // pipe laid on the port tile.
+      const inset = (isH ? 0.7 : 1.0) * 20 * S;                 // hull stands 0.7 m (E/W) / 1.0 m (N/S) inside
+      const im = _pipeSprite(isH ? 12 : 3, PIPE_PALETTE.water);
+      if (im) {
+        ctx.save();
+        const ax = baseX - ddx * inset, ay = baseY - ddy * inset;
+        if (isH) ctx.rect(Math.min(ax, baseX), baseY - TILE, Math.abs(baseX - ax), TILE * 2);
+        else     ctx.rect(baseX - TILE, Math.min(ay, baseY) + BELTPIPE_LAYOUT.pipeZ * _CW_TAN * 20 * S, TILE * 2, Math.abs(baseY - ay));
+        ctx.clip();
+        _bpDraw(im, baseX - ddx * TILE / 2, baseY - ddy * TILE / 2, BELTPIPE_LAYOUT.pipeZ);
+        ctx.restore();
+      }
+      _portPipeArt({ face: ['top', 'right', 'bottom', 'left'][rot % 4], x: baseX - ddx * inset, y: baseY - ddy * inset, dx: ddx, dy: ddy }, S, t,
+        { fluid: '#3ee6d4', on: lit, out: true, flow: running });
+    } else if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('water')) {
+      // Rendered outlet (render_coal_water.py, one sprite per direction,
+      // attach point at the footprint edge): only the blanking cap when it
+      // isn't piped and the water moving through are drawn here.
+      // Drawn down by the axis height, as the pipe tiles are, so the outlet's
+      // edge flange meets the flange of the pipe laid on the port tile.
+      const SL = COAL_WATER_LAYOUT.water.stub, F2 = _cwFrame(SL, baseX, baseY + SL.z * _CW_TAN * 20 * S);
+      F2.draw(CoalWaterArt.get('waterx_stub_' + (rot % 4)));
+      const dW = [[0, 1], [1, 0], [0, -1], [-1, 0]][rot % 4];
+      if (pipeConnected && running) {
+        const f = (t * 1.2) % 1, [wx2, wy2] = F2.P(dW[0] * (-0.62 + f * 0.6), dW[1] * (-0.62 + f * 0.6), SL.z + 0.16);
+        ctx.fillStyle = `rgba(150,245,255,${(0.85 * (1 - f)).toFixed(2)})`; ctx.beginPath(); ctx.arc(wx2, wy2, 1*S, 0, Math.PI*2); ctx.fill();
+      }
+    } else {
     // Drawn in a local frame: +x points out of the barge, x = 0 is the
     // footprint edge. The pipe starts back on the deck (the hull sits ~13px
     // inside the footprint) so it reads as coming out of the barge rather
@@ -1156,12 +1441,13 @@ function renderWaterExtractorStub(e, px, py, t) {
     ctx.save(); frame(0, 0);
     // Deck mounting plate
     ctx.fillStyle = '#3e4e56'; ctx.strokeStyle = '#141c20'; ctx.lineWidth = 0.8*S;
-    ctx.beginPath(); ctx.roundRect(-IN - 2*S, -6*S, 7*S, 12*S, 1.5*S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(-IN - 2*S, -6*S, 7*S, 12*S, 1.5*S); _fillMetalG(ctx); ctx.stroke();
     ctx.fillStyle = '#1a2226';
     for (const oy of [-4, 4]) { ctx.beginPath(); ctx.arc(-IN + 1.5*S, oy*S, 0.8*S, 0, Math.PI*2); ctx.fill(); }
     // Barrel with cylindrical shading
     ctx.fillStyle = '#10181c'; ctx.fillRect(x0, -3.6*S, x1 - x0, 7.2*S);
-    ctx.fillStyle = lit ? '#3a8ea4' : '#2e4c58'; ctx.fillRect(x0, -2.7*S, x1 - x0, 5.4*S);
+    ctx.fillStyle = lit ? '#3a8ea4' : '#2e4c58'; _fillRectMetalG(ctx, x0, -2.7*S, x1 - x0, 5.4*S);
+    if (typeof _bldGrainRect === 'function') _bldGrainRect(ctx, 'stain', x0, -3.6*S, x1 - x0, 7.2*S, 0.8);
     ctx.fillStyle = lit ? '#1f5c6c' : '#1c343c'; ctx.fillRect(x0, 0.9*S, x1 - x0, 1.8*S);
     ctx.fillStyle = 'rgba(255,255,255,0.32)'; ctx.fillRect(x0, -2.1*S, x1 - x0, 0.9*S);
     // Water moving through while pumping
@@ -1186,7 +1472,7 @@ function renderWaterExtractorStub(e, px, py, t) {
     ctx.fillStyle = '#1a1e20'; ctx.beginPath(); ctx.arc(vx, 0, 0.9*S, 0, Math.PI*2); ctx.fill();
     // Outlet: open bolted flange when piped, red blanking cap when not
     ctx.fillStyle = '#7a8a92'; ctx.strokeStyle = '#1a2226'; ctx.lineWidth = 0.8*S;
-    ctx.beginPath(); ctx.roundRect(x1, -5*S, 2.5*S, 10*S, 0.8*S); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(x1, -5*S, 2.5*S, 10*S, 0.8*S); _fillMetalG(ctx); ctx.stroke();
     ctx.fillStyle = '#2a3236';
     for (const oy of [-3.4, 3.4]) { ctx.beginPath(); ctx.arc(x1 + 1.25*S, oy*S, 0.6*S, 0, Math.PI*2); ctx.fill(); }
     if (!pipeConnected) {
@@ -1194,6 +1480,7 @@ function renderWaterExtractorStub(e, px, py, t) {
       ctx.beginPath(); ctx.roundRect(x1 + 2.5*S, -3.2*S, 1.8*S, 6.4*S, 0.8*S); ctx.fill(); ctx.stroke();
     }
     ctx.restore();
+    }
 
     // Status tag (upright, beside the stub): same style as the coal
     // generator's port tags. Amber blink = powered but not piped.
@@ -1202,7 +1489,7 @@ function renderWaterExtractorStub(e, px, py, t) {
       ctx.font = `bold ${Math.max(3.5, 4*S)}px Courier New`;
       const tagW = ctx.measureText(text).width + 8.5*S, tagH = 7*S;
       const tx = isH ? (ddx > 0 ? baseX + 1*S : baseX - 1*S - tagW) : baseX + 7*S;
-      const ty = isH ? baseY + 10*S : baseY + ddy*(L*0.55);
+      const ty = isH ? baseY + 10*S : baseY + ddy*(14*S*0.55);
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath(); ctx.roundRect(tx + 1*S, ty - tagH/2 + 1.5*S, tagW, tagH, 3*S); ctx.fill();
       ctx.fillStyle = '#16181c'; ctx.strokeStyle = lit ? accent : '#3a3e44'; ctx.lineWidth = 0.9*S;
@@ -1400,7 +1687,56 @@ function _armPipesOverBelts() { _pipeOverBelt.armed = true; _pipeOverBelt.q.leng
 // joint flanges and the collar, cap or socket. Tile-local (0,0 is the tile's
 // top-left corner). bake: drawing into a PipeStatic bitmap, which leaves out
 // the one moving part, a flowing junction's pulsing core.
+// ── Rendered belt and pipe tiles ──────────────────────────────────────
+// Built in Blender (scripts/render_beltpipe.py): one sprite per connection
+// mask (bit 0 N, 1 S, 2 W, 3 E), a 3 m frame centred on the tile. Drawn
+// shifted down by the pipe's / belt's height so their axis lands on the
+// tile's centre lines, where the live overlays (cleats, droplets, cargo,
+// fill) have always run. Pipes are rendered in neutral steel and tinted to
+// the fluid's colour once per mask and fluid (multiply), so the shading and
+// texture survive. The bakes in ConveyorStatic / PipeStatic take these as
+// they took the painted layers, so nothing costs more per frame.
+const BELTPIPE_LAYOUT = { frame: 3.0, pipeZ: 0.42, beltZ: 0.42 };
+const _bpTint = new Map();
+function _bpReady(kind) { return typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready(kind); }
+function _bpDraw(im, cx, cy, z) {
+  const Mpx = 20 * (TILE / 40), fw = BELTPIPE_LAYOUT.frame * Mpx;
+  ctx.drawImage(im, cx - fw / 2, cy - fw / 2 + z * _CW_TAN * Mpx, fw, fw);
+}
+function _pipeSprite(mask, pal) {
+  const key = mask + '|' + pal.flange;
+  let cv = _bpTint.get(key);
+  if (cv) return cv;
+  const im = CoalWaterArt.get('pipe_' + mask);
+  if (!im || !im.complete || !im.naturalWidth) return null;
+  cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+  const g = cv.getContext('2d');
+  g.drawImage(im, 0, 0);
+  // the fluid's colour, lifted a little so the steel's shading still reads
+  // the flange colour blended halfway to the fluid's bright highlight, so the
+  // fluid reads at a glance (water teal, steam lilac, oil amber...)
+  const h = pal.flange.replace('#', ''), c = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  const hm = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(pal.hi || ''), hi = hm ? [+hm[1], +hm[2], +hm[3]] : [220, 225, 230];
+  const lift = c.map((v, i) => Math.round(v * 0.5 + hi[i] * 0.5));
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${lift.join(',')})`; g.fillRect(0, 0, cv.width, cv.height);
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(im, 0, 0);
+  _bpTint.set(key, cv);
+  return cv;
+}
+
 function _pipeBody(conn, mask, pal, detail, hasFlow, a0, t, bake) {
+    if (_bpReady('pipe')) {
+      const im = _pipeSprite(mask, pal);
+      if (im) {
+        const c = TILE / 2;
+        _bpDraw(im, c, c, BELTPIPE_LAYOUT.pipeZ);
+        if (hasFlow && conn.length > 0) {                 // a faint sight line in the fluid's colour
+          ctx.globalAlpha = a0 * 0.35; ctx.strokeStyle = pal.core; ctx.lineWidth = 1.2; ctx.lineCap = 'butt';
+          ctx.stroke(_pipePath(conn, mask, 1, 0)); ctx.globalAlpha = a0;
+        }
+        return;
+      }
+    }
     const c = TILE / 2, PIPE_R = 5.5, n = conn.length;
     ctx.lineCap  = 'butt';
     ctx.lineJoin = 'round';
@@ -1482,7 +1818,7 @@ function _pipeJunctionGlow(pal, a0, t, x, y) {
 // and when zoomed in so far that the bitmaps would be large and the tiles
 // on screen few. PipeStatic.enabled = false compares against the live draw.
 const PipeStatic = (() => {
-  const M = 8, SIZE = TILE + 2 * M;   // margin for the shadow and the cap's overhang
+  const M = 16, SIZE = TILE + 2 * M;   // margin for the shadow and the cap's overhang
   const SETTLE_MS = 150, MAX_SETS = 4, MAX_SCALE = 3;
   const sets = new Map();             // rounded scale -> { sc, born, bitmaps: Map(key -> canvas) }
   const FLUID = {};
@@ -1890,6 +2226,40 @@ const PipeFill = (() => {
     return stalled > STALL ? -1 : null;
   }
   const loadGrace = () => typeof PowerNetwork !== 'undefined' && PowerNetwork.inLoadGrace && PowerNetwork.inLoadGrace();
+  // Which way each line flows, for what moves along it: a search out from
+  // every building that puts the line's fluid out (SOURCES), each pipe
+  // keeping the side it was reached from (flowFrom). So the contents always
+  // run from producer to consumer, lines that were full when a save loaded
+  // included. Redone every ORIENT seconds (cheap: one pass over the pipes).
+  const ORIENT = 1.2;
+  let lastOrient = -1e9;
+  function orient() {
+    const src = sources(), queue = [], seen = new Set();
+    for (const p of allPipes()) {
+      const s = st.get(p);
+      if (!s) continue;
+      s.flowFrom = -1;
+      const set = src[s.fluid];
+      if (!set) continue;
+      const mask = _pipeMask(p, s.fluid);
+      for (let i = 0; i < 4; i++) {
+        if (!(mask & (1 << i))) continue;
+        const { pipe, bldg } = across(p, _PIPE_SIDES[i]);
+        if (!pipe && bldg && set.has(bldg.type)) { s.flowFrom = i; queue.push(p); seen.add(p); break; }
+      }
+    }
+    for (let qi = 0; qi < queue.length; qi++) {
+      const p = queue[qi], s = st.get(p), mask = _pipeMask(p, s.fluid);
+      for (let i = 0; i < 4; i++) {
+        if (!(mask & (1 << i))) continue;
+        const { pipe } = across(p, _PIPE_SIDES[i]);
+        if (!pipe || seen.has(pipe)) continue;
+        const q = st.get(pipe);
+        if (!q || q.fluid !== s.fluid) continue;
+        seen.add(pipe); q.flowFrom = i ^ 1; queue.push(pipe);
+      }
+    }
+  }
   function begin(p, f, loaded, now) {
     if (!filling.size) lastStart = now;
     const s = { fluid: f, u: loaded ? 1 : 0, from: -2, full: loaded, dryAt: 0 };
@@ -1921,6 +2291,7 @@ const PipeFill = (() => {
           begin(p, f, loaded, now);
         }
       }
+      if (real - lastOrient > ORIENT && typeof allPipes === 'function') { lastOrient = real; orient(); }
       if (!filling.size) return;
       let started = false;
       for (const p of filling) {
@@ -1953,6 +2324,9 @@ const PipeFill = (() => {
     // (pipeArrived) so nothing is taken in before the liquid is seen to
     // reach it. A pipe not met yet counts only in the post-load settle,
     // when lines already flowing are shown full.
+    // The side pipe `p`'s contents come in at (0-3, N S W E), or -1 if no
+    // source was found upstream of it.
+    flowFrom(p) { const s = st.get(p); return s && s.flowFrom !== undefined ? s.flowFrom : -1; },
     arrived(p, fluid) {
       const s = st.get(p);
       if (s && s.fluid === fluid) return s.full;
@@ -2027,6 +2401,86 @@ function _pipeFillOverlay(conn, fill, pal, a0, t) {
       ctx.globalAlpha = a0;
     }
     ctx.lineJoin = 'miter';
+}
+
+// ── What moves through a pipe ─────────────────────────────────────────
+// Light running along the pipe's upper surface in the fluid's colour,
+// placed in world coordinates so it carries on unbroken from tile to tile
+// and round corners, in the flow direction where the game knows it (oil,
+// fuel oil, LPG), else east / south. Each kind of contents has its own
+// motion: liquids a slow broad glow, gases quick thin streaks, steam with a
+// wisp now and then from a joint, cryogenics slow and white with frost
+// glints and cold mist sinking off the pipe, the ion stream fast and bright.
+const _PIPE_FX = {
+  liquid:  { speed: 0.55, sp: 1.0, len: 0.42, w: 3.4, a: 0.32 },
+  gas:     { speed: 1.25, sp: 0.5, len: 0.2,  w: 2.0, a: 0.36 },
+  steam:   { speed: 0.9,  sp: 0.6, len: 0.3,  w: 2.8, a: 0.34 },
+  cryo:    { speed: 0.4,  sp: 1.0, len: 0.5,  w: 3.6, a: 0.3 },
+  ion:     { speed: 2.6,  sp: 0.34, len: 0.16, w: 2.0, a: 0.6 },
+};
+const _PIPE_KIND = { water: 'liquid', cool: 'liquid', oil: 'liquid', fueloil: 'liquid', acid: 'liquid', steam: 'steam',
+  cryocool: 'cryo', liquidhe: 'cryo', highbeta: 'ion' };
+function _hexRgb(h) { h = (h || '#ffffff').replace('#', ''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)).join(','); }
+function _pipeFlowFX(e, conn, fluid, pal, t, a0) {
+  const kind = _PIPE_KIND[fluid] || 'gas', F = _PIPE_FX[kind], S = TILE / 40, TAU = Math.PI * 2;
+  const rgb = _hexRgb(pal.core), seed = (e.col * 0.37 + e.row * 0.61) % 1;
+  const dirKnown = fluid === 'oil' || fluid === 'fueloil' || fluid === 'lpg';
+  const fdc = dirKnown ? Math.sign(e._oilFlowDC || 0) || 1 : 1, fdr = dirKnown ? Math.sign(e._oilFlowDR || 0) || 1 : 1;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.globalCompositeOperation = 'lighter';
+  // Other fluids: in at the side the line is fed from (PipeFill.flowFrom),
+  // out along the rest, so it always runs from producer to consumer.
+  const ff = !dirKnown && typeof PipeFill !== 'undefined' ? PipeFill.flowFrom(e) : -1, fs = ff >= 0 ? _PIPE_SIDES[ff] : null;
+  for (const d of conn) {
+    const horiz = d.dr === 0;
+    const lo = Math.min(horiz ? d.sx : d.sy, horiz ? d.ex : d.ey), hi = Math.max(horiz ? d.sx : d.sy, horiz ? d.ex : d.ey);
+    const across = horiz ? d.sy - 1.3 * S : d.sx;          // on the pipe's lit upper surface
+    const out = horiz ? d.dc : d.dr;
+    const dir = fs ? (d.dc === fs.dc && d.dr === fs.dr ? -out : out) : (horiz ? fdc : fdr), sp = F.sp * TILE, L = F.len * TILE;
+    const off = ((t * F.speed * TILE * dir) % sp + sp) % sp;
+    for (let p = Math.floor((lo - off - L) / sp) * sp + off; p - L / 2 < hi; p += sp) {
+      const q0 = Math.max(lo, p - L / 2), q1 = Math.min(hi, p + L / 2);
+      if (q1 <= q0) continue;
+      const line = (w, a) => {
+        ctx.globalAlpha = a0 * a; ctx.lineWidth = w * S; ctx.beginPath();
+        if (horiz) { ctx.moveTo(q0, across); ctx.lineTo(q1, across); } else { ctx.moveTo(across, q0); ctx.lineTo(across, q1); }
+        ctx.stroke();
+      };
+      ctx.strokeStyle = `rgb(${rgb})`; line(F.w, F.a);                          // the soft body of the pulse
+      ctx.strokeStyle = 'rgb(255,255,255)'; line(F.w * 0.32, F.a * (kind === 'ion' ? 0.9 : 0.55));   // its bright core
+    }
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // extras by kind, at the tile's joints and along its run
+  const cx = conn.length ? conn[0].ex : 0, cy = conn.length ? conn[0].ey : 0;
+  if (kind === 'steam') {
+    for (const d of conn) {                                  // a wisp from the joint now and then
+      const ph = (t * 0.45 + seed + (d.dc + 2) * 0.23 + (d.dr + 2) * 0.31) % 1;
+      if (ph > 0.35) continue;
+      const k = ph / 0.35, x = d.sx + (d.dc ? 0 : 3 * S * Math.sin(t * 3)), y = d.sy - 2 * S - k * 9 * S;
+      ctx.globalAlpha = a0 * 0.35 * (1 - k); ctx.fillStyle = '#f2f2ff';
+      ctx.beginPath(); ctx.arc(x + k * 2 * S, y, (1.5 + k * 3.5) * S, 0, TAU); ctx.fill();
+    }
+  } else if (kind === 'cryo') {
+    for (let i = 0; i < 3; i++) {                            // frost glints
+      const tw = Math.sin(t * (2.3 + i * 0.7) + seed * 20 + i * 2.1);
+      if (tw < 0.7) continue;
+      const d = conn[i % conn.length], f = (i * 0.37 + seed) % 1, x = d.sx + (d.ex - d.sx) * f, y = d.sy + (d.ey - d.sy) * f - 1.5 * S;
+      ctx.globalAlpha = a0 * (tw - 0.7) / 0.3; ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 0.4 * S, y - 1.6 * S, 0.8 * S, 3.2 * S); ctx.fillRect(x - 1.6 * S, y - 0.4 * S, 3.2 * S, 0.8 * S);
+    }
+    for (let i = 0; i < 2; i++) {                            // cold mist sinking off the pipe
+      const ph = (t * 0.25 + seed + i * 0.5) % 1;
+      ctx.globalAlpha = a0 * 0.22 * Math.sin(ph * Math.PI); ctx.fillStyle = '#e8f6ff';
+      ctx.beginPath(); ctx.ellipse(cx + (i ? 6 : -6) * S, cy + 3 * S + ph * 7 * S, (4 + ph * 5) * S, (1.6 + ph * 1.5) * S, 0, 0, TAU); ctx.fill();
+    }
+  } else if (kind === 'ion' && Camera.zoom > 0.7) {
+    ctx.globalAlpha = a0 * (0.18 + 0.1 * Math.sin(t * 9 + seed * 6)); ctx.fillStyle = `rgb(${rgb})`;
+    ctx.beginPath(); ctx.arc(cx, cy, 6 * S, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+  ctx.globalAlpha = a0;
 }
 
 function renderPipe(e, px, py, t, _overPass = false) {
@@ -2136,244 +2590,7 @@ function renderPipe(e, px, py, t, _overPass = false) {
     // of pipe rendering — up to 3 particles per connected side, each up to 2
     // arc()+fill() calls — and pipes are often the most numerous entity in an
     // industrial city. The fluid core line above keeps the colour readable.
-    if (!fill && Camera.zoom > 0.5) conn.forEach(d => {
-      const px1 = d.sx, py1 = d.sy, px2 = d.ex, py2 = d.ey;
-      if (oilActive) {
-        // Oil — smooth amber stream, flow direction from BFS-stored _oilFlowDC/_oilFlowDR
-        const segDX = px2 - px1, segDY = py2 - py1;
-        const segLen = Math.hypot(segDX, segDY);
-        if (segLen < 1) return;
-        const tileSeed = (e.col * 7 + e.row * 13) / 20;
-        const SPEED = 0.4;
-        const numDrops = 2;
-        // Determine if this segment's direction matches oil flow direction
-        // segDX/segDY points from edge→center; flow direction is _oilFlowDC/_oilFlowDR
-        // If they align, phase runs 0→1 (edge to center). If opposite, reverse.
-        const flowDC = e._oilFlowDC || 0;
-        const flowDR = e._oilFlowDR || 0;
-        const segAligned = (segDX * flowDC + segDY * flowDR) > 0;
-        for (let i = 0; i < numDrops; i++) {
-          let phase = ((t * SPEED + tileSeed + i / numDrops) % 1);
-          if (!segAligned) phase = 1 - phase; // reverse for segments pointing opposite to flow
-          const fx = px1 + segDX * phase;
-          const fy = py1 + segDY * phase;
-          ctx.globalAlpha = 0.85;
-          ctx.fillStyle = '#ffaa20';
-          ctx.beginPath(); ctx.arc(fx, fy, 2.5, 0, Math.PI*2); ctx.fill();
-          ctx.globalAlpha = 0.2;
-          ctx.fillStyle = '#ff6000';
-          ctx.beginPath(); ctx.arc(fx, fy, 4.5, 0, Math.PI*2); ctx.fill();
-        }
-        ctx.globalAlpha = a0;
-      } else if (fuelOilActive) {
-        // Fuel oil — lighter yellow-green droplets, distinct from amber crude
-        const segDX = px2 - px1, segDY = py2 - py1;
-        const segLen = Math.hypot(segDX, segDY);
-        if (segLen > 0) {
-          const tileSeed = (e.col * 11 + e.row * 17) / 20;
-          const flowDC = e._oilFlowDC || 0, flowDR = e._oilFlowDR || 0;
-          const segAligned = (segDX * flowDC + segDY * flowDR) > 0;
-          for (let i = 0; i < 2; i++) {
-            let phase = ((t * 0.4 + tileSeed + i / 2) % 1);
-            if (!segAligned) phase = 1 - phase;
-            const fx = px1 + segDX * phase;
-            const fy = py1 + segDY * phase;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#e8d040';
-            ctx.beginPath(); ctx.arc(fx, fy, 2.5, 0, Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.2;
-            ctx.fillStyle = '#a0c020';
-            ctx.beginPath(); ctx.arc(fx, fy, 4.5, 0, Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (acidActive) {
-        // Sulfuric acid — pale yellow-white droplets
-        const segDX = px2 - px1, segDY = py2 - py1;
-        const segLen = Math.hypot(segDX, segDY);
-        if (segLen > 0) {
-          const tileSeed = (e.col * 9 + e.row * 19) / 20;
-          for (let i = 0; i < 3; i++) {
-            const phase = ((t * 0.45 + tileSeed + i / 3) % 1);
-            const fx = px1 + segDX * phase;
-            const fy = py1 + segDY * phase;
-            ctx.globalAlpha = 0.9;
-            ctx.fillStyle = '#f0f0a0';
-            ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#e0e060';
-            ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (steamActive) {
-        // Steam — white wisps
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*11+e.row*17)/23;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.5+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.7*(1-ph*0.5);
-            ctx.fillStyle = '#d0d8ff';
-            ctx.beginPath(); ctx.ellipse(fx,fy,2.5,1.8,0,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (coolActive) {
-        // Cooled water — blue droplets
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*13+e.row*19)/29;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.4+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#40a0f0';
-            ctx.beginPath(); ctx.arc(fx,fy,2.2,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (cryoCoolActive) {
-        // Cryogenic Coolant — white droplets with a frosty halo
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*13+e.row*19)/29;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.45+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.9;
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath(); ctx.arc(fx,fy,2.2,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.28;
-            ctx.fillStyle = '#e8f6ff';
-            ctx.beginPath(); ctx.arc(fx,fy,3.8,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (hydrogenActive) {
-        // Hydrogen gas — small rising cyan bubbles
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*15+e.row*23)/31;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.6+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#80e0ff';
-            ctx.beginPath(); ctx.arc(fx,fy,1.8,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#40c0ff';
-            ctx.beginPath(); ctx.arc(fx,fy,3.2,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (nitrogenActive) {
-        // Nitrogen gas — small rising mint-green bubbles
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*17+e.row*29)/37;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.6+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#a0ffc8';
-            ctx.beginPath(); ctx.arc(fx,fy,1.8,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#30c880';
-            ctx.beginPath(); ctx.arc(fx,fy,3.2,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (ammoniaActive) {
-        // Ammonia gas — small rising dark-green bubbles
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*19+e.row*31)/41;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.6+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#80ffa0';
-            ctx.beginPath(); ctx.arc(fx,fy,1.8,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#30a050';
-            ctx.beginPath(); ctx.arc(fx,fy,3.2,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (deuteriumActive) {
-        // Deuterium gas — small rising rose-pink bubbles
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*23+e.row*37)/43;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.6+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#ffb8dc';
-            ctx.beginPath(); ctx.arc(fx,fy,1.8,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#ff6eb4';
-            ctx.beginPath(); ctx.arc(fx,fy,3.2,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (highBetaActive) {
-        // D-He3 ion stream — bright cool-blue streaking particles
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*29+e.row*41)/47;
-          for (let i=0; i<3; i++) {
-            const ph = ((t*0.9+seed+i/3)%1);
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.9;
-            ctx.fillStyle = '#c0f0ff';
-            ctx.beginPath(); ctx.arc(fx,fy,1.8,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.3;
-            ctx.fillStyle = '#4090ff';
-            ctx.beginPath(); ctx.arc(fx,fy,3.6,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (lpgActive) {
-        // LPG — small coral gas bubbles, following the flow direction
-        const segDX = px2-px1, segDY = py2-py1;
-        if (Math.hypot(segDX,segDY) > 0) {
-          const seed = (e.col*31+e.row*43)/53;
-          const segAligned = (segDX * (e._oilFlowDC || 0) + segDY * (e._oilFlowDR || 0)) > 0;
-          for (let i=0; i<3; i++) {
-            let ph = ((t*0.55+seed+i/3)%1);
-            if (!segAligned) ph = 1 - ph;
-            const fx = px1+segDX*ph, fy = py1+segDY*ph;
-            ctx.globalAlpha = 0.85;
-            ctx.fillStyle = '#ffa088';
-            ctx.beginPath(); ctx.arc(fx,fy,1.8,0,Math.PI*2); ctx.fill();
-            ctx.globalAlpha = 0.25;
-            ctx.fillStyle = '#ff6040';
-            ctx.beginPath(); ctx.arc(fx,fy,3.2,0,Math.PI*2); ctx.fill();
-          }
-          ctx.globalAlpha = a0;
-        }
-      } else if (hasWaterFlow) {
-        // Water — teal droplets
-        const segLen = Math.hypot(px2-px1, py2-py1);
-        const numDrops = Math.max(2, Math.floor(segLen / 6));
-        for (let i = 0; i < numDrops; i++) {
-          const phase = ((t * 3.5 + e.col * 0.4 + e.row * 0.6 + i / numDrops) % 1);
-          const fx = px1 + (px2-px1)*phase;
-          const fy = py1 + (py2-py1)*phase;
-          const alpha = Math.sin(phase * Math.PI);
-          ctx.globalAlpha = alpha * 0.9;
-          ctx.fillStyle = '#80ffee';
-          ctx.beginPath(); ctx.arc(fx, fy, 2.2, 0, Math.PI*2); ctx.fill();
-          ctx.globalAlpha = alpha * 0.3;
-          ctx.fillStyle = '#20d4c8';
-          ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI*2); ctx.fill();
-          ctx.globalAlpha = a0;
-        }
-      }
-    }); // end flow-droplet LOD gate (Camera.zoom > 0.5)
+    if (!fill && Camera.zoom > 0.5 && myFluid && hasFlow) _pipeFlowFX(e, conn, myFluid, pal, t, a0);
 
     // Pipe network hover highlight — pulse white over connected segments
     if (e._pipeHighlight) {
@@ -2424,6 +2641,37 @@ function _udgPad(px, py, S, tint) {
     }
     if (tint) { ctx.fillStyle = tint; ctx.beginPath(); ctx.roundRect(px + 1.5, py + 1.5, TILE - 3, TILE - 3, 2.5 * S); ctx.fill(); }
 }
+// ── Rendered underground entrances (render_beltpipe.py u) ──
+// udgp_pad + udg_earth_<side> + udgp_<stub mask> (tinted per fluid like the
+// pipe tiles) for a pipe; udgb_<axis><paired mask> for a belt portal. Drawn
+// on the pipe / belt tiles' own anchor (_bpDraw), so the stubs meet the
+// neighbouring tiles; traces, chevrons, the bore glow, belt slats, marker
+// caps and highlights stay live.
+const UDG_LAYOUT = { markers: { n: [-0.6, 0.72, 0.41], s: [0.6, -0.72, 0.41], w: [-0.72, -0.6, 0.41], e: [0.72, 0.6, 0.41] }, earthZ: 0.17, collarZ: 0.2 };
+const _udgTint = new Map();
+function _udgTinted(name, pal) {
+  const key = name + '|' + pal.flange; let cv = _udgTint.get(key); if (cv) return cv;
+  const im = CoalWaterArt.get(name); if (!im || !im.complete || !im.naturalWidth) return null;
+  cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+  const g = cv.getContext('2d'); g.drawImage(im, 0, 0);
+  const h = pal.flange.replace('#', ''), c = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16));
+  const hm = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(pal.hi || ''), hi = hm ? [+hm[1], +hm[2], +hm[3]] : [220, 225, 230];
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${c.map((v, i) => Math.round(v * 0.5 + hi[i] * 0.5)).join(',')})`; g.fillRect(0, 0, cv.width, cv.height);
+  g.globalCompositeOperation = 'destination-in'; g.drawImage(im, 0, 0);
+  _udgTint.set(key, cv); return cv;
+}
+// metres (tile centre origin, north +y) -> screen, for a sprite drawn at axis height z0
+function _udgP(px, py, x, y, z, z0) { const M = 20 * (TILE / 40); return [px + TILE / 2 + x * M, py + TILE / 2 - (y + (z - z0) * _CW_TAN) * M]; }
+const _udgSide = (dc, dr) => dc < 0 ? 'w' : dc > 0 ? 'e' : dr < 0 ? 'n' : 's';
+function _udgTrace(px, py, dc, dr, z, z0, col, t, live) {
+  const S = TILE / 16, [ax, ay] = _udgP(px, py, 0, 0, z, z0), [bx, by] = _udgP(px, py, dc * 0.95, -dr * 0.95, z, z0);
+  ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.setLineDash([2 * S, 1.6 * S]); ctx.lineDashOffset = live ? -(t || 0) * 6 * S * (dc + dr) : 0;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+}
+function _udgCap(px, py, dc, dr, z0, col) {
+  const m = UDG_LAYOUT.markers[_udgSide(dc, dr)], [mx, my] = _udgP(px, py, m[0], m[1], m[2], z0), S = TILE / 16;
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(mx, my, 0.7 * S, 0, Math.PI * 2); ctx.fill();
+}
 // Packed earth from the centre out through side (dc, dr), half-width hw,
 // with the buried line traced along it in `trace` (null: no trace).
 function _udgEarth(px, py, S, dc, dr, hw, trace, t, live) {
@@ -2467,6 +2715,31 @@ function renderUndergndBelt(e, px, py, t) {
     const paired = sides.map(([dc, dr]) => !!(typeof udgBeltPartner === 'function' && e.col !== undefined
                                               && udgBeltPartner(e.col, e.row, dc, dr, axis)));
     const amber = live ? '#e0a040' : '#8a6a40';
+    if (_bpReady('udgb')) {   // rendered (render_beltpipe.py u)
+      const z0 = BELTPIPE_LAYOUT.beltZ, Mpx = 20 * (TILE / 40), bwR = 0.36 * Mpx;
+      const pm = axis === 'h' ? (paired[0] ? 4 : 0) | (paired[1] ? 8 : 0) : (paired[0] ? 1 : 0) | (paired[1] ? 2 : 0);
+      _bpDraw(CoalWaterArt.get('udgb_' + axis + pm), cx, cy, z0);
+      const bi = paired.indexOf(true), [hdc, hdr] = bi >= 0 ? sides[bi] : [0, 0], hx = cx + hdc * 0.25 * Mpx, hy = cy + hdr * 0.25 * Mpx;
+      sides.forEach(([dc, dr], i) => {
+        if (paired[i]) { _udgTrace(px, py, dc, dr, UDG_LAYOUT.earthZ, z0, live ? 'rgba(224,160,64,0.75)' : 'rgba(150,110,60,0.5)', t, live); return; }
+        const ex = dc !== 0 ? (dc < 0 ? px + 1.5 : px + TILE - 1.5) : cx, ey = dr !== 0 ? (dr < 0 ? py + 1.5 : py + TILE - 1.5) : cy;
+        const x0 = dc !== 0 ? Math.min(ex, hx) : cx - bwR, x1 = dc !== 0 ? Math.max(ex, hx) : cx + bwR, y0 = dr !== 0 ? Math.min(ey, hy) : cy - bwR, y1 = dr !== 0 ? Math.max(ey, hy) : cy + bwR;
+        ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip();
+        const phase = live ? ((t || 0) * 8 * S) % (3 * S) : 0;
+        ctx.strokeStyle = live ? 'rgba(214,156,72,0.55)' : 'rgba(120,100,70,0.35)'; ctx.lineWidth = S * 0.4;
+        for (let k = -3 * S + phase; k < TILE; k += 3 * S) { ctx.beginPath();
+          if (dc !== 0) { const lx = ex - dc * k; ctx.moveTo(lx, y0 + 0.8); ctx.lineTo(lx, y1 - 0.8); } else { const ly = ey - dr * k; ctx.moveTo(x0 + 0.8, ly); ctx.lineTo(x1 - 0.8, ly); }
+          ctx.stroke(); }
+        const sg = dc !== 0 ? ctx.createLinearGradient(ex, 0, hx, 0) : ctx.createLinearGradient(0, ey, 0, hy);
+        sg.addColorStop(0, 'rgba(0,0,0,0)'); sg.addColorStop(1, 'rgba(0,0,0,0.75)'); ctx.fillStyle = sg; ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+        ctx.restore();
+      });
+      { const tw = 0.17 * Mpx; ctx.strokeStyle = amber; ctx.lineWidth = 1;
+        if (axis === 'h') ctx.strokeRect(hx - tw / 2, hy - bwR, tw, bwR * 2); else ctx.strokeRect(hx - bwR, hy - tw / 2, bwR * 2, tw); }
+      sides.forEach(([dc, dr], i) => { if (paired[i]) _udgCap(px, py, dc, dr, z0, amber); });
+      if (e._conveyorHighlight) { ctx.strokeStyle = 'rgba(255,200,90,0.8)'; ctx.lineWidth = 1.5; ctx.strokeRect(px + 1.5, py + 1.5, TILE - 3, TILE - 3); }
+      return;
+    }
 
     _udgPad(px, py, S);
 
@@ -2909,9 +3182,30 @@ function renderUndergndPipe(e, px, py, t) {
     // A valve pit: concrete pad, the surface pipe coming in and turning down
     // through a bolted flange into the ground, and packed earth with a dashed
     // trace over the buried run on the side paired with the far mouth.
-    _udgPad(px, py, S);
     const pairedSide = d => !!udgPartner(e.col, e.row, d.dc, d.dr, axis);
     const flow = e._bpPreview ? 0 : udgPipeFlow(e);
+    if (_bpReady('udgp')) {   // rendered (render_beltpipe.py u)
+      const z0 = BELTPIPE_LAYOUT.pipeZ;
+      _bpDraw(CoalWaterArt.get('udgp_pad'), cx, cy, z0);
+      dirs.forEach(d => { if (!pairedSide(d)) return;
+        _bpDraw(CoalWaterArt.get('udg_earth_' + _udgSide(d.dc, d.dr)), cx, cy, z0);
+        _udgTrace(px, py, d.dc, d.dr, UDG_LAYOUT.earthZ, z0, hasFlow ? _hexA(portColor, 0.7) : 'rgba(60,110,120,0.5)', t, hasFlow);
+        _udgCap(px, py, d.dc, d.dr, z0, hasFlow ? portColor : '#4a6a70'); });
+      let m = 0; connected.forEach(d => { if (!pairedSide(d)) m |= d.dr < 0 ? 1 : d.dr > 0 ? 2 : d.dc < 0 ? 4 : 8; });
+      const im = _udgTinted('udgp_' + m, pal); if (im) _bpDraw(im, cx, cy, z0);
+      if (flow) connected.forEach(d => { if (pairedSide(d)) return;
+        const ex = cx + d.dc * (TILE / 2 - 1.5), ey = cy + d.dr * (TILE / 2 - 1.5), fxv = (axis === 'v' ? 0 : 1) * flow, fyv = (axis === 'v' ? 1 : 0) * flow, perpX = -d.dr, perpY = d.dc, mx = (ex + cx) / 2, my = (ey + cy) / 2;
+        ctx.beginPath(); ctx.moveTo(mx + fxv * S * 2.0, my + fyv * S * 2.0);
+        ctx.lineTo(mx - fxv * S * 1.4 + perpX * S * 1.8, my - fyv * S * 1.4 + perpY * S * 1.8); ctx.lineTo(mx - fxv * S * 1.4 - perpX * S * 1.8, my - fyv * S * 1.4 - perpY * S * 1.8); ctx.closePath();
+        ctx.fillStyle = hasFlow ? pal.core : pal.flange; ctx.fill(); ctx.strokeStyle = pal.rim; ctx.lineWidth = 0.6; ctx.stroke(); });
+      if (hasFlow) { const [bx, by] = _udgP(px, py, 0, 0, UDG_LAYOUT.collarZ, z0), ga = 0.55 + 0.25 * Math.sin(t * 3), r = PR * 0.9;
+        if (Camera.zoom > 0.5) { const g = ctx.createRadialGradient(bx, by, 0, bx, by, r); g.addColorStop(0, _hexA(portColor, ga)); g.addColorStop(1, _hexA(portColor, 0)); ctx.fillStyle = g; }
+        else ctx.fillStyle = _hexA(portColor, ga * 0.6);
+        ctx.beginPath(); ctx.ellipse(bx, by, r, r * 0.9, 0, 0, Math.PI * 2); ctx.fill(); }
+      if (e._pipeHighlight) { ctx.save(); ctx.globalAlpha = 0.28 + 0.08 * Math.sin(t * 4); ctx.fillStyle = '#80e8ff'; ctx.fillRect(px + 1, py + 1, TILE - 2, TILE - 2); ctx.restore(); }
+      return;
+    }
+    _udgPad(px, py, S);
     dirs.forEach(d => {
       if (!pairedSide(d)) return;
       _udgEarth(px, py, S, d.dc, d.dr, PR + 1, hasFlow ? _hexA(portColor, 0.7) : 'rgba(60,110,120,0.5)', t, hasFlow);
@@ -3068,6 +3362,7 @@ function _drawSurveyBar(cx, cy, bw, s, pct, fill, label) {
 // footprint, 2 at the 4×4 it ships as).
 function renderSurvey(e, px, py, t) {
     if (e.col !== e.col || e.row !== e.row) return;  // skip ghost tiles
+    if (_svOK(e, 1)) return _svArt(e, px, py, t, 1);   // rendered (end of this file)
     const tw = TILE * (e.width || 4), th = TILE * (e.height || 4);
     const S  = tw / (TILE * 2);
     const cx = px + tw / 2;
@@ -3432,6 +3727,7 @@ function renderSurvey(e, px, py, t) {
 // pixel size as the MK1's 2 at 4×4), so the two read as the same family.
 function renderSurvey2(e, px, py, t) {
     if (e.col !== e.col || e.row !== e.row) return;  // skip ghost tiles
+    if (_svOK(e, 2)) return _svArt(e, px, py, t, 2);   // rendered (end of this file)
     const tw = TILE * (e.width || 6), th = TILE * (e.height || 6);
     const S  = tw / (TILE * 3);
     const cx = px + tw / 2;
@@ -3782,7 +4078,107 @@ function renderSurvey2(e, px, py, t) {
 // on grid power) — instead a transformer, dust at the stacker, a blinking
 // aviation light and floodlights on the tower after dark. Drawn in its own
 // w×h pixel space; `s` scales small details with the footprint (1 at 2×2).
+// Coal Mine MK2 as rendered sprites (COAL_WATER_LAYOUT.mine2, 6x6): the
+// gravel yard is SiteYard's; the stockpile is one of four sprites by what's
+// left in the seam; the skip rides the headframe, the twin sheaves turn,
+// the hopper wagon shuttles under the loadout silo. Smoke-free: coal on the
+// gallery and falling off the stacker, lamps, the OUT stub and label live.
+function _coalMine2Art(e, px, py, t) {
+  const L = COAL_WATER_LAYOUT.mine2;
+  const w = (e.width || 6) * TILE, h = (e.height || 6) * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const kx = w / (240 * S), ky = h / (240 * S), s = Math.min(kx, ky) * S;
+  const on = e.powered, dep = e._linkedDeposit;
+  const pct = dep && dep.coalMax > 0 ? (dep.coalAmount || 0) / dep.coalMax : 0;
+  const out = e._coalRate || 0, running = on && pct > 0;
+  const F = _cwFrame(L, px + w / 2, py + h / 2, kx, ky), { P, D, M } = F;
+  const dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0, night = dark > 0.35;
+  const glow = (x, y, r, rgb, a) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`);
+    ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  };
+  ctx.save();
+  if (on && night && Camera.zoom > 0.5) for (const f of L.floods) { const [fx, fy] = P(f[0], f[1], 0); glow(fx, fy + 10 * s, w * 0.35, '220,235,255', 0.14); }
+  F.draw(CoalWaterArt.get('coalmine2_base'));
+  if (pct > 0) F.draw(CoalWaterArt.get('coalmine2_heap_' + Math.min(3, Math.floor(pct * 4))));
+  // prep plant windows: lit from inside while it runs
+  if (running) L.plantWin.forEach(([x, y, z], i) => {
+    const [wx, wy] = P(x, y, z);
+    ctx.fillStyle = night ? `rgba(255,215,140,${(0.7 + 0.1 * Math.sin(t * 1.5 + i)).toFixed(3)})` : `rgba(200,230,255,${(0.35 + 0.08 * Math.sin(t * 1.5 + i)).toFixed(3)})`;
+    ctx.fillRect(wx - 0.31 * M * kx, wy - 0.22 * M * ky, 0.62 * M * kx, 0.45 * M * ky);
+  });
+  // roof vent fans
+  for (const [x, y, z] of L.vents) {
+    const [vx, vy] = P(x, y, z), a = running ? t * 6 + x : 0.4, r = 0.26 * M * kx;
+    ctx.strokeStyle = 'rgba(40,46,52,0.9)'; ctx.lineWidth = 0.8 * s;
+    ctx.beginPath(); ctx.moveTo(vx - Math.cos(a) * r, vy - Math.sin(a) * r * 0.5); ctx.lineTo(vx + Math.cos(a) * r, vy + Math.sin(a) * r * 0.5); ctx.stroke();
+  }
+  // hopper wagon on the spur, loaded once it has passed under the silo
+  {
+    // rolls in, brakes under the silo, fills while the chute runs, pulls away
+    const span = 6 + 1.4, P20 = 20, tt = running ? (t + (e.col * 3.7) % P20) % P20 : 8;
+    const sx_ = L.silo[0];
+    let x, loading = false;
+    if (tt < 6) x = -span + (sx_ + span) * (1 - (1 - tt / 6) * (1 - tt / 6));
+    else if (tt < 10) { x = sx_; loading = true; }
+    else if (tt < 16) { const k = (tt - 10) / 6; x = sx_ + (span - sx_) * k * k; }
+    else x = span + 2;
+    const full = pct > 0 && tt >= 7.5;
+    ctx.save(); ctx.beginPath(); ctx.rect(px, py - h, w, h * 2); ctx.clip();
+    const moving = running && !loading && tt < 16, bob = moving ? Math.abs(Math.sin(t * 15)) * 0.4 * s : 0;
+    F.draw(CoalWaterArt.get(full ? 'coalmine2_wagon_full' : 'coalmine2_wagon'), x * M * kx, -bob);
+    ctx.restore();
+    if (running && loading && pct > 0) {
+      const [cx0, cy0] = P(...L.silo), [, cy1] = P(L.silo[0], L.silo[1], 1.3);
+      _coalFall(cx0, cy0, cx0, cy1, t, 8, s, 1.5);
+    }
+  }
+  // coal along the gallery, tower to plant
+  _coalSlit(P, L.gallery, t, running, s, 0.25, 12, e.col + 7);
+  // skip riding the headframe, its rope, the twin sheaves
+  {
+    const [sx, sy, z0, z1] = L.skipShaft;
+    const lift = (running ? 0.5 - 0.5 * Math.cos(t * 0.9) : 0.1) * (z1 - z0 - 1.4);
+    const [rx, ry0] = P(sx, sy, z1), [, ry1] = P(sx, sy, z0 + 1.4 + lift);
+    ctx.strokeStyle = 'rgba(210,210,210,0.6)'; ctx.lineWidth = 0.5 * s;
+    ctx.beginPath(); ctx.moveTo(rx, ry0); ctx.lineTo(rx, ry1); ctx.stroke();
+    F.draw(CoalWaterArt.get('coalmine2_skip'), 0, -lift * _CW_TAN * M * ky);
+    const Sh = L.sheaves;
+    Sh.hubs.forEach((hub, k) => {
+      const [hx, hy] = P(...hub);
+      _cwTurned(CoalWaterArt.get('coalmine2_sheave_' + k), [D(...Sh.u), D(...Sh.v)], running ? t * 2.4 * (k ? -1 : 1) : 0, hx, hy, F);
+    });
+  }
+  // stacker: coal falling off the boom head onto the pile, dust
+  if (running) {
+    const [bx, by] = P(...L.boomHead), [, py0] = P(L.pile[0], L.pile[1], 0.5 + 1.4 * pct);
+    ctx.fillStyle = 'rgba(10,10,10,0.9)';
+    for (let k = 0; k < 4; k++) { const f = (t * 1.6 + k / 4) % 1; ctx.fillRect(bx - 0.6 * s, by + f * (py0 - by), 1.2 * s, 1.5 * s); }
+    for (let k = 0; k < 3; k++) {
+      const f = (t * 0.4 + k / 3) % 1;
+      ctx.fillStyle = `rgba(110,100,90,${(0.3 * (1 - f)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(bx + (k - 1) * 3 * s * f, py0 - f * 6 * s, (1.5 + f * 3) * s, 0, TAU); ctx.fill();
+    }
+  }
+  // floodlight heads, aviation light, transformer lamp
+  for (const f of L.floods) { const [fx, fy] = P(...f); ctx.fillStyle = on && night ? '#f4f8ff' : '#707a84'; ctx.fillRect(fx - 1.2 * s, fy - 0.6 * s, 2.4 * s, 1.2 * s); if (on && night) glow(fx, fy, 10 * s, '235,245,255', 0.35); }
+  if (on) {
+    const [ax, ay] = P(...L.avLight); _avLamp(ax, ay, s, t, 1.4);
+  }
+  { const [lx, ly] = P(...L.trafoLed); ctx.fillStyle = on ? (Math.sin(t * 3) > -0.6 ? '#40e060' : '#186028') : '#e03020'; ctx.beginPath(); ctx.arc(lx, ly, 0.8 * s, 0, TAU); ctx.fill(); }
+  _coalMineOutStub(e, px, py, w, h, t, running);
+  if (!e._ghost) {
+    ctx.fillStyle = running ? 'rgba(255,170,80,0.95)' : '#4a3a2a';
+    ctx.font = `${Math.max(7, Math.round(9 / Camera.zoom))}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.fillText(running ? `${out.toFixed(1)} t/s` : (pct <= 0 ? 'EMPTY' : 'OFFLINE'), px + w * 0.25, py + h * 0.07);
+    ctx.textAlign = 'left';
+  }
+  ctx.restore();
+}
+
 function renderCoalMineMK2(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('mine2')) return _coalMine2Art(e, px, py, t);
     const w = (e.width  || 2) * TILE, h = (e.height || 2) * TILE;
     const s = w / 80;
     const on  = e.powered;
@@ -4042,6 +4438,7 @@ function renderCoalMineMK2(e, px, py, t) {
 
 function renderCoalMine(e, px, py, t) {
     if (e.type === T.COALMINE2) { renderCoalMineMK2(e, px, py, t); return; }
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('mine')) return _coalMineArt(e, px, py, t);
     // Coal Mine (MK1) — an old timber-headframe colliery built around its
     // seam. New mines stand a tile out from the deposit on every side (2×2
     // seam → 4×4 mine, 3×3 → 5×5; see _coalMineFootprint); mines built
@@ -4093,9 +4490,15 @@ function renderCoalMine(e, px, py, t) {
       ctx.fillStyle = g; ctx.fillRect(X(x) - r*s, Y(y) - r*s, r*s*2, r*s*2);
     };
     const lit = (a = 0.85) => on ? (dark > 0.3 ? `rgba(255,206,120,${a})` : 'rgba(170,190,200,0.85)') : '#1e1a16';
+    // Static/animated split (RenderSplit.register(T.COALMINE) below): Sp is
+    // the baked layer (yard to shaft collar), Ap what is drawn live on top
+    // every frame (glints, smoke, and the belt onwards).
+    const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver();
+    const hgt = 0.05 + 0.13*pct;
 
     ctx.save();
 
+    if (Sp) {
     // ── Yard: packed earth darkened with coal dust, ruts and puddles ──
     const yg = ctx.createRadialGradient(X(0.5), Y(0.55), 0, X(0.5), Y(0.55), Math.max(w, h)*0.7);
     yg.addColorStop(0, '#4a3e2e'); yg.addColorStop(1, '#2e271e');
@@ -4148,7 +4551,6 @@ function renderCoalMine(e, px, py, t) {
     for (const ry of [0.80, 0.855]) { ln(0.03, ry, 0.97, ry, '#4a4a4a', 1.6); ln(0.03, ry - 0.004, 0.97, ry - 0.004, '#b8b0a0', 0.5); }
 
     // ── Coal heap by the rail, sized by what's left in the seam ──
-    const hgt = 0.05 + 0.13*pct;
     // a soft shadow pooled at its foot, then the heap: scanned rubble,
     // blackened, so it reads as lumps of coal, not a flat black wedge
     ell(0.79, 0.79, 0.19, 0.022, 'rgba(0,0,0,0.3)');
@@ -4166,10 +4568,7 @@ function renderCoalMine(e, px, py, t) {
       ctx.fillStyle = 'rgba(0,0,0,0.3)';
       ctx.beginPath(); ctx.moveTo(X(0.78), Y(0.785 - hgt)); ctx.lineTo(X(0.86), Y(0.785 - hgt*0.6)); ctx.lineTo(X(0.95), Y(0.785)); ctx.lineTo(X(0.76), Y(0.785)); ctx.closePath(); ctx.fill();
     }
-    for (let g = 0; g < 9; g++) {
-      const gx = 0.63 + S(g + 30)*0.3, gy = 0.785 - S(g + 40)*hgt*0.7;
-      dot(gx, gy, 0.7, `rgba(190,200,215,${(0.35 + 0.4*Math.max(0, Math.sin(t*1.3 + g*2.1))).toFixed(3)})`);   // glints
-    }
+    // (the heap's glints are drawn live, with the other moving parts below)
 
     // ── Lamp room (top left): plank walls, pitched roof, stovepipe ──
     shadow(0.06, 0.15, 0.22, 0.15);
@@ -4185,8 +4584,7 @@ function renderCoalMine(e, px, py, t) {
     R(0.15, 0.22, 0.045, 0.08, '#3a2a1c');
     dot(0.188, 0.262, 0.5, '#c8a050');
     for (const wx of [0.08, 0.215]) { R(wx, 0.19, 0.045, 0.045, lit()); ln(wx + 0.0225, 0.19, wx + 0.0225, 0.235, '#3a2a1c', 0.4); }
-    R(0.235, 0.06, 0.016, 0.05, '#2a2622');                                   // stovepipe
-    if (on) for (let q = 0; q < 3; q++) { const ph = (t*0.25 + q/3) % 1; dot(0.243 + ph*0.02, 0.055 - ph*0.06, 1.2 + ph*3, `rgba(150,140,130,${((1 - ph)*0.3).toFixed(3)})`); }
+    R(0.235, 0.06, 0.016, 0.05, '#2a2622');                                   // stovepipe (its smoke is drawn live)
     if (lamps) { glow(0.17, 0.26, 26, '255,210,140', 0.22); dot(0.172, 0.21, 1.4, '#ffe2a0'); }
 
     // ── Pit props: a stack of logs showing end grain ──
@@ -4231,11 +4629,7 @@ function renderCoalMine(e, px, py, t) {
     grainR('mottle', 0.905, 0.02, 0.05, 0.35, 0.8);
     R(0.905, 0.02, 0.016, 0.35, 'rgba(255,255,255,0.08)');
     for (let k = 1; k < 4; k++) R(0.905, 0.02 + k*0.085, 0.05, 0.01, '#3e2418');
-    R(0.9, 0.015, 0.06, 0.016, '#3a2418');
-    if (running) for (let q = 0; q < 5; q++) {
-      const ph = (t*0.3 + q/5) % 1;
-      dot(0.93 + ph*0.04 + Math.sin(t + q)*0.012, 0.015 - ph*0.13, 2 + ph*7, `rgba(${dark > 0.3 ? '70,64,60' : '96,88,80'},${((1 - ph)*0.45).toFixed(3)})`);
-    }
+    R(0.9, 0.015, 0.06, 0.016, '#3a2418');                                    // (its smoke is drawn live)
 
     // ── Headframe shadow across the yard ──
     poly([[0.38, 0.63], [0.62, 0.63], [0.80, 0.52], [0.66, 0.50]], 'rgba(0,0,0,0.16)');
@@ -4251,6 +4645,21 @@ function renderCoalMine(e, px, py, t) {
     ln(0.40, 0.455, 0.60, 0.455, '#c8b070', 0.6);                             // rail
     for (const rx of [0.40, 0.50, 0.60]) ln(rx, 0.455, rx, 0.47, '#c8b070', 0.6);
     if (running) glow(0.50, 0.55, 18, '255,200,120', 0.12);                   // lamps down the shaft
+    }   // Sp
+
+    // ── Live from here on: everything that moves, and everything drawn over it ──
+    if (Ap) {
+    // Moved down from their own sections, which draw nothing over them: the
+    // glints on the heap, the lamp room's stovepipe smoke, the stack's smoke.
+    for (let g = 0; g < 9; g++) {
+      const gx = 0.63 + S(g + 30)*0.3, gy = 0.785 - S(g + 40)*hgt*0.7;
+      dot(gx, gy, 0.7, `rgba(190,200,215,${(0.35 + 0.4*Math.max(0, Math.sin(t*1.3 + g*2.1))).toFixed(3)})`);
+    }
+    if (on) for (let q = 0; q < 3; q++) { const ph = (t*0.25 + q/3) % 1; dot(0.243 + ph*0.02, 0.055 - ph*0.06, 1.2 + ph*3, `rgba(150,140,130,${((1 - ph)*0.3).toFixed(3)})`); }
+    if (running) for (let q = 0; q < 5; q++) {
+      const ph = (t*0.3 + q/5) % 1;
+      dot(0.93 + ph*0.04 + Math.sin(t + q)*0.012, 0.015 - ph*0.13, 2 + ph*7, `rgba(${dark > 0.3 ? '70,64,60' : '96,88,80'},${((1 - ph)*0.45).toFixed(3)})`);
+    }
 
     // ── Covered belt from the collar up to the loading bin ──
     ln(0.43, 0.565, 0.27, 0.59, '#2a2018', 4.2);
@@ -4360,9 +4769,32 @@ function renderCoalMine(e, px, py, t) {
       ctx.fillText(running ? `${out.toFixed(1)} t/s` : (pct <= 0 ? 'EMPTY' : 'OFFLINE'), px + w * labelX, py + h - 5);
       ctx.textAlign = 'left';
     }
+    }   // Ap
 
     ctx.restore();
   }
+
+/* Static/animated split for the Coal Mine MK1 (see SplitPhase in
+   render_core.js). The yard, rail, heap, lamp room, pit props, winding
+   house, stack, headframe shadow and shaft collar are baked; the belt, bin,
+   carts, headframe with its cage and sheave, miners, yard lamps, OUT stub,
+   label, the heap's glints and both plumes of smoke are drawn live.
+   Without a split the whole mine was a bitmap re-baked every 140ms or so
+   whenever the cache was off its live tier (any built-up city), so the
+   sheave, cage and carts ran at about 7fps at every zoom. alwaysLive: the
+   moving parts keep the frame rate in the frozen tier too. Frozen in the
+   bitmap: the winding house's night window flicker (drawn under the hoist
+   rope and the stack, so it can't move to the live pass on its own). */
+RenderSplit.register(T.COALMINE, {
+  alwaysLive: true,
+  key(e) {
+    const dep = e._linkedDeposit;
+    const pct = dep && dep.coalMax > 0 ? (dep.coalAmount || 0) / dep.coalMax : 0;
+    const dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+    return (e.powered ? 'p' : '-') + (pct > 0 ? 'c' : '-') + Math.round(pct * 50)
+      + (dark > 0.3 ? 'n' : 'd') + Math.round(dark * 5) + (Camera.zoom >= 0.45 ? 'z' : '-');
+  },
+});
 
 // ── Uranium Mine (4×5) ──
 // Steel headframe straddling a glowing shaft collar — sheave wheels spin and
@@ -4372,6 +4804,7 @@ function renderCoalMine(e, px, py, t) {
 // rail across the bottom. Shares the _wf* drawing helpers with the waste
 // facilities (render_hydro_coal.js). No backdrop — terrain shows through.
 function renderUraniumMine(e, px, py, t) {
+  if (typeof _nkOK === 'function' && _nkOK(e, 'um', 4, 5)) return _umArt(e, px, py, t);
   const w = (e.width  || 4) * TILE;
   const h = (e.height || 5) * TILE;
   const S = TILE / 40;
@@ -4572,6 +5005,7 @@ function renderUraniumMine(e, px, py, t) {
 // The MK2 (T.SULFURMINE2) has its own, bigger plant: renderSulfurMine2.
 function renderSulfurMine(e, px, py, t) {
   if (e.type === T.SULFURMINE2) return renderSulfurMine2(e, px, py, t);
+  if (_smOK(e, 1)) return _smArt(e, px, py, t, 1);   // rendered (end of this file)
   const w = (e.width  || 4) * TILE;
   const h = (e.height || 5) * TILE;
   const S = TILE / 40;
@@ -4756,6 +5190,7 @@ function renderSulfurMine(e, px, py, t) {
 // feeds the loadout belt to the OUT stub. Blue flares burn off vent gas.
 // Drawn for OUT at the bottom-right and mirrored for bottom-left.
 function renderSulfurMine2(e, px, py, t) {
+  if (_smOK(e, 2)) return _smArt(e, px, py, t, 2);   // rendered (end of this file)
   const w = (e.width  || 6) * TILE;
   const h = (e.height || 7) * TILE;
   const S = TILE / 40;
@@ -5114,6 +5549,7 @@ function renderSulfurMine2(e, px, py, t) {
 // belt to a white stockpile that grows with the mine's ore buffer. No
 // backdrop. Shares the _wf* helpers.
 function renderLithiumMine(e, px, py, t) {
+  if (_limOK(e)) return _limArt(e, px, py, t);   // rendered (end of this file)
   const w = (e.width  || 8) * TILE;
   const h = (e.height || 10) * TILE;
   const S = TILE / 40;
@@ -5291,12 +5727,12 @@ function _coalMineOutStub(e, px, py, w, h, t, running, hub, portOverride) {
   if (hub) {
     const dx = hub.x - ex, dy = hub.y - ey, a = -ang;
     const hubLY = dx*Math.sin(a) + dy*Math.cos(a);
-    const g0 = hubLY + (hub.r || 0), g1 = hy + 1*S, gw = 6*S;
+    const g0 = hubLY + (hub.r || 0), g1 = _portReady() ? -19*S : hy + 1*S, gw = 6*S;
     if (g1 > g0) {
       ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(-gw - 2.5*S, g0, gw*2 + 5*S, g1 - g0);
       ctx.fillStyle = '#26303a';
       for (let y = g0 + 8*S; y < g1 - 4*S; y += 14*S) ctx.fillRect(-gw - 2.5*S, y, gw*2 + 5*S, 2.2*S);
-      ctx.fillStyle = '#3c4e5e'; ctx.fillRect(-gw, g0, gw*2, g1 - g0);
+      ctx.fillStyle = '#3c4e5e'; _fillRectMetalG(ctx, -gw, g0, gw*2, g1 - g0);
       ctx.fillStyle = '#5a6e82'; ctx.fillRect(-gw, g0, 1.3*S, g1 - g0);
       ctx.fillStyle = '#2a3844'; ctx.fillRect(gw - 1.3*S, g0, 1.3*S, g1 - g0);
       ctx.fillStyle = '#10151a'; ctx.fillRect(-2.4*S, g0 + 1.5*S, 4.8*S, g1 - g0 - 1.5*S);
@@ -5314,10 +5750,19 @@ function _coalMineOutStub(e, px, py, w, h, t, running, hub, portOverride) {
     }
   }
 
+  // The shared rendered dock, as every plant's belt ports
+  if (_portReady()) {
+    ctx.restore();
+    const d = [[0, -1], [1, 0], [0, 1], [-1, 0]][rot];
+    _portBeltArt({ face: ['top', 'right', 'bottom', 'left'][rot], x: ex, y: ey, dx: d[0], dy: d[1] }, S, t,
+      { belt: '#e8c060', on: connected || running, out: true, moving });
+    return;
+  }
   // Belt lip out to the footprint edge
   const lipY = -9*S;
-  ctx.fillStyle = '#5d646b'; ctx.fillRect(-frameHW, lipY, frameHW*2, -lipY);
+  ctx.fillStyle = '#5d646b'; _fillRectMetalG(ctx, -frameHW, lipY, frameHW*2, -lipY);
   ctx.fillStyle = '#303338'; ctx.fillRect(-beltHW, lipY, beltHW*2, -lipY);
+  if (typeof _bldGrainRect === 'function') _bldGrainRect(ctx, 'grit', -beltHW, lipY, beltHW*2, -lipY, 0.9);
   ctx.fillStyle = '#9ea6ae'; ctx.fillRect(-frameHW, lipY, 1*S, -lipY);
   ctx.fillStyle = '#3e4449'; ctx.fillRect(frameHW - 1*S, lipY, 1*S, -lipY);
   ctx.fillStyle = '#16181b';
@@ -5338,7 +5783,8 @@ function _coalMineOutStub(e, px, py, w, h, t, running, hub, portOverride) {
   ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(hx - 1*S, hy - 1*S, hw + 2*S, hh + 2*S);
   const hg = ctx.createLinearGradient(hx, 0, hx + hw, 0);
   hg.addColorStop(0, '#7a8188'); hg.addColorStop(0.5, '#5a6168'); hg.addColorStop(1, '#3e444a');
-  ctx.fillStyle = hg; ctx.fillRect(hx, hy, hw, hh);
+  ctx.fillStyle = hg; _fillRectMetalG(ctx, hx, hy, hw, hh);
+  if (typeof _bldGrainRect === 'function') _bldGrainRect(ctx, 'stain', hx, hy, hw, hh, 0.8);
   ctx.strokeStyle = '#1e2124'; ctx.lineWidth = 0.9*S; ctx.strokeRect(hx, hy, hw, hh);
   ctx.save(); ctx.beginPath(); ctx.rect(hx, hy, hw, 3*S); ctx.clip();
   ctx.fillStyle = '#1a1a1a'; ctx.fillRect(hx, hy, hw, 3*S);
@@ -5371,6 +5817,7 @@ function _isCoalMinePort(ent, c, r) {
 }
 
 function renderSolidStorage(e, px, py, t) {
+  if (typeof _nkOK === 'function' && _nkOK(e, 'sb', 5, 5)) return _sbArt(e, px, py, t);
     // Storage Container — a 5×5 bulk ore bin (SolidStorageSystem). A ribbed
     // steel bin on a concrete pad, open at the top so the coal heap inside
     // can be seen rising and falling with the stock. An inclined feed belt
@@ -5770,3 +6217,279 @@ function renderSolidStorage(e, px, py, t) {
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
     ctx.restore();
   }
+
+
+/* ── Lithium Mine, rendered (scripts/render_fusionfeed.py lim) ──────────
+   The brine pump, four evaporation ponds shading from deep brine to white
+   crust with salt building at their edges, the blue processing shed, the
+   belts. Live: the harvester scraping the crust pond (lim_harv), the lithium
+   stockpile growing (lim_pile_0..2), ripples on the brine, the shed's
+   windows, its stack, the pump lamp, plate, lamp and the OUT dock. */
+const LIM_LAYOUT = {"ponds": [[-3.608, 3.588, 0.45, 6.465, 4.025], [3.607, 3.588, 0.45, 6.465, 4.025], [3.607, -1.188, 0.45, 6.465, 4.025], [-3.608, -1.188, 0.45, 6.465, 4.025]], "pump": [-5.35, 7.58, 0.7], "shedWin": [[-5.923, -8.65, 1.4], [-3.907, -8.65, 1.4], [-1.891, -8.65, 1.4]], "stack": [-1.69, -6.6, 5.4], "pile": [4.16, -8.1], "harv": [-6.34, -1.475, -1.188, 0.5], "frame": [-8, 8, -10, 10], "rect": [-8.3, 10.487, -13.008, 13.533], "pileRect": [1.66, 7.441, -11.167, -4.845], "harvRect": [-1.4, 2.025, -3.162, 0.936]};
+function _limOK(e) {
+  return !!LIM_LAYOUT && (e.width || 8) === 8 && (e.height || 10) === 10 && (e._rotation || 0) === 0
+    && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && !!AdvNukeArt.get('lim_base') && !!AdvNukeArt.get('lim_harv');
+}
+function _limArt(e, px, py, t) {
+  const L = LIM_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const on = !!e.powered, accent = '#a0e0ff', fill = Math.max(0, Math.min(1, (e._lithiumStored || 0) / 300));
+  ctx.save();
+  F.draw(AdvNukeArt.get('lim_base'), L.rect);
+  // ripples drifting on the three brine ponds
+  if (on && Camera.zoom > 0.5) L.ponds.slice(0, 3).forEach(([x, y, z, w, h], i) => {
+    ctx.strokeStyle = 'rgba(220,245,255,0.22)'; ctx.lineWidth = 0.06 * M;
+    for (let q = 0; q < 3; q++) { const ph = (t * 0.08 + q / 3 + i * 0.3) % 1, [ax, ay] = P(x - w * 0.4, y - h / 2 + h * ph, z), [bx] = P(x + w * 0.4, y, z); ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, ay); ctx.stroke(); }
+  });
+  // the harvester scraping the crust pond
+  { const [x0, x1] = L.harv, u = on ? 0.5 + 0.5 * Math.sin(t * 0.5) : 0.3; F.draw(AdvNukeArt.get('lim_harv'), L.harvRect, x0 + (x1 - x0) * u); }
+  // the stockpile, three sizes by the stored lithium
+  { const k = fill > 0.66 ? 2 : fill > 0.25 ? 1 : 0; if (fill > 0.02) F.draw(AdvNukeArt.get('lim_pile_' + k), L.pileRect); }
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.shedWin.forEach(([x, y, z], k) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.7 * M, '170,230,255', on ? 0.35 + 0.2 * Math.sin(t * 1.8 + k) : 0.04); });
+  { const [lx, ly] = P(...L.pump); _anGlow(lx, ly, 0.35 * M, '160,224,255', on ? 0.8 : 0.1); }
+  ctx.restore();
+  { const [sx, sy] = P(...L.stack); _wfSmoke(sx, sy, S * 0.5, t, '235,245,250', on, 0.4); }
+  _wfPlate('LITHIUM MINE', px + F.W * 0.56, py + F.H * 0.035, S, accent, on);
+  _wfLamp(px + F.W - 7 * S, py + 7 * S, S, t, accent, on);
+  ctx.restore();
+  if (typeof LithiumSystem !== 'undefined' && e.col !== undefined) {
+    const _dry = e._depositOreAmount !== undefined && e._depositOreAmount <= 0;
+    _coalMineOutStub(e, px, py, F.W, F.H, t, on && !_dry, null, LithiumSystem.outputPort(e));
+  }
+}
+
+
+/* ── Sulfur Mines, rendered (scripts/render_sulfur.py sm1 / sm2) ──
+   A Frasch plant in colour: red-brick boiler house under a teal roof, cream
+   stacks, teal wellheads with red handwheels in concrete cellars, cream
+   insulated steam lines, steam-traced launders of molten sulfur into timber
+   vats of set yellow sulfur (part cut into blocks), block stacks on timber
+   decks, the loadout belt to the OUT stub. MK2 adds the accumulator, control
+   room, superheater, heated sump, a second vat, the gantry crane (its own
+   sprite, travelling live) and the crusher. sm*_0 has OUT bottom-right,
+   sm*_1 (R) is the same plant mirrored with OUT bottom-left.
+   Live: molten glow and pool ripples, furnace doors, blue flares, smoke and
+   wellhead steam, control-room windows, crusher dust, OUT stub, plate. */
+const SM1_LAYOUT = {"0": {"doors": [[-1.392, 1.6, 0.85]], "gauge": [-2.7, 1.62, 1.6], "stacks": [[-2.4, 3.4, 7.5]], "wells": [[1.12, 3.5, 2.0], [2.88, 1.7, 2.0]], "molten": [[2.88, 1.25, 1.04], [2.88, 0.75, 1.04], [1.1, 0.75, 1.04]], "spout": [0.75, -0.05, 0.88], "pool": [0.75, -0.7, 0.89], "flares": [[3.04, -1.8, 2.52]], "frame": [-4, 4, -5, 5], "rect": [-4.3, 7.269, -8.975, 9.688]}, "1": {"doors": [[1.392, 1.6, 0.85]], "gauge": [2.7, 1.62, 1.6], "stacks": [[2.4, 3.4, 7.5]], "wells": [[-1.12, 3.5, 2.0], [-2.88, 1.7, 2.0]], "molten": [[-2.88, 1.25, 1.04], [-2.88, 0.75, 1.04], [-1.1, 0.75, 1.04]], "spout": [-0.75, -0.05, 0.88], "pool": [-0.75, -0.7, 0.89], "flares": [[-3.04, -1.8, 2.52]], "frame": [-4, 4, -5, 5], "rect": [-4.3, 7.269, -8.975, 9.688]}};
+const SM2_LAYOUT = {"0": {"doors": [[-4.62, 3.4, 0.85], [-3.18, 3.4, 0.85], [-1.74, 3.4, 0.85]], "stacks": [[-4.956, 5.32, 10.6], [-3.996, 5.6, 9.7]], "relief": [0.36, 4.76, 5.4], "gauge": [0.36, 3.86, 3.6], "ctlFan": [4.751, 5.39, 3.82, 0.22], "ctlWin": [[2.446, 4.56, 1.6], [3.287, 4.56, 1.6], [4.129, 4.56, 1.6], [4.971, 4.56, 1.6]], "superheater": [2.38, 5.06, 3.45, 0.9], "wells": [[-4.44, 1.33, 2.2], [-1.56, 1.33, 2.2], [1.32, 1.33, 2.2], [4.2, 1.33, 2.2]], "molten": [[-4.44, 0.83, 0.89], [-4.44, 0.308, 0.89], [4.5, 0.308, 0.89], [4.5, -0.37, 0.89], [-1.56, 0.83, 0.89], [-1.56, 0.308, 0.89], [1.32, 0.83, 0.89], [1.32, 0.308, 0.89], [4.2, 0.83, 0.89], [4.2, 0.308, 0.89], [3.4, -0.91, 1.19], [-3.996, -0.91, 1.19]], "sump": [4.5, -1.47, 0.86, 0.96], "pools": [[-3.996, -1.86, 0.89], [1.35, -1.86, 0.89]], "crane": [-4.74, 2.34, -0.35, -4.2], "flares": [[3.96, -5.04, 2.92], [5.22, -5.04, 2.92]], "crusher": [0.36, -5.365, 2.9], "frame": [-6, 6, -7, 7], "rect": [-6.3, 10.518, -12.523, 13.535]}, "1": {"doors": [[4.62, 3.4, 0.85], [3.18, 3.4, 0.85], [1.74, 3.4, 0.85]], "stacks": [[4.956, 5.32, 10.6], [3.996, 5.6, 9.7]], "relief": [-0.36, 4.76, 5.4], "gauge": [-0.36, 3.86, 3.6], "ctlFan": [-4.751, 5.39, 3.82, 0.22], "ctlWin": [[-2.446, 4.56, 1.6], [-3.287, 4.56, 1.6], [-4.129, 4.56, 1.6], [-4.971, 4.56, 1.6]], "superheater": [-5.06, -2.38, 3.45, 0.9], "wells": [[4.44, 1.33, 2.2], [1.56, 1.33, 2.2], [-1.32, 1.33, 2.2], [-4.2, 1.33, 2.2]], "molten": [[4.44, 0.83, 0.89], [4.44, 0.308, 0.89], [-4.5, 0.308, 0.89], [-4.5, -0.37, 0.89], [1.56, 0.83, 0.89], [1.56, 0.308, 0.89], [-1.32, 0.83, 0.89], [-1.32, 0.308, 0.89], [-4.2, 0.83, 0.89], [-4.2, 0.308, 0.89], [-3.4, -0.91, 1.19], [3.996, -0.91, 1.19]], "sump": [-4.5, -1.47, 0.86, 0.96], "pools": [[3.996, -1.86, 0.89], [-1.35, -1.86, 0.89]], "crane": [-2.34, 4.74, -0.35, -4.2], "flares": [[-3.96, -5.04, 2.92], [-5.22, -5.04, 2.92]], "crusher": [-0.36, -5.365, 2.9], "frame": [-6, 6, -7, 7], "rect": [-6.3, 10.518, -12.523, 13.535]}, "craneRect": [-1.2, 2.45, -6.448, 2.198]};
+function _smOK(e, mk) {
+  const L = mk === 2 ? SM2_LAYOUT : SM1_LAYOUT, w = mk === 2 ? 6 : 4, h = mk === 2 ? 7 : 5;
+  return !e._ghost && !!L && (e.width || w) === w && (e.height || h) === h
+    && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff)
+    && !!AdvNukeArt.get(`sm${mk}_0`) && !!AdvNukeArt.get(`sm${mk}_1`) && (mk === 1 || !!AdvNukeArt.get('sm2_crane'));
+}
+// A blue sulfur flame off a flare tip.
+function _smFlare(P, M, x, y, z, t, ph) {
+  const [fx, fy] = P(x, y, z), fl = 0.85 + 0.2 * Math.sin(t * 10 + ph) + 0.1 * Math.sin(t * 27 + ph), fh = 1.1 * M * fl, lean = Math.sin(t * 2.7 + ph) * 0.15 * M;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(fx, fy - fh * 0.4, 1.4 * M, '80,140,255', 0.22); ctx.restore();
+  for (const [sc, col] of [[1, 'rgba(60,110,255,0.8)'], [0.6, 'rgba(170,210,255,0.9)']]) {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(fx - 0.16 * M * sc, fy); ctx.quadraticCurveTo(fx - 0.2 * M * sc, fy - fh * sc * 0.55, fx + lean * sc, fy - fh * sc);
+    ctx.quadraticCurveTo(fx + 0.2 * M * sc, fy - fh * sc * 0.55, fx + 0.16 * M * sc, fy); ctx.closePath(); ctx.fill();
+  }
+}
+function _smArt(e, px, py, t, mk) {
+  const LL = mk === 2 ? SM2_LAYOUT : SM1_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const side = ((e._rotation || 0) % 2) === 1 ? 1 : 0, L = LL[String(side)];
+  const on = !!e.powered, dry = !!(e._linkedDeposit && typeof isDepositExhausted === 'function' && isDepositExhausted(e._linkedDeposit));
+  const run = on && !dry, accent = '#ffd83a', cyan = '#40d0e0';
+  ctx.save();
+  F.draw(AdvNukeArt.get(`sm${mk}_${side}`), L.rect);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // molten sulfur glowing in the launders, a slow pulse running downstream
+  if (run) L.molten.forEach(([x, y, z], i) => { const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.7 * M, '255,140,30', 0.22 + 0.1 * Math.sin(t * 3 - i * 0.9)); });
+  const pools = mk === 2 ? L.pools : [L.pool];
+  pools.forEach(([x, y, z]) => { const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 1.0 * M, '255,150,40', run ? 0.4 + 0.08 * Math.sin(t * 4) : 0.08); });
+  if (mk === 2) { const [x, y, z, r] = L.sump, [gx, gy] = P(x, y, z); _anGlow(gx, gy, (r + 0.6) * M, '255,140,30', run ? 0.42 + 0.1 * Math.sin(t * 3.3) : 0.08); }
+  // furnace doors flickering
+  L.doors.forEach(([x, y, z], k) => { const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.7 * M, '255,120,40', run ? 0.45 + 0.15 * Math.sin(t * 7 + k * 1.3) : 0.03); });
+  if (mk === 2) L.ctlWin.forEach(([x, y, z], k) => { const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.5 * M, '255,220,130', on ? 0.3 + (k === 2 && Math.sin(t * 2.3) > 0.7 ? 0.2 : 0) : 0.02); });
+  ctx.restore();
+  // ripples spreading off the pour points (and the sump's stirrer)
+  if (run && Camera.zoom > 0.5) {
+    const rings = pools.map(([x, y, z]) => [x, y, z, 0.5]);
+    if (mk === 2) rings.push([L.sump[0], L.sump[1], L.sump[2], L.sump[3] * 0.9]);
+    rings.forEach(([x, y, z, r], i) => {
+      const [cx, cy] = P(x, y, z);
+      for (let k = 0; k < 2; k++) { const p = (t * 0.7 + k / 2 + i * 0.3) % 1;
+        ctx.strokeStyle = `rgba(255,235,150,${(0.5 * (1 - p)).toFixed(3)})`; ctx.lineWidth = 0.05 * M;
+        ctx.beginPath(); ctx.ellipse(cx, cy, (0.1 + p * r) * M, (0.1 + p * r) * M * 0.87, 0, 0, Math.PI * 2); ctx.stroke(); }
+    });
+  }
+  // the gantry crane travelling over the vats
+  if (mk === 2) { const [x0, x1] = L.crane, u = run ? 0.5 + 0.45 * Math.sin(t * 0.32) : 0.62; F.draw(AdvNukeArt.get('sm2_crane'), LL.craneRect, x0 + (x1 - x0) * (side ? 1 - u : u)); }
+  // blue sulfur flares, stack smoke, wellhead steam, relief / crusher plumes
+  if (run) L.flares.forEach(([x, y, z], k) => _smFlare(P, M, x, y, z, t, k * 1.3));
+  L.stacks.forEach(([x, y, z], k) => { const [sx, sy] = P(x, y, z); _wfSmoke(sx, sy, S * 0.7, t + k * 0.9, '120,110,90', run, 0.42); });
+  if (run && Camera.zoom > 0.5) L.wells.forEach(([x, y, z], i) => {
+    const [wx, wy] = P(x, y, z);
+    _smokeColumn(wx, wy, M / 20 * 0.4, t + i * 1.7, '245,245,240', 0.45, 1, 'smw' + i);
+  });
+  if (mk === 2 && run && Math.sin(t * 0.7) > 0.6) { const [rx, ry] = P(...L.relief);
+    _smokeColumn(rx, ry, M / 20 * 0.4, t * 1.5, '245,245,240', 0.5, 1, 'smr'); }
+  if (mk === 2 && run) { const [kx, ky] = P(...L.crusher);
+    _smokeColumn(kx, ky, M / 20 * 0.35, t, '230,210,90', 0.25, 1, 'smk'); }
+  // gauge needle
+  { const [gx, gy] = P(...L.gauge), na = run ? -0.4 + 0.3 * Math.sin(t * 1.8) : -2.4;
+    ctx.strokeStyle = '#a02010'; ctx.lineWidth = 0.05 * M; ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(gx + Math.cos(na) * 0.15 * M, gy + Math.sin(na) * 0.15 * M); ctx.stroke(); }
+  if (typeof SulfurSystem !== 'undefined' && e.col !== undefined) _coalMineOutStub(e, px, py, F.W, F.H, t, run, null, SulfurSystem.outputPort(e));
+  const label = mk === 2 ? 'SULFUR MINE MK2' : 'SULFUR MINE';
+  _wfPlate(label, side ? px + F.W * (mk === 2 ? 0.79 : 0.5) : px + F.W * (mk === 2 ? 0.21 : 0.5), py + F.H * 0.965, S, accent, on);
+  _wfLamp(side ? px + 7 * S : px + F.W - 7 * S, py + 7 * S, S, t, mk === 2 ? cyan : accent, on);
+  ctx.restore();
+}
+
+
+/* ── Survey Stations, rendered (scripts/render_survey.py sv1 / sv2 / dish) ──
+   MK1: a field crew on trampled ground (survey-orange truck on outriggers,
+   instrument cabin, telescoping mast; tracked vibroseis thumper; tarp camp;
+   flagged geophone line). MK2: a permanent observatory on a poured pad (two
+   red/white lattice towers with teal receiver shelters, cream control block
+   with a screen wall per dish, core derrick, genset, fuel tank, geophones).
+   The dish is its own sprite at 16 azimuths (svdish_k), drawn on the mast /
+   tower head and swept while its scan runs; MK2's are 1.5x. Live: the
+   dishes, feed glow and seismic rings in the colour of the scan, seismogram
+   traces on the screens, geophone LEDs, beacons and obstruction lights,
+   thumper exhaust, HVAC fan, genset exhaust, lit windows after dark, the
+   status strips. Default size only (any rotation: the footprint is square). */
+const SV1_LAYOUT = {"screen": [-1.85, -0.95, 0.26, 1.9, 2.5], "leds": [[-0.15, 0.28, 2.4], [-0.15, 0.28, 2.18], [-0.15, 0.28, 1.96]], "dish": [0.7, 1.25, 6.85, 1.0], "mastLight": [0.9, 1.25, 6.6], "beacon": [3.35, -0.45, 1.95], "plate": [2.75, -0.45, 0.15], "exhaust": [1.95, -0.05, 2.1], "geos": [[-3.2, -3.06, 0.22], [-1.9, -2.88, 0.22], [-0.6, -3.06, 0.22], [0.7, -2.88, 0.22], [2.0, -3.06, 0.22], [3.3, -2.88, 0.22]], "board": [[0.85, -2.17, 0.61], [3.65, -2.17, 0.61], [0.85, -1.477, 1.01]], "frame": [-4, 4, -4, 4], "rect": [-4.3, 6.995, -7.637, 8.284]};
+const SV2_LAYOUT = {"towers": [{"dish": [-3.84, -0.72, 7.95, 1.5], "light": [-2.89, -0.72, 8.15], "shelter": [-3.84, -1.52, 3.0], "base": [-3.84, -1.92, 0.3]}, {"dish": [3.84, -0.48, 7.95, 1.5], "light": [4.79, -0.48, 8.15], "shelter": [3.84, -1.28, 3.0], "base": [3.84, -1.68, 0.3]}], "win": [[-1.73, -3.18, 3.75], [-1.038, -3.18, 3.75], [-0.346, -3.18, 3.75], [0.346, -3.18, 3.75], [1.038, -3.18, 3.75], [1.73, -3.18, 3.75]], "screens": [[-1.88, -0.6, -3.21, 0.8, 2.2], [0.6, 1.88, -3.21, 0.8, 2.2]], "door": [-0.0, -3.2, 2.35], "hvac": [-1.18, -0.04, 5.72, 0.5], "drill": [-4.56, -4.32, 1.0, 4.2], "exhaust": [4.02, -4.05, 1.85], "geos": [[-5.28, -5.4, 0.22], [-4.68, -5.4, 0.22], [4.68, -5.4, 0.22], [5.28, -5.4, 0.22]], "board": [[-1.6, -5.02, 0.91], [1.6, -5.02, 0.91], [-1.6, -3.894, 1.56]], "frame": [-6, 6, -6, 6], "rect": [-6.3, 9.503, -10.266, 11.034]};
+const SVDISH_LAYOUT = {"feed": [[0.597, 0.0, 1.314], [0.552, 0.229, 1.314], [0.422, 0.422, 1.314], [0.229, 0.552, 1.314], [0.0, 0.597, 1.314], [-0.229, 0.552, 1.314], [-0.422, 0.422, 1.314], [-0.552, 0.229, 1.314], [-0.597, 0.0, 1.314], [-0.552, -0.229, 1.314], [-0.422, -0.422, 1.314], [-0.229, -0.552, 1.314], [0.0, -0.597, 1.314], [0.229, -0.552, 1.314], [0.422, -0.422, 1.314], [0.552, -0.229, 1.314]], "rect": [-1.6, 1.6, -1.6, 2.697]};
+function _svOK(e, mk) {
+  const L = mk === 2 ? SV2_LAYOUT : SV1_LAYOUT, w = mk === 2 ? 6 : 4;
+  return !e._ghost && !!L && (e.width || w) === w && (e.height || w) === w
+    && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff)
+    && !!AdvNukeArt.get(`sv${mk}_base`) && !!AdvNukeArt.get('svdish_0') && !!AdvNukeArt.get('svdish_8') && (mk === 1 || !!AdvNukeArt.get('hyp_fan'));
+}
+// The dish at azimuth `az` (radians), pivot (x, y, z), scale k; returns the feed's screen point.
+function _svDish(F, x, y, z, k, az) {
+  const n = 16, i = ((Math.round(az / (Math.PI * 2) * n) % n) + n) % n, TN = Math.tan(Math.PI / 6);
+  const [x0, x1, v0, v1] = SVDISH_LAYOUT.rect, im = AdvNukeArt.get('svdish_' + i);
+  if (im) F.draw(im, [x0 * k, x1 * k, v0 * k, v1 * k], x, y + z * TN);
+  const f = SVDISH_LAYOUT.feed[i]; return F.P(x + f[0] * k, y + f[1] * k, z + f[2] * k);
+}
+// Seismogram traces scrolling across a screen rect [x0, x1, y, z0, z1].
+const _svRGB = c => c && c[0] === '#' ? [1, 3, 5].map(o => parseInt(c.slice(o, o + 2), 16)).join(',') : '255,200,100';
+// Seismogram traces glowing on a rendered screen rect [x0, x1, y, z0, z1]:
+// light added to the glass (no box laid over it), a faint graticule, the
+// scan's colour while it runs, a dim flat trace on standby.
+function _svTraces(F, r, rgb, busy, t, pct, on) {
+  if (!on) return;
+  const [ax, ay] = F.P(r[0], r[2], r[4]), [bx, by] = F.P(r[1], r[2], r[3]), w = bx - ax, h = by - ay;
+  ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, w, h); ctx.clip(); ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(ax + w / 2, ay + h / 2, 0, ax + w / 2, ay + h / 2, Math.max(w, h) * 0.7);
+  g.addColorStop(0, `rgba(${rgb},${busy ? 0.16 : 0.06})`); g.addColorStop(1, `rgba(${rgb},0.02)`);
+  ctx.fillStyle = g; ctx.fillRect(ax, ay, w, h);
+  ctx.strokeStyle = `rgba(${rgb},0.1)`; ctx.lineWidth = Math.max(0.4, h * 0.012); ctx.beginPath();
+  for (let k = 1; k < 6; k++) { ctx.moveTo(ax + w * k / 6, ay); ctx.lineTo(ax + w * k / 6, by); }
+  for (let k = 1; k < 4; k++) { ctx.moveTo(ax, ay + h * k / 4); ctx.lineTo(bx, ay + h * k / 4); }
+  ctx.stroke();
+  ctx.lineWidth = Math.max(0.5, h * 0.035); ctx.lineJoin = 'round';
+  for (let q = 0; q < 2; q++) {
+    const b0 = ay + h * (0.32 + q * 0.36), amp = h * (busy ? 0.15 : 0.025);
+    ctx.strokeStyle = `rgba(${rgb},${busy ? 0.85 : 0.35})`; ctx.beginPath();
+    for (let k = 0; k <= 24; k++) { const xx = ax + w * k / 24, ph = k * 0.95 - t * (busy ? 6 : 0.8) + q * 2.1;
+      const yy = b0 + Math.sin(ph) * Math.sin(ph * 0.37 + q) * amp; k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+    ctx.stroke();
+  }
+  if (busy && pct != null) { ctx.fillStyle = `rgba(${rgb},0.7)`; ctx.fillRect(ax + w * 0.06, by - h * 0.09, (w * 0.88) * pct, h * 0.04); }
+  ctx.restore();
+}
+// The scan meter on the rendered LED board ([bottom-left, bottom-right,
+// top-left] of its face): one row per slot, the label and percentage in
+// LED lettering over a segmented bar, all added light on the dark face with
+// a dot-matrix raster over it, so it reads as the board lit up.
+function _svBoard(F, pts, rows, t, on, night) {
+  const [b0, b1, b2] = pts.map(p => F.P(...p)), x = b0[0], y = b2[1], w = b1[0] - b0[0], h = b0[1] - b2[1];
+  if (!on || w < 4) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.globalCompositeOperation = 'lighter';
+  const n = rows.length, pad = h * 0.1, rh = (h - pad * 2) / n, NS = 16;
+  rows.forEach(({ tag, q }, i) => {
+    const ry = y + pad + rh * i, rgb = q ? _svRGB(q.color) : '255,176,64';
+    const fs = rh * 0.42, tx = x + w * 0.05, tr = x + w * 0.95;
+    ctx.font = `bold ${fs.toFixed(1)}px Courier New`; ctx.textBaseline = 'middle';
+    const ty = ry + rh * 0.3, a = q ? 0.95 : 0.45 + 0.2 * Math.sin(t * 1.6 + i);
+    ctx.fillStyle = `rgba(${rgb},${a.toFixed(3)})`;
+    ctx.textAlign = 'left'; ctx.fillText(`${tag}${q ? (q.kind ? q.kind.label.toUpperCase() : 'SCAN') : 'READY'}`, tx, ty);
+    if (q) { ctx.textAlign = 'right'; ctx.fillText(`${Math.round(q.pct * 100)}%`, tr, ty); }
+    // segmented bar
+    const sy = ry + rh * 0.58, sh = rh * 0.28, sw = (tr - tx) / NS, lit = q ? q.pct * NS : 0;
+    for (let k = 0; k < NS; k++) {
+      const f = Math.max(0, Math.min(1, lit - k)), head = q && k === Math.floor(lit);
+      ctx.fillStyle = `rgba(${rgb},${(0.07 + 0.83 * f + (head ? 0.35 * (0.5 + 0.5 * Math.sin(t * 9)) : 0)).toFixed(3)})`;
+      ctx.fillRect(tx + k * sw + sw * 0.12, sy, sw * 0.76, sh);
+    }
+    if (!q) { const k = Math.floor(t * 4) % NS; ctx.fillStyle = `rgba(${rgb},0.35)`; ctx.fillRect(tx + k * sw + sw * 0.12, sy, sw * 0.76, sh); }
+  });
+  ctx.globalCompositeOperation = 'source-over';
+  if (h > 10) { ctx.fillStyle = 'rgba(0,0,0,0.28)'; const st = Math.max(1, h / 18);
+    for (let yy = y; yy < y + h; yy += st) ctx.fillRect(x, yy, w, st * 0.35); }
+  ctx.restore();
+  // spill on the ground under the board after dark
+  if (night) { const q = rows.find(r => r.q), c = q ? _svRGB(q.q.color) : '255,176,64';
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(x + w / 2, b0[1] + h * 0.3, w * 0.45, c, 0.12); ctx.restore(); }
+}
+function _svRings(F, x, y, col, t, r) {
+  const [cx, cy] = F.P(x, y, 0.2);
+  for (let i = 0; i < 3; i++) { const p = (t * 1.4 + i * 0.5) % 1.5; if (p > 1) continue;
+    ctx.globalAlpha = (1 - p) * 0.45; ctx.strokeStyle = col; ctx.lineWidth = 0.06 * F.M;
+    ctx.beginPath(); ctx.arc(cx, cy, p * r * F.M, 0, Math.PI * 2); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+}
+function _svArt(e, px, py, t, mk) {
+  const L = mk === 2 ? SV2_LAYOUT : SV1_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40;
+  const on = !!e.powered, hr = DayNight.hour(), night = hr < 6.5 || hr >= 19.5, lod = Camera.zoom > 0.5;
+  const kindOf = ty => typeof CoalSystem !== 'undefined' ? CoalSystem.scanKind(ty) : null;
+  let slots;
+  if (mk === 2) {
+    const raw = Array.isArray(e._scanSlots) ? e._scanSlots : [];
+    slots = [0, 1].map(i => { const q = raw[i]; if (!q || !on) return null; const kind = kindOf(q.type);
+      return { kind, color: kind ? kind.color : '#ffc864', pct: Math.min(1, (q.progress || 0) / (q.duration || 60)) }; });
+  } else {
+    const run = !!e._scanning && on, kind = run ? kindOf(e._scanType) : null;
+    slots = [run ? { kind, color: kind ? kind.color : '#ffc864', pct: Math.min(1, (e._scanProgress || 0) / (e._scanDuration || 60)) } : null];
+  }
+  const busy = slots.some(q => q);
+  ctx.save();
+  F.draw(AdvNukeArt.get(`sv${mk}_base`), L.rect);
+  // seismic rings from the thumper's plate / under each busy tower
+  if (mk === 1) { if (slots[0]) _svRings(F, L.plate[0], L.plate[1], slots[0].color, t, 3.2); }
+  else L.towers.forEach((tw, i) => { if (slots[i]) _svRings(F, tw.base[0], tw.base[1] + 1.2, slots[i].color, t + i * 0.37, 4.0); });
+  // screens
+  if (mk === 1) _svTraces(F, L.screen, slots[0] ? _svRGB(slots[0].color) : '120,230,150', !!slots[0], t, null, on);
+  else L.screens.forEach((r, i) => _svTraces(F, r, slots[i] ? _svRGB(slots[i].color) : '120,230,150', !!slots[i], t + i, slots[i] ? slots[i].pct : null, on));
+  // the scan meter on the LED board
+  _svBoard(F, L.board, mk === 2 ? slots.map((q, i) => ({ tag: 'AB'[i] + ' ', q })) : [{ tag: '', q: slots[0] }], t, on, night);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // geophone LEDs: chase while a scan runs, idle pulse otherwise
+  L.geos.forEach(([x, y, z], i) => { const lit = on && (busy ? (Math.floor(t * 8) % L.geos.length) === i : Math.sin(t * 1.4 + i) > 0.6); const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.3 * M, '255,190,80', lit ? 0.7 : 0); });
+  if (mk === 1) {
+    L.leds.forEach(([x, y, z], i) => { const lit = on && (busy ? (Math.floor(t * 7) % 3) === i : i === 0); const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.15 * M, '255,190,80', lit ? 0.9 : 0); });
+    { const [bx, by] = P(...L.beacon); _anGlow(bx, by, 0.6 * M, '255,170,40', busy && Math.sin(t * 9) > -0.2 ? 0.7 : 0); }
+  } else {
+    L.win.forEach(([x, y, z], i) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.5 * M, '255,214,140', on && night ? 0.5 : 0); });
+    { const [dx, dy] = P(...L.door); _anGlow(dx, dy, 0.35 * M, '255,206,124', on ? (night ? 0.7 : 0.3) : 0); }
+    L.towers.forEach((tw, i) => { const [sx, sy] = P(...tw.shelter); _anGlow(sx, sy, 0.35 * M, slots[i] ? '120,200,255' : '255,180,60', on ? 0.8 : 0); });
+  }
+  ctx.restore();
+  // dishes (parked when idle, sweeping while their scan runs), feed glow, obstruction light
+  const heads = mk === 2 ? L.towers.map(tw => [tw.dish, tw.light]) : [[L.dish, L.mastLight]];
+  heads.forEach(([[x, y, z, k], lt], i) => {
+    const q = slots[i], park = mk === 2 ? (i ? -0.5 : Math.PI + 0.5) : Math.PI * 0.75;
+    const az = q ? park + Math.sin(t * 0.45 + i * 2.1) * 1.3 : park;
+    const [fx, fy] = _svDish(F, x, y, z, k, az);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    if (q) { const c = q.color.startsWith('#') ? [1, 3, 5].map(o => parseInt(q.color.slice(o, o + 2), 16)).join(',') : '255,200,100';
+      _anGlow(fx, fy, 0.6 * M * k, c, 0.5 + 0.25 * Math.sin(t * 6)); }
+    const [lx, ly] = P(...lt), blink = on && (q ? Math.sin(t * 3.4 + i) > 0.35 : Math.sin(t * 1.1 + i) > 0.75);
+    _anGlow(lx, ly, 0.45 * M, '255,70,60', blink ? 0.9 : 0);
+    ctx.restore();
+  });
+  // exhausts, HVAC
+  if (mk === 1) { if (busy) { const [ex, ey] = P(...L.exhaust); _wfSmoke(ex, ey, S * 0.4, t, '90,84,76', true, 0.35); } }
+  else { const [x, y, z, r] = L.hvac; _anFan(F, x, y, z, r, on ? t * 6 : 0.3); const [ex, ey] = P(...L.exhaust); _wfSmoke(ex, ey, S * 0.4, t, '90,84,76', on, 0.3); }
+  if (typeof InspectionPanel !== 'undefined' && InspectionPanel.isOpen() && InspectionPanel.target === e) {
+    ctx.strokeStyle = mk === 2 ? '#ffb040' : '#c08030'; ctx.lineWidth = 2 / Camera.zoom; ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4);
+    ctx.strokeRect(px + 1, py + 1, F.W - 2, F.H - 2); ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}

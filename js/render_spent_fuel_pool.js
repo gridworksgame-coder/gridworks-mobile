@@ -43,6 +43,7 @@ function _sfpGlowSprite(size, hot) {
 }
 
 function renderSpentFuelPool(e, px, py, t) {
+  if (_anOK(e, 'sfp', 12, 8)) return _sfpArt(e, px, py, t);   // rendered (render_oil_nuclear.js, end)
   const def = EntityDefs[T.SPENTFUELPOOL];
   const W   = (e.width  || def.width)  * TILE;
   const H   = (e.height || def.height) * TILE;

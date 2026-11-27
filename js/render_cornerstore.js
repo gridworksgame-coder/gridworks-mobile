@@ -28,6 +28,7 @@ function cornerStoreName(e) {
 function cornerStoreOpen(hour) { return hour >= 7 && hour < 23; }
 
 function renderCornerStore(e, px, py, W, H, t) {
+  if (typeof _cornerArtTry === 'function' && _cornerArtTry(e, px, py, W, H, t)) return;   // rendered in Blender (render_industrial.py)
   const S = Math.min(W / 80, H / 80), on = !!e.powered;
   const k = _bankKit(px, py, S);
   const { R, RR, dot, ell, poly, ln, glow } = k;

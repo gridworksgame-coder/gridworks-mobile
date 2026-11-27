@@ -5827,6 +5827,24 @@ const MenuTheme = (() => {
   function onInput(e) {
     tryPlay();
     const skip = e && e.type === 'pointerdown' && e.button === 0;
+    // A click on a menu button that is already on screen is meant for the
+    // button: release the title now and press it. (The buttons show before
+    // the title cue but take no clicks until it, so that first click used to
+    // only skip the music and do nothing, or nothing at all for several
+    // seconds while the track was still loading.)
+    if (skip && !released) {
+      const hit = [...menu.querySelectorAll('.menu-buttons .menu-btn')].find(b => {
+        if (b.offsetParent === null || parseFloat(getComputedStyle(b).opacity) < 0.5) return false;
+        const r = b.getBoundingClientRect();
+        return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+      });
+      if (hit) {
+        if (now() < TITLE_AT) jumpTo(TITLE_AT);
+        releaseTitle();
+        setTimeout(() => hit.click(), 0);
+        return;
+      }
+    }
     if (skip && !released && now() < SKIP_TO) jumpTo(SKIP_TO);
   }
   // Done once the music is playing and the title is up (or on stop)
@@ -5921,6 +5939,30 @@ const StudioIntro = (() => {
     },
   };
 })();
+
+// ── A click on a menu button always counts ─────────────────────────
+// While the studio card or the title cue holds the menu, its buttons take
+// no clicks (title-hold) and the first click only skipped ahead, so
+// "Continue" or "Game Modes" seemed to do nothing, for up to ~13 s when the
+// music clock is slow. Installed now, before the sound gate or the menu
+// music start: a left click on a menu button's spot ends the hold and
+// presses that button.
+window.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const menu = document.getElementById('main-menu');
+  if (!menu || !(menu.classList.contains('title-hold') || menu.classList.contains('intro-hold'))) return;
+  const hit = [...menu.querySelectorAll('.menu-buttons .menu-btn')].find(b => {
+    if (b.offsetParent === null) return false;
+    const r = b.getBoundingClientRect();
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  });
+  if (!hit) return;
+  e.stopPropagation(); e.preventDefault();
+  const intro = document.getElementById('studio-intro');
+  if (intro) { intro.classList.add('si-out'); setTimeout(() => intro.remove(), 700); }
+  menu.classList.remove('intro-hold', 'title-hold');
+  setTimeout(() => hit.click(), 0);
+}, true);
 
 // ── Sound gate ─────────────────────────────────────────────────────
 // Browsers won't play sound until the player has clicked or pressed a key
@@ -6714,7 +6756,7 @@ const StudioIntro = (() => {
     </div>
     <div id="gp-breaks-wrap" style="display:none;">
       <div class="gp-divider"></div>
-      <div class="gp-row" title="Open circuits that can split one network into many; lightning-struck Power Towers, storm-failed wires, burned poles">
+      <div class="gp-row" title="Open circuits that can split one network into many; lightning-struck Power Towers, storm-failed cables, burned poles">
         <span class="gp-label" style="color:#ff8080;">⚠ Grid Breaks</span>
         <span class="gp-value bad" id="gp-breaks-count">0</span>
       </div>

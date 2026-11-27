@@ -105,7 +105,7 @@ const HistoryManager = (() => {
     // Stacked tile (a belt laid over a wire, a pipe over a belt, …): hand the
     // tile back to whatever was underneath, exactly as the Delete tool does,
     // instead of clearing it and losing the lower layer. This is what makes
-    // undoing "conveyor onto wire" leave the wire, matching "wire onto
+    // undoing "conveyor onto cable" leave the wire, matching "wire onto
     // conveyor" (see _unstackWire), which leaves the belt.
     const under = GridManager.lowerLayer(e);   // every lower layer, not just the first found
     if (under && (e.type === T.CONVEYOR || e.type === T.PIPE || e.type === T.UNDERGNDPIPE || e.type === T.WIRE)

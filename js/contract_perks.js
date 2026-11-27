@@ -25,7 +25,7 @@ const ContractPerks = (() => {
   // are simply dropped, so the table is safe whatever has been added.
   const SCOPES = {
     wire:       { label: 'Wires',                     types: () => [T.WIRE] },
-    lines:      { label: 'Wires and poles',           types: () => [T.WIRE, T.POLE] },
+    lines:      { label: 'Cables and poles',           types: () => [T.WIRE, T.POLE] },
     pipes:      { label: 'Pipes and belts',           types: () => [T.PIPE, T.UNDERGNDPIPE, T.CONVEYOR, T.UNDERGNDCONVEYOR, T.CONVEYORSPLITTER] },
     storage:    { label: 'Batteries and substations', types: () => [T.BATTERY, T.SUBSTATION, T.SUBSTATION2, T.SUBSTATION3, T.SUBSTATION4, T.SUBSTATION5] },
     protection: { label: 'Surge protection',          types: () => [T.PROTECTOR, T.LIGHTNINGROD, T.LIGHTNINGROD2, T.LIGHTNINGROD3] },

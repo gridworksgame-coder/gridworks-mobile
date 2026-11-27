@@ -572,10 +572,10 @@ const WeatherEventSystem = (() => {
       // the map is repaired (see the resolved-check in tick()).
       NotificationStack.push({
         icon: '⚡',
-        title: 'Wire Fault',
+        title: 'Cable Fault',
         message: failed === 1
-          ? 'Storm opened a wire; click to jump to the break'
-          : `${failed} wires opened: click to jump to a break and repair`,
+          ? 'Storm opened a cable; click to jump to the break'
+          : `${failed} cables opened: click to jump to a break and repair`,
         color: '#ff4020',
         border: '#702010',
         tag: 'wirefault',
@@ -721,7 +721,7 @@ const WeatherEventSystem = (() => {
     NotificationStack.push({
       icon: '🌌', title: 'Geomagnetic Surge',
       message: tripped === 1 ? 'Induced current tripped a long line; click to jump to the break'
-                             : `Induced currents tripped ${tripped} wires: click to jump to a break and repair`,
+                             : `Induced currents tripped ${tripped} cables: click to jump to a break and repair`,
       color: '#a08cff', border: '#3a2a80', tag: 'wirefault', glow: true,
       onClick: () => {
         if (typeof GridBreakWatch !== 'undefined' && GridBreakWatch.any()) GridBreakWatch.jumpNext();

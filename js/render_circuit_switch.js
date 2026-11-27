@@ -14,6 +14,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 function renderCircuitSwitch(e, px, py, t) {
+  if (!e._ghost && typeof _gmOK === 'function' && _gmOK(e, 'cs1', 4, 4)) return _csArt(e, px, py, t, 1);
   const W = TILE * (e.width || 4), H = TILE * (e.height || 4);
   const S = W / 160;                       // authored against a 160-unit square
   const X = (v) => px + v * S, Y = (v) => py + v * S;
@@ -224,6 +225,7 @@ function renderCircuitSwitch(e, px, py, t) {
    upgraded tier at a glance.
    ═══════════════════════════════════════════════════════════════════ */
 function renderCircuitSwitch2(e, px, py, t) {
+  if (!e._ghost && typeof _gmOK === 'function' && _gmOK(e, 'cs2', 6, 5)) return _csArt(e, px, py, t, 2);
   const A = TILE * 7;                      // authored against a 260-unit, 7-tile square
   const S = A / 260;
   // The art only fills the square's middle 5 rows and its right 6 columns,

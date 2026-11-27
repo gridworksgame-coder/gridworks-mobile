@@ -1068,7 +1068,7 @@ const PowerNetwork = (() => {
     return limit + (1 - limit) * Math.pow(1 - k, n);
   }
 
-  // A network's wire rating: the base plus every unit's fixed contribution,
+  // A network's cable rating: the base plus every unit's fixed contribution,
   // less whatever a geomagnetic storm is taking off every line.
   function _networkCap(netId) {
     let cap = _baseCap();
@@ -1129,7 +1129,7 @@ const PowerNetwork = (() => {
       if (!_lastStrandedToast || _now - _lastStrandedToast > 30000) {
         _lastStrandedToast = _now;
         if (typeof showToast === 'function') {
-          showToast(`\u26a0 ${_strandedProtectors} Surge Protector${_strandedProtectors > 1 ? 's are' : ' is'} not on a wire network \u2014 place them touching a wire or pole to do anything`,
+          showToast(`\u26a0 ${_strandedProtectors} Surge Protector${_strandedProtectors > 1 ? 's are' : ' is'} not on a cable network \u2014 place them touching a cable or pole to do anything`,
                     '#ff8040', '#180a00', '#804020');
         }
       }
@@ -1375,7 +1375,7 @@ const PowerNetwork = (() => {
     const first = gens[0];
     const label = (first.def?.label || EntityDefs[first.type]?.label || 'Generator') + (first._num !== undefined ? ` #${first._num}` : '');
     const title = gens.length === 1 ? 'Generator powering nothing' : `${gens.length} generators powering nothing`;
-    const message = `${label}${gens.length > 1 ? ` and ${gens.length - 1} more are` : ' is'} producing ${formatPower(watts)} on a network with nothing connected to use it. Wire ${gens.length > 1 ? 'them' : 'it'} into your grid. Click to jump there`;
+    const message = `${label}${gens.length > 1 ? ` and ${gens.length - 1} more are` : ' is'} producing ${formatPower(watts)} on a network with nothing connected to use it. Cable ${gens.length > 1 ? 'them' : 'it'} into your grid. Click to jump there`;
     // Re-raise only when MORE generators become stranded than last shown, so
     // dismissing the card isn't undone every second.
     if (!NotificationStack.updateTag('stranded-gen', { title, message }) && gens.length > _strandedShownCount) {
@@ -2429,7 +2429,7 @@ const PowerNetwork = (() => {
               title: 'Grid Overloaded',
               message: _worstCap > 0
                 ? `Demand of ${formatPower(_worstLoad)} is over the lines' ${formatPower(_worstCap)} rating, so they are tripping. Place Surge Protectors on this network to raise it.`
-                : 'Wires are failing under load. Place a Surge Protector to raise the throughput cap.',
+                : 'Cables are failing under load. Place a Surge Protector to raise the throughput cap.',
             };
           }
           NotificationStack.push({ ...card, color: '#ff8040', border: '#804020', glow: true, tag: 'grid-overload' });
@@ -2656,8 +2656,8 @@ const GridBreakWatch = (() => {
     const num = (e._num !== undefined && typeof NUMBERED_ENTITY_TYPES !== 'undefined'
                  && NUMBERED_ENTITY_TYPES.has(e.type)) ? ` #${e._num}` : '';
     if (kind === 'tower') return `${defLabel}${num}: lightning open circuit`;
-    if (kind === 'wire')  return e._wireOnFire ? `Wire on fire @ (${e.col}, ${e.row})`
-                                               : `Wire fault @ (${e.col}, ${e.row})`;
+    if (kind === 'wire')  return e._wireOnFire ? `Cable on fire @ (${e.col}, ${e.row})`
+                                               : `Cable fault @ (${e.col}, ${e.row})`;
     if (kind === 'pole')  return `${defLabel}${num}: open circuit`;
     return `${defLabel}${num}`;
   }
@@ -2715,7 +2715,7 @@ const GridBreakWatch = (() => {
     const title = n === 1 ? 'Grid Break' : `Grid Breaks (${n})`;
     const message = n === 1
       ? `${head.label}: click to jump`
-      : `${n} open circuits (towers / wires / poles); click to jump to next`;
+      : `${n} open circuits (towers / cables / poles); click to jump to next`;
     if (_notifOn) {
       NotificationStack.updateTag(TAG, { title, message });
     } else if (n > _prevCount) {

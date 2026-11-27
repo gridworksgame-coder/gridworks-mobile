@@ -254,8 +254,14 @@ const SeasonalEvents = (() => {
       const wx = WeatherEventSystem.getActiveEvent();
       if (wx && WET.has(wx.type)) WeatherEventSystem._forceEnd();
     }
-    if (ev.weather && typeof WeatherEventSystem !== 'undefined' && !WeatherEventSystem.getActiveEvent()) {
-      WeatherEventSystem.triggerEvent(ev.weather, ev.weatherLabel);
+    // A hazard brings its weather even if other weather is about: a Spring
+    // Flood that opened under a Dead Calm used to keep the calm, no rain at
+    // all, while the flood water rose regardless. Clear what is there unless
+    // it is already the same kind (rain for a flood).
+    if (ev.weather && typeof WeatherEventSystem !== 'undefined') {
+      const wx = WeatherEventSystem.getActiveEvent();
+      if (wx && wx.type !== ev.weather && !(WET.has(ev.weather) && WET.has(wx.type))) WeatherEventSystem._forceEnd();
+      if (!WeatherEventSystem.getActiveEvent()) WeatherEventSystem.triggerEvent(ev.weather, ev.weatherLabel);
     }
     pushLiveCard(ev);
     // Hazards announce themselves through the weather they bring.

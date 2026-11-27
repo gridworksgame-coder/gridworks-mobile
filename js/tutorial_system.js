@@ -123,14 +123,14 @@ const TutorialSystem = (() => {
           check: () => EntityRegistry.getByType(T.BIOFUELGEN).size >= 3,
         },
         {
-          text: "Now collect biofuel: Hold right-click over trees and bushes. Your generators burn a lot of it.\n\n50 biofuel unlocks Wire.",
-          more: () => `Now collect biofuel. Hold right-click over trees and bushes around ${CityInfo.getCityName()}. Your generators burn a lot of it.\n\n50 biofuel unlocks Wire.`,
+          text: "Now collect biofuel: Hold right-click over trees and bushes. Your generators burn a lot of it.\n\n50 biofuel unlocks Cable.",
+          more: () => `Now collect biofuel. Hold right-click over trees and bushes around ${CityInfo.getCityName()}. Your generators burn a lot of it.\n\n50 biofuel unlocks Cable.`,
           subject: ['veg:tree'],
           check: () => Progression.isUnlocked(T.WIRE),
         },
         {
-          text: "Wire unlocked! Wire your generators together, then run a wire to City Hall.\n\nAt most 3 wires in a row between buildings or poles.",
-          more: "Wire unlocked! Wire your generators together to stack their power, then run a wire to City Hall.\n\nAt most 3 wires in a row without a building or pole between them.",
+          text: "Cable unlocked! Wire your generators together, then run a cable to City Hall.\n\nAt most 3 cables in a row between buildings or poles.",
+          more: "Cable unlocked! Wire your generators together to stack their power, then run a cable to City Hall.\n\nAt most 3 cables in a row without a building or pole between them.",
           subject: [T.WIRE],
           highlight: T.WIRE,
           highlightWorld: true,
@@ -165,8 +165,8 @@ const TutorialSystem = (() => {
           pauseAnyway: true,
         },
         {
-          text: "Power Pole can now be unlocked. You need one after every 3 wires: Hold LMB and drag to place them in a line.\n\nHOOKUP DEAL: until Mae\'s Cabin has power, wires are FREE and poles are 50% off.",
-          more: "Power Pole can now be unlocked at the Research Station.\n\nYou need a pole after every 3 wires. Hold LMB and drag to place one every 4 tiles.\n\nNow get Mae\'s Cabin online. HOOKUP DEAL: until it has power, wires are FREE and poles are 50% off.",
+          text: "Power Pole can now be unlocked. You need one after every 3 cables: Hold LMB and drag to place them in a line.\n\nHOOKUP DEAL: until Mae\'s Cabin has power, cables are FREE and poles are 50% off.",
+          more: "Power Pole can now be unlocked at the Research Station.\n\nYou need a pole after every 3 cables. Hold LMB and drag to place one every 4 tiles.\n\nNow get Mae\'s Cabin online. HOOKUP DEAL: until it has power, cables are FREE and poles are 50% off.",
           subject: [T.POLE],
           highlight: T.POLE,
           check: () => {
@@ -265,7 +265,7 @@ const TutorialSystem = (() => {
       steps: [
         {
           text: "Kinds of job: RUSH (half the deadline, paid a premium), RETAINER (a supply guarantee), PEAK SUPPORT (batteries for the evening peak) and SHOWCASE (for known contractors).\n\nBigger jobs pay more. Some pay partly in perks.",
-          more: "Not every contract is the same job.\n\nRUSH: small, half the deadline, paid a premium.\nRETAINER: a 2 to 4 day supply guarantee with little new kit.\nPEAK SUPPORT: batteries holding a client\'s evening peak.\nSHOWCASE: extra work for better pay, only for contractors with a name.\n\nThe badge shows job size, SMALL to FLAGSHIP: bigger pays more and takes longer.\n\nCASH + PERK jobs pay a little less cash plus a perk; PAID MOSTLY IN KIND jobs pay little cash and a longer perk. Perks: free wires for a few days, an equipment discount, cheaper repairs or running costs, faster sweeps, or an extra job next sweep. They count down in home time only.",
+          more: "Not every contract is the same job.\n\nRUSH: small, half the deadline, paid a premium.\nRETAINER: a 2 to 4 day supply guarantee with little new kit.\nPEAK SUPPORT: batteries holding a client\'s evening peak.\nSHOWCASE: extra work for better pay, only for contractors with a name.\n\nThe badge shows job size, SMALL to FLAGSHIP: bigger pays more and takes longer.\n\nCASH + PERK jobs pay a little less cash plus a perk; PAID MOSTLY IN KIND jobs pay little cash and a longer perk. Perks: free cables for a few days, an equipment discount, cheaper repairs or running costs, faster sweeps, or an extra job next sweep. They count down in home time only.",
           manual: true,
         },
         {
@@ -318,15 +318,15 @@ const TutorialSystem = (() => {
     },
     {
       id: 'wirefault',
-      title: 'Wire Fault',
+      title: 'Cable Fault',
       trigger: () => !!_findFirstFaultedWire(),
       steps: [
         {
           // Names what actually knocked the wire out (weather_events.js
           // _markFault, lightning fire): it used to blame a storm every time,
           // even for a fault in fog, a heat wave or a dead calm.
-          text: () => _wireFaultCause() + "\n\nClick the red wire and hit Repair Wire, or Repair All Faults to fix them all.",
-          more: () => _wireFaultCause() + "\n\nClick the red faulted wire and hit Repair Wire, or click any wire and use Repair All Faults to fix every broken wire at once.\n\nRepairs cost money per wire, 25% less with a Monitoring Station.",
+          text: () => _wireFaultCause() + "\n\nClick the red cable and hit Repair Cable, or Repair All Faults to fix them all.",
+          more: () => _wireFaultCause() + "\n\nClick the red faulted cable and hit Repair Cable, or click any cable and use Repair All Faults to fix every broken cable at once.\n\nRepairs cost money per cable, 25% less with a Monitoring Station.",
           subject: [T.WIRE],
           manual: true,
           highlightWorld: () => _findFirstFaultedWire(),
@@ -493,8 +493,8 @@ const TutorialSystem = (() => {
           check: () => EntityRegistry.getByType(T.COALMINE).size > 0,
         },
         {
-          text: "Power Tower unlocked: it carries wire twice as far as a pole. Use it to power your Coal Mine.\n\nLike poles, holding down LMB and dragging places them in a line.",
-          more: "Placing a coal mine unlocks the Power Tower: it carries wire twice as far as a pole, handy for reaching a distant mine. Power up the Coal Mine!\n\nLike poles, holding down LMB and dragging places towers at their maximum spacing.",
+          text: "Power Tower unlocked: it carries cable twice as far as a pole. Use it to power your Coal Mine.\n\nLike poles, holding down LMB and dragging places them in a line.",
+          more: "Placing a coal mine unlocks the Power Tower: it carries cable twice as far as a pole, handy for reaching a distant mine. Power up the Coal Mine!\n\nLike poles, holding down LMB and dragging places towers at their maximum spacing.",
           subject: [T.POWERTOWER],
           manual: true,
           highlight: T.POWERTOWER,
@@ -513,8 +513,8 @@ const TutorialSystem = (() => {
                   && (Progression.isReady(T.PROTECTOR) || Progression.isUnlocked(T.PROTECTOR)),
       steps: [
         {
-          text: "Your wires are running hot! Past 80% load a wire can burn out.\n\nThe Surge Protector can now be unlocked: each one raises its network\'s wire capacity by 170 kW.",
-          more: "Your wires are running hot; the Surge Protector can now be unlocked.\n\nEach wire network carries 85 kW to start. Green is comfortable, yellow tight, red at the limit. Past 80% a wire can burn out, darkening everything past it until repaired.\n\nMove load off the network or raise its cap: each Surge Protector on it adds 170 kW (255 kW with one, 425 kW with two). It needs no power, just $7/s upkeep.",
+          text: "Your cables are running hot! Past 80% load a cable can burn out.\n\nThe Surge Protector can now be unlocked: each one raises its network\'s cable capacity by 170 kW.",
+          more: "Your cables are running hot; the Surge Protector can now be unlocked.\n\nEach cable network carries 85 kW to start. Green is comfortable, yellow tight, red at the limit. Past 80% a cable can burn out, darkening everything past it until repaired.\n\nMove load off the network or raise its cap: each Surge Protector on it adds 170 kW (255 kW with one, 425 kW with two). It needs no power, just $7/s upkeep.",
           subject: [T.PROTECTOR],
           manual: true,
           highlight: T.PROTECTOR,
@@ -679,7 +679,7 @@ const TutorialSystem = (() => {
       steps: [
         {
           text: "Wind Turbine MK1 can now be unlocked! It makes 5 to 12.5 kW, following the wind.",
-          more: "Wind Turbine MK1 can now be unlocked!\n\nOutput follows the wind through the day: 5 to 12.5 kW.\n\nTurbines placed touching share one grid; only one of them needs a wire.",
+          more: "Wind Turbine MK1 can now be unlocked!\n\nOutput follows the wind through the day: 5 to 12.5 kW.\n\nTurbines placed touching share one grid; only one of them needs a cable.",
           subject: [T.WIND],
           highlight: T.WIND,
           manual: true,
@@ -948,7 +948,7 @@ const TutorialSystem = (() => {
       steps: [
         {
           text: "Fuel Power Generator unlocked! Pipe fuel oil from the refinery into it and wire it to your grid. It makes 165 kW.",
-          more: "Fuel Power Generator unlocked!\n\nWire it to your grid and pipe fuel from the refinery into its input. It makes 165 kW.\n\nLike the Coal Generator it needs outside power already on its network to start, and the fuel pipe carries no power, so it still needs a wire.",
+          more: "Fuel Power Generator unlocked!\n\nWire it to your grid and pipe fuel from the refinery into its input. It makes 165 kW.\n\nLike the Coal Generator it needs outside power already on its network to start, and the fuel pipe carries no power, so it still needs a cable.",
           subject: [T.FUELGEN],
           manual: true,
           highlight: T.FUELGEN,
@@ -1584,7 +1584,7 @@ const TutorialSystem = (() => {
       steps: [
         {
           text: "The nation\'s grid is ready to tie in. Press INITIATE STAGE IV in the dossier, then hold 20 MW for two full days.\n\nBuild first: the Ready check shows your spare.",
-          more: "The nation\'s grid is ready to tie in to yours, on your signal.\n\nOnce you press INITIATE STAGE IV in the dossier, the station draws 20 MW around the clock. While the line is up it pays 5× your city\'s net income after every deduction (7.5× on the final 30 MW day), so stay in profit: a city at a loss earns nothing from it.\n\nHold it for two full days. Every power loss trips the national grid and costs an hour of progress.\n\nNothing starts until you press INITIATE, so build first: the dossier\'s Ready check shows your spare at the tightest hour, and you want 20 MW and a little over. Use Power Towers, not wires.",
+          more: "The nation\'s grid is ready to tie in to yours, on your signal.\n\nOnce you press INITIATE STAGE IV in the dossier, the station draws 20 MW around the clock. While the line is up it pays 5× your city\'s net income after every deduction (7.5× on the final 30 MW day), so stay in profit: a city at a loss earns nothing from it.\n\nHold it for two full days. Every power loss trips the national grid and costs an hour of progress.\n\nNothing starts until you press INITIATE, so build first: the dossier\'s Ready check shows your spare at the tightest hour, and you want 20 MW and a little over. Use Power Towers, not cables.",
           subject: [T.NATIONALGRID],
           manual: true,
           highlightWorld: () => NationalProject.station(),
@@ -1756,15 +1756,15 @@ const TutorialSystem = (() => {
     const during = w && w._faultEvent ? ` during the ${w._faultEvent.toLowerCase()}` : ' while the weather was in';
     switch (w && w._faultCause) {
       case 'overload':
-        return `One of your wires has failed.\n\nIt was overloaded${during}. Wires carrying more than they are rated for can fail whenever a spell of weather comes through, ${down}.`;
+        return `One of your cables has failed.\n\nIt was overloaded${during}. Cables carrying more than they are rated for can fail whenever a spell of weather comes through, ${down}.`;
       case 'smoke':
-        return `One of your wires has failed.\n\nWildfire smoke settled on a line strung beside trees and it flashed over, ${down}.`;
+        return `One of your cables has failed.\n\nWildfire smoke settled on a line strung beside trees and it flashed over, ${down}.`;
       case 'geomag':
-        return `One of your wires has failed.\n\nThe geomagnetic storm drove currents through your long lines and tripped one open, ${down}. The longer a network, the more it picks up.`;
+        return `One of your cables has failed.\n\nThe geomagnetic storm drove currents through your long lines and tripped one open, ${down}. The longer a network, the more it picks up.`;
       case 'fire':
-        return `One of your wires has failed.\n\nLightning set a line on fire. Burnt cable has to be replaced, and the line is ${down}.`;
+        return `One of your cables has failed.\n\nLightning set a line on fire. Burnt cable has to be replaced, and the line is ${down}.`;
       default:
-        return `One of your wires has failed, ${down}.`;
+        return `One of your cables has failed, ${down}.`;
     }
   }
 

@@ -146,6 +146,7 @@ function _fcPile(cx, cy, rx, ry, S, light, dark) {
 // stub are the Uranium Mine's (RareEarthSystem.outputPort). Stands on a
 // gravel compound (SiteYard).
 function renderRareEarthMine(e, px, py, t) {
+  if (typeof _fcOK !== 'undefined' && _fcOK(e, 'rem', 4, 5, ['rem_base', 'rem_cart', 'rem_dredge_3'])) return _remArt(e, px, py, t);   // rendered (render_field_core.js)
   const w = (e.width  || 4) * TILE;
   const h = (e.height || 5) * TILE;
   const S = TILE / 40;
@@ -326,6 +327,7 @@ function renderRareEarthMine(e, px, py, t) {
 // with lit windows runs it. Stands on a concrete yard (SiteYard). Stubs
 // come from LeachPlantSystem.getStubs.
 function renderLeachPlant(e, px, py, t) {
+    if (typeof _fcOK !== 'undefined' && _fcOK(e, 'lp', 10, 9, ['lp_base', 'lp_bag', 'lp_drum'])) return _lpArt(e, px, py, t);   // rendered (render_field_core.js)
     const def = EntityDefs[T.LEACHPLANT];
     const w   = (e.width  || def.width)  * TILE;
     const h   = (e.height || def.height) * TILE;

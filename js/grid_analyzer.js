@@ -6,7 +6,7 @@
    all of that has moved over a chosen stretch of time.
 
    Opened from the GRID panel (the Network Breakdown row, or the ⌕ beside
-   any network's name) and from a Wire, Power Pole or Power Tower's panel.
+   any network's name) and from a Cable, Power Pole or Power Tower's panel.
 
    ── Time ─────────────────────────────────────────────────────────
    History is kept in IN-GAME time (DayNight.getElapsed), not real time.
@@ -271,7 +271,7 @@ const GridAnalyzer = (() => {
           title: `${name}: lines at ${Math.round(stress * 100)}%`,
           // Line load is what the network's customers draw against its wire
           // rating (base + surge protection), not generation against demand.
-          message: `The wires carry ${fp(ld)} of a ${fp(cp)} rating. ` + (stress >= 0.8
+          message: `The cables carry ${fp(ld)} of a ${fp(cp)} rating. ` + (stress >= 0.8
             ? `Past 80% spans burn out and generation is lost to congestion. Add surge protection or move load off this network now.`
             : `${fp(Math.max(0, cp * 0.8 - ld))} of room before spans start burning out. Add surge protection before this network grows.`),
         },
@@ -440,7 +440,7 @@ const GridAnalyzer = (() => {
     if (stress >= 1) add('bad', `Lines are over their ${fp(cen.cap, 0)} rating and spans are tripping.${perUnit} Or move some of this load onto a separate network.`);
     else if (stress >= 0.8) add('bad', `Lines are at ${Math.round(stress * 100)}% of their rating. Past 80% spans can burn out and generation is lost to congestion.${perUnit}`);
     else if (stress >= 0.65) add('warn', `Lines are at ${Math.round(stress * 100)}% of their rating, with ${fp(cen.cap * 0.8 - cen.load, 0)} of room before they start burning out. Add surge protection before this network grows.${perUnit}`);
-    if (!cen.prot.size && cen.wires > 0) add('info', `No surge protection. Storms fault these wires at full risk, and the lines carry only the bare ${fp(cen.cap, 0)} rating.`);
+    if (!cen.prot.size && cen.wires > 0) add('info', `No surge protection. Storms fault these cables at full risk, and the lines carry only the bare ${fp(cen.cap, 0)} rating.`);
 
     // What the supply depends on
     if (rated > 0 && solar / rated >= 0.5) add(storing ? 'info' : 'warn', storing
@@ -574,7 +574,7 @@ const GridAnalyzer = (() => {
       ${row('Room before 80%', cen.cap * 0.8 - cen.load > 0 ? fp(cen.cap * 0.8 - cen.load, 0) : 'None', cen.cap * 0.8 - cen.load > 0 ? 'var(--text)' : '#ff4040',
             'How much more demand the lines take before spans start burning out.')}
       ${row('Surge protection', protText)}
-      ${row('Storm fault risk', resist >= 0.999 ? 'Unprotected' : `${Math.round((1 - resist) * 100)}% lower than bare wire`, resist >= 0.999 ? 'var(--text-dim)' : '#50e890')}
+      ${row('Storm fault risk', resist >= 0.999 ? 'Unprotected' : `${Math.round((1 - resist) * 100)}% lower than bare cable`, resist >= 0.999 ? 'var(--text-dim)' : '#50e890')}
     </div>`;
 
     if (!monitor) {

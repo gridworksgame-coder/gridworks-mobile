@@ -9,6 +9,7 @@
 // renderHeliumDeposit — see render_deposits.js
 
 function renderHeliumWell(e, px, py, t) {
+  if (_hw1OK(e)) return _hw1Art(e, px, py, t);   // rendered (end of this file)
   // A 6×6 gas wellhead under its own derrick, laid out the way the gas moves:
   //  • The vent cellar: a steel ring over the bore, lilac gas glowing up
   //    through the grating, with the christmas tree on top of it. A lattice
@@ -349,6 +350,7 @@ function renderHeliumWell(e, px, py, t) {
 }
 
 function renderHeliumWell2(e, px, py, t) {
+  if (_hw2OK(e)) return _hw2Art(e, px, py, t);   // rendered (end of this file)
   // The MK2: an 8×8 helium plant rather than a wellhead with a skid.
   //  • Twin wellheads in their cellars feed a compressor hall whose two big
   //    fans turn while it runs.
@@ -613,6 +615,7 @@ function renderHeliumWell2(e, px, py, t) {
 }
 
 function renderCryoPlant(e, px, py, t) {
+  if (_cryoOK(e)) return _cryoArt(e, px, py, t);   // rendered (end of this file)
   // Helium liquefaction plant, laid out the way the helium moves:
   //  • HE IN feeds a white recovery gas bag that swells with the buffer
   //    (real plants keep one to catch every boil-off breath), then the
@@ -1008,6 +1011,7 @@ function renderCryoPlant(e, px, py, t) {
 }
 
 function renderHe3Separator(e, px, py, t) {
+  if (FusionArt.ok(e, 'he3', 18, 18)) return _he3Art(e, px, py, t);   // rendered (end of render_advanced_fusion.js)
   // Helium-3 isotope works, 18x18 (12x12 ones from older saves keep their
   // size; everything is laid out as fractions of the frame, so it scales).
   // Top-down. Helium gas arrives on HE IN, is compressed and stripped by a
@@ -1320,5 +1324,184 @@ function renderHe3Separator(e, px, py, t) {
   const [plx, ply] = f.toWorld(w*0.5, h*0.965);
   _wfPlate('HELIUM-3 SEPARATOR', plx, ply, S * Math.min(1.5, Math.max(1, m / (12 * TILE))), accent, on);
   _wfLamp(px + f.W - 7*S, py + 7*S, S, t, accent, on);
+  ctx.restore();
+}
+
+/* ── Cryo Plant, rendered ──────────────────────────────────────────────
+   Built in Blender (scripts/render_cryoplant.py) on the painted plant's own
+   layout: gas bag, compressor hall, air coolers, purifiers, LN2 precooler,
+   the cold box on its grated deck, storage dewar, control room, LHe sphere,
+   relief stack, transport dewar rack, gas and vacuum-jacketed lines.
+   Live, as the painted plant: the fans, the turbo-expanders, the viewport's
+   superfluid vortex and core, the LED chase round the cold box, the
+   purifier on regeneration glowing, the sphere's and dewar's gauges, the
+   transport dewars' caps, cold fog and vapour, the control room at night,
+   tripped beacons, readout, ports, plate and lamps. Default size and the
+   unturned footprint only; the painted plant covers the rest. */
+const CRYOPLANT_LAYOUT = {"bag": [-12.2, 11.8, 3.6], "hallFans": [[-16.4, 2.6, 5.77, 1.45], [-12.0, 2.6, 5.77, 1.45], [-7.6, 2.6, 5.77, 1.45], [-16.4, -2.6, 5.77, 1.45], [-12.0, -2.6, 5.77, 1.45], [-7.6, -2.6, 5.77, 1.45]], "coolFans": [[-17.0, -9.6, 3.27, 1.05], [-14.5, -9.6, 3.27, 1.05], [-12.0, -9.6, 3.27, 1.05], [-9.5, -9.6, 3.27, 1.05], [-7.0, -9.6, 3.27, 1.05], [-17.0, -14.2, 3.27, 1.05], [-14.5, -14.2, 3.27, 1.05], [-12.0, -14.2, 3.27, 1.05], [-9.5, -14.2, 3.27, 1.05], [-7.0, -14.2, 3.27, 1.05]], "purifiers": [[-1.8, 13.4, 8.7, 1.25], [1.8, 13.4, 8.7, 1.25]], "ln2": [7.2, 13.4, 8.0], "view": [3.2, 3.0, 7.47, 2.0], "coldbox": [3.2, 3.0, 7.3, 5.4], "expanders": [[7.301, 7.101, 2.8, 0.85], [-0.901, 7.101, 2.8, 0.85], [-0.901, -1.101, 2.8, 0.85], [7.301, -1.101, 2.8, 0.85]], "dewarGauge": [-0.3, 6.7, -5.9, 2.84], "windows": [[-2.85, -16.65, 2.0], [-1.2, -16.65, 2.0], [0.45, -16.65, 2.0], [2.1, -16.65, 2.0], [3.75, -16.65, 2.0], [5.4, -16.65, 2.0], [7.05, -16.65, 2.0], [8.7, -16.65, 2.0]], "sphere": [15.0, 7.6, 5.0, 4.0], "vent": [18.2, 15.6, 6.3], "rack": [[13.0, -9.2, 3.36], [17.0, -9.2, 3.36], [13.0, -12.0, 3.36], [17.0, -12.0, 3.36], [13.0, -14.8, 3.36], [17.0, -14.8, 3.36]], "frame": [-20, 20, -18, 18], "inV": 13.0, "outV": -1.0, "rect": [-20.3, 23.894, -22.749, 23.612]};
+function _cryoOK(e) {
+  return !!CRYOPLANT_LAYOUT && (e.width || 20) === 20 && (e.height || 18) === 18 && (e._rotation || 0) === 0
+    && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff)
+    && !!AdvNukeArt.get('cryo_base') && !!AdvNukeArt.get('hyp_fan');
+}
+function _cryoArt(e, px, py, t) {
+  const L = CRYOPLANT_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const on = !!e.powered, tripped = !!e._tripped, run = on && !tripped && !!e._hasHeliumSource;
+  const def = EntityDefs[T.CRYOPLANT], fill = Math.min(1, (e._liquidHe || 0) / (def.liquidHeCapacity || 500));
+  const night = typeof DayNight !== 'undefined' && DayNight.darkness() > 0.3, detail = Camera.zoom > 0.5;
+  const accent = '#b8f0ff', seed = (e.col || 0) * 0.37 + (e.row || 0) * 0.11, breathe = 0.75 + 0.25 * Math.sin(t * 1.6 + seed);
+  const coreRGB = tripped ? '255,90,60' : '120,230,255';
+  ctx.save();
+  F.draw(AdvNukeArt.get('cryo_base'), L.rect);
+  // fans: the compressor hall's roof fans and the air-cooler bank
+  L.hallFans.forEach(([x, y, z, r], q) => _anFan(F, x, y, z, r, run ? t * 7 + q * 0.7 : q));
+  L.coolFans.forEach(([x, y, z, r], q) => _anFan(F, x, y, z, r, run ? t * 9 + q * 0.37 : q * 0.5));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // the purifier on regeneration glows warm, the online one frosts
+  const regen = Math.floor(t / 30) % 2;
+  if (run) L.purifiers.forEach(([x, y, z, r], i) => { const [cx, cy] = P(x, y, z); if (i === regen) _anGlow(cx, cy, r * 2.2 * M, '255,140,60', 0.28 + 0.08 * Math.sin(t * 2)); });
+  // the cold box: LEDs chasing round the head's rim
+  { const [cx, cy, cz, cr] = L.coldbox;
+    for (let q = 0; q < 28; q++) {
+      const a = q * TAU / 28, wave = (q / 28 - t * 0.35 + 10) % 1;
+      const lit = !on ? 0.06 : tripped ? (Math.sin(t * 8) > 0 ? 0.8 : 0.15) : 0.18 + 0.7 * Math.pow(wave, 3);
+      const [lx, ly] = P(cx + Math.cos(a) * (cr - 0.35), cy + Math.sin(a) * (cr - 0.35), cz);
+      _anGlow(lx, ly, 0.45 * M, tripped ? '255,80,60' : '140,235,255', lit);
+    }
+    if (on) _anGlow(...P(cx, cy, cz), (cr + 3) * M, coreRGB, (night ? 0.24 : 0.1) * (run ? breathe : 0.7)); }
+  ctx.restore();
+  // the viewport: superfluid helium turning round a glowing core
+  if (on) { const [vx, vy, vz, vr] = L.view, [cx, cy] = P(vx, vy, vz), R = vr * M;
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.clip();
+    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+    cg.addColorStop(0, `rgba(${coreRGB},${(run ? 0.9 * breathe : 0.6).toFixed(3)})`); cg.addColorStop(0.55, `rgba(${coreRGB},${(run ? 0.3 : 0.2).toFixed(3)})`); cg.addColorStop(1, `rgba(${coreRGB},0)`);
+    ctx.fillStyle = cg; ctx.fillRect(cx - R, cy - R, 2 * R, 2 * R);
+    if (detail) { ctx.lineCap = 'round'; const spin = run ? t * 0.9 : 0.5;
+      for (let q = 0; q < 6; q++) { const a0 = spin + q * Math.PI / 3; ctx.strokeStyle = `rgba(${tripped ? '255,170,150' : '220,250,255'},${(run ? 0.5 : 0.22).toFixed(3)})`; ctx.lineWidth = 0.13 * M; ctx.beginPath();
+        for (let k = 0; k <= 12; k++) { const u = k / 12, rr = R * (0.15 + u * 0.8), a = a0 + u * 2.2; k ? ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr) : ctx.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
+        ctx.stroke(); } ctx.lineCap = 'butt'; }
+    ctx.restore();
+    ctx.fillStyle = tripped ? '#ffd0c0' : '#ffffff'; ctx.beginPath(); ctx.arc(cx, cy, 0.4 * M, 0, TAU); ctx.fill(); }
+  // turbo-expanders spinning in their housings
+  if (detail) L.expanders.forEach(([x, y, z, r], i) => {
+    const [ex, ey] = P(x, y, z); ctx.save(); ctx.translate(ex, ey); ctx.rotate(run ? t * (14 + i * 4) : 0.4 + i);
+    ctx.strokeStyle = 'rgba(225,236,242,0.85)'; ctx.lineWidth = 0.12 * M;
+    for (let q = 0; q < 7; q++) { ctx.rotate(TAU / 7); ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(r * 0.45 * M, r * 0.1 * M, r * 0.85 * M, r * 0.35 * M); ctx.stroke(); }
+    ctx.restore(); _anGlow(ex, ey, 0.4 * M, '184,240,255', run ? 0.6 : 0.1);
+  });
+  // the storage dewar's sight glass and the LHe sphere's gauge
+  { const [x0, x1, y, z] = L.dewarGauge, [ax, ay] = P(x0, y, z), [bx] = P(x1, y, z);
+    if (fill > 0) { ctx.fillStyle = on ? `rgba(160,240,255,${(0.65 + 0.3 * breathe).toFixed(3)})` : 'rgba(80,110,124,0.7)'; ctx.fillRect(ax, ay - 0.22 * M, (bx - ax) * fill, 0.44 * M); } }
+  { const [x, y, z, r] = L.sphere, [sx, sy] = P(x, y, z);
+    ctx.lineCap = 'round'; ctx.strokeStyle = 'rgba(16,24,30,0.7)'; ctx.lineWidth = 0.34 * M; ctx.beginPath(); ctx.arc(sx, sy, (r - 0.5) * M, Math.PI * 0.75, Math.PI * 2.25); ctx.stroke();
+    if (fill > 0) { ctx.strokeStyle = !on ? '#4a6a78' : fill > 0.95 && Math.sin(t * 6) > 0 ? '#ff6050' : '#e8fcff'; ctx.lineWidth = 0.2 * M; ctx.beginPath(); ctx.arc(sx, sy, (r - 0.5) * M, Math.PI * 0.75, Math.PI * (0.75 + 1.5 * fill)); ctx.stroke(); }
+    ctx.lineCap = 'butt';
+    if (run) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(sx, sy, (r + 2) * M, '150,230,255', night ? 0.18 : 0.08); ctx.restore(); } }
+  // transport dewars' caps light as the plant fills them; the control room's windows at night
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.rack.forEach(([x, y, z], q) => { const [cx, cy] = P(x, y, z); if (run && fill > (q + 1) / 7) _anGlow(cx, cy, 0.6 * M, '154,240,255', 0.7); });
+  if (on && night) L.windows.forEach(([x, y, z]) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.9 * M, '255,226,160', 0.5); });
+  ctx.restore();
+  // cold fog off the cold box, the sphere and the dewar; vapour off the head and the LN2 tank; heat over the coolers
+  if (run) {
+    const [cx, cy, , cr] = L.coldbox, [sx, sy, , sr] = L.sphere;
+    const srcs = [P(cx, cy - cr, 0.5), P(cx - cr, cy, 0.5), P(sx, sy - sr, 0.5), P((L.dewarGauge[0] + L.dewarGauge[1]) / 2, L.dewarGauge[2], 0.5)];
+    for (let q = 0; q < 12; q++) {
+      const ph = (t * 0.06 + q / 12) % 1, [fx, fy] = srcs[q % srcs.length], r = (1.8 + ph * 3.6) * M, a = (night ? 0.26 : 0.32) * Math.sin(ph * Math.PI);
+      const gx = fx + (ph * 7 - 2.4 + Math.sin(q * 2.3) * 1.6) * M, gy = fy + (Math.sin(q * 1.7) * 1.2 + ph * 1.2) * M;
+      const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r); g.addColorStop(0, `rgba(235,248,255,${a.toFixed(3)})`); g.addColorStop(1, 'rgba(235,248,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
+    }
+    { const c = L.coolFans[7], [hx, hy] = P(c[0], c[1], c[2] + 0.5); _wfSmoke(hx, hy, S * 0.8, t, '255,240,220', true, 0.12); }
+    { const [vx, vy] = P(L.coldbox[0], L.coldbox[1] + L.coldbox[3] * 0.6, L.coldbox[2]); _wfSmoke(vx, vy, S * 0.95, t, '240,250,255', true, 0.5); }
+    { const [lx, ly] = P(...L.ln2); _wfSmoke(lx, ly, S * 0.5, t + 1.3, '240,250,255', true, 0.35); }
+  }
+  { const [rvx, rvy] = P(...L.vent); _wfSmoke(rvx, rvy, S * 0.7, t + 0.5, '235,248,255', run && fill > 0.9, 0.6); }
+  if (tripped) [P(...L.bag), P(...L.vent), P(L.rack[1][0], L.rack[1][1], 3.4), P(L.coldbox[0], L.coldbox[1] + L.coldbox[3] + 1, 7)].forEach(([bx, by], i) => {
+    const lit = Math.sin(t * 8 + i) > 0; ctx.fillStyle = lit ? '#ff3020' : '#501008'; ctx.beginPath(); ctx.arc(bx, by, 2.4 * S, 0, TAU); ctx.fill();
+    if (lit) _anGlow(bx, by, 20 * S, '255,50,30', 0.45);
+  });
+  const st = typeof CryoPlantSystem !== 'undefined' && e.col !== undefined ? CryoPlantSystem.getStubs(e) : null;
+  if (st) {
+    _portPipe(_portAnchor(e, px, py, F.W, F.H, st.heliumIn),  S, t, { fluid: '#f0b8ff', label: 'HE IN',   on: !!e._hasHeliumSource, out: false, flow: !!e._liquefying });
+    _portPipe(_portAnchor(e, px, py, F.W, F.H, st.liquidOut), S, t, { fluid: '#e8fcff', label: 'LHe OUT', on: !!(e._liquidPipeLinked ?? e._liquidPipeOut), out: true, flow: !!e._liquidPipeOut });
+  }
+  _wfPlate(tripped ? `TRIPPED: ${Math.ceil(e._restart || 0)}s` : on ? `CRYO PLANT  ${tripped ? '' : '4.2 K'}` : 'CRYO PLANT', px + F.W / 2, py + F.H - 10 * S, S * 1.4, tripped ? '#ff5040' : accent, on);
+  _wfLamp(px + F.W - 7 * S, py + 7 * S, S, t, tripped ? '#ff3020' : accent, on);
+  _wfLamp(px + 7 * S, py + 7 * S, S, t + 1.5, tripped ? '#ff3020' : accent, on);
+  ctx.restore();
+}
+
+
+/* ── Helium Wells MK1 / MK2, rendered (scripts/render_fusionfeed.py hw1, hw2) ──
+   On the painted layouts, in colour. MK1: the vent cellar under an orange
+   lattice derrick, the navy booster with yellow fan rings, the membrane skid,
+   the cream control shed, three lilac-ended tubes, the red-and-white flare.
+   MK2: twin wellheads, the blue compressor hall under a lilac roof, the
+   ice-blue cold-box column, two Horton spheres, the control room, the flare.
+   Live: fans, gas glowing in the cellars, the cartridges / column working,
+   the buffer's gauges, the flare's flame, the beacon, windows at night,
+   port, plate and lamps. Unturned default size only (a 4x4 MK1 from an old
+   save keeps the painted drawing). */
+const HW1_LAYOUT = {"beacon": [-2.8, 2.5, 10.55], "cellar": [-2.8, 2.5, 0.35, 1.1], "fans": [[1.3, 4.15, 2.87, 0.6], [2.7, 4.15, 2.87, 0.6]], "carts": [[-4.6, -3.2, 2.42], [-3.925, -3.2, 2.42], [-3.25, -3.2, 2.42], [-2.575, -3.2, 2.42], [-1.9, -3.2, 2.42], [-1.225, -3.2, 2.42], [-0.55, -3.2, 2.42], [0.125, -3.2, 2.42]], "window": [2.375, 1.575, 1.55], "tubes": [[2.55, 4.15, -0.25, 1.4], [2.55, 4.15, -1.55, 1.4], [2.55, 4.15, -2.85, 1.4]], "flare": [4.7, 4.3, 8.85], "frame": [-6, 6, -6, 6], "rect": [-6.3, 10.597, -11.62, 12.651]};
+const HW2_LAYOUT = {"wells": [[-5.4, 5.5, 0.35, 0.9], [-5.4, 1.5, 0.35, 0.9]], "fans": [[-1.9, 5.65, 5.37, 1.05], [1.1, 5.65, 5.37, 1.05]], "column": [0.0, -0.9, 8.5, 1.6], "spheres": [[5.1, 2.1, 2.4, 1.7], [5.1, -4.1, 2.4, 1.7]], "ctrlWin": [[-6.15, -6.925, 1.7], [-5.1, -6.925, 1.7], [-4.05, -6.925, 1.7], [-3.0, -6.925, 1.7]], "mast": [-2.8, -3.5, 5.25], "flare": [6.6, 6.3, 9.85], "frame": [-8, 8, -8, 8], "rect": [-8.3, 14.159, -15.554, 16.96]};
+function _ffFlame(P, M, x, y, z, big, t, dark) {
+  if (big <= 0) return;
+  const [fx, fy] = P(x, y, z), fl = 0.8 + 0.2 * Math.sin(t * 17) + 0.12 * Math.sin(t * 31 + 1), fh = 2.2 * M * big * fl, lean = Math.sin(t * 2.3) * 0.35 * M * big;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(fx, fy - fh * 0.4, 2.2 * M * big * (1 + dark), '255,140,50', 0.16 + 0.25 * dark); ctx.restore();
+  for (const [sc, col] of [[1, 'rgba(255,120,30,0.85)'], [0.66, 'rgba(255,200,70,0.9)'], [0.34, 'rgba(255,250,210,0.95)']]) {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(fx - 0.28 * M * sc, fy); ctx.quadraticCurveTo(fx - 0.35 * M * sc + lean * 0.4, fy - fh * sc * 0.6, fx + lean * sc, fy - fh * sc);
+    ctx.quadraticCurveTo(fx + 0.35 * M * sc + lean * 0.4, fy - fh * sc * 0.6, fx + 0.28 * M * sc, fy); ctx.closePath(); ctx.fill();
+  }
+}
+function _hwOK(e, L, w, img) {
+  return !!L && (e.width || w) === w && (e.height || w) === w && (e._rotation || 0) === 0
+    && typeof AdvNukeArt !== 'undefined' && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && !!AdvNukeArt.get(img) && !!AdvNukeArt.get('hyp_fan');
+}
+function _hw1OK(e) { return _hwOK(e, HW1_LAYOUT, 6, 'hw1_base'); }
+function _hw2OK(e) { return _hwOK(e, HW2_LAYOUT, 8, 'hw2_base'); }
+function _hwCommon(e, px, py, t, F, mk2) {
+  const S = TILE / 40, on = !!e.powered, accent = mk2 ? '#90e0ff' : '#f0b8ff';
+  const st = typeof HeliumSystem !== 'undefined' ? HeliumSystem.getStubs(e) : null;
+  if (st) _portPipe(_portAnchor(e, px, py, F.W, F.H, st.heliumOut), S, t, { fluid: '#f0b8ff', label: 'HE OUT', on: !!e._heliumPipeOut, out: true, flow: !!e._heliumPipeOut });
+  _wfPlate(e._oreDepleted ? 'FIELD EXHAUSTED' : mk2 ? 'HELIUM WELL MK2' : 'HELIUM WELL', px + F.W / 2, py + F.H - 10 * S, S, e._oreDepleted ? '#ff6040' : accent, on);
+  _wfLamp(px + F.W - 8 * S, py + 8 * S, S, t, accent, on);
+}
+function _hw1Art(e, px, py, t) {
+  const L = HW1_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, TAU = Math.PI * 2;
+  const on = !!e.powered, flowing = on && !e._bufferFull && !e._oreDepleted, def = EntityDefs[T.HELIUMWELL];
+  const fill = Math.min(1, (e._helium || 0) / (def.heliumCapacity || 1000)), dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+  ctx.save();
+  F.draw(AdvNukeArt.get('hw1_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], i) => _anFan(F, x, y, z, r, flowing ? t * 9 + i : i));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  { const [x, y, z, r] = L.cellar, [cx, cy] = P(x, y, z); _anGlow(cx, cy, r * 1.3 * M, '240,184,255', flowing ? 0.35 + 0.15 * Math.sin(t * 2) : 0.06); }
+  L.carts.forEach(([x, y, z], i) => { const [gx, gy] = P(x, y, z); _anGlow(gx, gy, 0.35 * M, '240,184,255', flowing ? 0.45 + 0.35 * Math.max(0, Math.sin(t * 3 - i * 0.6)) : 0.05); });
+  { const [x, y, z] = L.beacon, [bx, by] = P(x, y, z); if (on && Math.sin(t * 4) > 0) _anGlow(bx, by, 0.6 * M, '255,70,50', 0.9); }
+  if (on && dark > 0.3) { const [wx, wy] = P(...L.window); _anGlow(wx, wy, 0.5 * M, '255,226,160', 0.6); }
+  ctx.restore();
+  L.tubes.forEach(([x0, x1, y, z]) => { if (fill <= 0) return; const [ax, ay] = P(x0, y, z), [bx] = P(x0 + (x1 - x0) * fill, y, z); ctx.fillStyle = on ? '#f0b8ff' : '#6a5a78'; ctx.fillRect(ax, ay - 0.08 * M, bx - ax, 0.16 * M); });
+  _ffFlame(P, M, ...L.flare, flowing ? 0.8 : on ? 0.25 : 0, t, dark);
+  _hwCommon(e, px, py, t, F, false);
+  ctx.restore();
+}
+function _hw2Art(e, px, py, t) {
+  const L = HW2_LAYOUT, F = _anFrame(e, px, py), { P, M } = F, TAU = Math.PI * 2;
+  const on = !!e.powered, flowing = on && !e._bufferFull && !e._oreDepleted, def = EntityDefs[T.HELIUMWELL2];
+  const fill = Math.min(1, (e._helium || 0) / (def.heliumCapacity || 1000)), dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0;
+  ctx.save();
+  F.draw(AdvNukeArt.get('hw2_base'), L.rect);
+  L.fans.forEach(([x, y, z, r], i) => _anFan(F, x, y, z, r, flowing ? t * 8 + i : i));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.wells.forEach(([x, y, z, r], i) => { const [cx, cy] = P(x, y, z); _anGlow(cx, cy, r * 1.3 * M, '240,184,255', flowing ? 0.3 + 0.15 * Math.sin(t * 2 + i) : 0.05); });
+  { const [x, y, z, r] = L.column, [cx, cy] = P(x, y, z * 0.6); _anGlow(cx, cy, r * 1.8 * M, '170,225,255', flowing ? 0.22 + 0.08 * Math.sin(t * 1.5) : 0.04); }
+  if (on && dark > 0.3) L.ctrlWin.forEach(([x, y, z]) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.6 * M, '255,226,160', 0.6); });
+  { const [mx, my] = P(...L.mast); if (on && Math.sin(t * 3) > 0) _anGlow(mx, my, 0.4 * M, '255,70,50', 0.85); }
+  ctx.restore();
+  L.spheres.forEach(([x, y, z, r], i) => { const f = Math.max(0, Math.min(1, i ? fill * 2 - 1 : fill * 2)); if (f <= 0) return; const [cx, cy] = P(x, y, z);
+    ctx.lineCap = 'round'; ctx.strokeStyle = on ? '#f0b8ff' : '#6a5a78'; ctx.lineWidth = 0.18 * M; ctx.beginPath(); ctx.arc(cx, cy, (r + 0.25) * M, -Math.PI / 2, -Math.PI / 2 + TAU * f); ctx.stroke(); ctx.lineCap = 'butt'; });
+  { const [x, y, z, r] = L.column, [vx, vy] = P(x, y, z); _wfSmoke(vx, vy, TILE / 40 * 0.6, t, '240,250,255', flowing, 0.45); }
+  _ffFlame(P, M, ...L.flare, flowing ? 0.9 : on ? 0.25 : 0, t, dark);
+  _hwCommon(e, px, py, t, F, true);
   ctx.restore();
 }

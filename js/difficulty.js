@@ -37,7 +37,7 @@ const Difficulty = (() => {
 
   const SLIDERS = [
     { key: 'buildCost', label: 'Build Prices',      min: 0.5,  max: 2.5, step: 0.05,
-      desc: 'Price of every building, wire and survey scan' },
+      desc: 'Price of every building, cable and survey scan' },
     { key: 'upkeep',    label: 'Running Costs',     min: 0.5,  max: 2.5, step: 0.05,
       desc: 'Upkeep your plants and buildings bill every second' },
     { key: 'deposits',  label: 'Deposit Supply',    min: 0.25, max: 3,   step: 0.05,

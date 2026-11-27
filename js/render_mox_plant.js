@@ -64,6 +64,7 @@ function _moxTread(x, y, w, h, S, on) {
 }
 
 function renderMoxPlant(e, px, py, t) {
+  if (_anOK(e, 'mox', 15, 13)) return _moxArt(e, px, py, t);   // rendered (render_oil_nuclear.js, end)
   const def = EntityDefs[T.MOXPLANT];
   const w   = (e.width  || def.width)  * TILE;
   const h   = (e.height || def.height) * TILE;

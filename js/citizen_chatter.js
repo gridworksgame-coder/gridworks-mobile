@@ -83,7 +83,7 @@ const CitizenChatter = (() => {
         calm: ["Not a breath of wind today.", "Still and quiet. Lovely."],
         dust: ["Dust on everything, everywhere.", "Car's brown now. It was blue."],
         smoke: ["Smells like a wildfire.", "Ash on the windowsill…", "Sky's gone orange."],
-        icing: ["Ice on every wire out there.", "Careful, the path's like glass."],
+        icing: ["Ice on every cable out there.", "Careful, the path's like glass."],
         geomag: ["Did you see the aurora?!", "The sky's glowing green!", "Compass is spinning, weird."],
       },
       season: {

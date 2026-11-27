@@ -357,6 +357,26 @@ function _renderWireTerminalBatch(q, from, to) {
   const shadow = new Path2D(), boot = new Path2D(), nut = new Path2D(), nutShade = new Path2D(),
         plate = new Path2D(), shine = new Path2D(), screws = new Path2D();
   const leds = _wtLeds;
+  if (_wireArtReady()) {                       // rendered gland set into the building, its LED live
+    const M = 20 * (TILE / 40), [gu, gz] = WIRE_LAYOUT.glandLed, up = _wireLedUp(gz);
+    for (let i = from; i < to; i += 5) {
+      const x = q[i], y = q[i + 1], dc = q[i + 2], dr = q[i + 3], led = q[i + 4];
+      _wireSprite('wire_gland_' + (dc > 0 ? 'right' : dc < 0 ? 'left' : dr > 0 ? 'bottom' : 'top'), x, y, 1.2);
+      const key = led || '';
+      let L = leds.get(key);
+      if (!L) { L = { dot: new Path2D(), halo: led ? new Path2D() : null }; leds.set(key, L); }
+      const lx = x + dc * gu * M, ly = y + dr * gu * M - up;
+      L.dot.moveTo(lx + 0.7, ly); L.dot.arc(lx, ly, 0.7, 0, Math.PI * 2);
+      if (led) { L.halo.moveTo(lx + 1.8, ly); L.halo.arc(lx, ly, 1.8, 0, Math.PI * 2); }
+    }
+    ctx.save();
+    for (const [key, L] of leds) {
+      ctx.fillStyle = key || '#2a2e32'; ctx.fill(L.dot);
+      if (L.halo) { ctx.globalAlpha = 0.3; ctx.fill(L.halo); ctx.globalAlpha = 1; }
+    }
+    ctx.restore(); leds.clear();
+    return;
+  }
   for (let i = from; i < to; i += 5) {
     const x = q[i], y = q[i + 1], dc = q[i + 2], dr = q[i + 3], led = q[i + 4];
     // Kept small — only a touch wider than the 4.2px cable sheath, so it
@@ -455,9 +475,11 @@ function _wireState(e, t) {
       const k = Math.min(1, (loadPct - WIRE_RISK_STRESS) / 0.15);
       r = 255; g = Math.round(150 * (1 - k)); b = 0;
     }
-    core = `rgb(${r},${g},${b})`; glowRGB = `${r},${g},${b}`; ledC = core;
+    // The load shows on the junction LEDs and the sockets; the cable itself
+    // stays its braided jacket (no coloured core or glow over it).
+    core = `rgb(${r},${g},${b})`; ledC = core; coreW = 0;
   } else {
-    core = '#7a6048'; ledC = '#3a3a3a';
+    core = '#7a6048'; ledC = '#3a3a3a'; coreW = 0;
   }
   const o = _wireStateOut;
   o.loadPct = loadPct; o.core = core; o.glowRGB = glowRGB; o.coreW = coreW;
@@ -488,6 +510,89 @@ function _loneWireBeacon(cx, cy, t) {
   ctx.strokeStyle = '#fff3a0';
   ctx.beginPath(); ctx.arc(cx, cy, ringR, 0, Math.PI * 2); ctx.stroke();
   ctx.restore();
+}
+
+// ── Rendered cable (scripts/render_wire.py) ───────────────────────────
+// The cable is a rendered 2 m strip used as a world-anchored pattern, one
+// for east-west runs and one for north-south, so a run of any length is one
+// continuous rubber-jacketed cable with its own shadow; ties, junction boxes
+// and the glands where a cable enters a building are rendered sprites. Only
+// the LEDs, the current pulses and the fault / out-of-range cores are live.
+const WIRE_LAYOUT = { z: 0.14, boxLed: 0.255, glandLed: [0.3, 0.352] };
+let _wirePat = null;
+function _wireArtReady() { return typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('wire'); }
+function _wirePats() {
+  if (_wirePat) return _wirePat;
+  const h = CoalWaterArt.get('wire_h'), v = CoalWaterArt.get('wire_v');
+  const ph = ctx.createPattern(h, 'repeat'), pv = ctx.createPattern(v, 'repeat');
+  const k = TILE / h.naturalWidth, m = new DOMMatrix().scale(k);
+  ph.setTransform(m); pv.setTransform(m);
+  return (_wirePat = { h: ph, v: pv, k, m });
+}
+// hPath / vPath: runs on the tile centre lines; legs: [x0, y0, x1, y1, ...]
+// runs off them (a turn along a building's edge), each re-anchored.
+function _wireTexStroke(hPath, vPath, legs) {
+  const P = _wirePats();
+  ctx.save(); ctx.lineCap = 'butt'; ctx.lineWidth = 1.1 * 20 * (TILE / 40);   // the cable and all of its shadow
+  if (hPath) { ctx.strokeStyle = P.h; ctx.stroke(hPath); }
+  if (vPath) { ctx.strokeStyle = P.v; ctx.stroke(vPath); }
+  for (let i = 0; legs && i < legs.length; i += 4) {
+    const x0 = legs[i], y0 = legs[i + 1], x1 = legs[i + 2], y1 = legs[i + 3], horiz = Math.abs(y1 - y0) < 0.01, pat = horiz ? P.h : P.v;
+    pat.setTransform(new DOMMatrix().translate(horiz ? 0 : x0 - TILE / 2, horiz ? y0 - TILE / 2 : 0).scale(P.k));
+    ctx.strokeStyle = pat; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    pat.setTransform(P.m);
+  }
+  ctx.restore();
+}
+function _wireSprite(name, cx, cy, frameM) {
+  const im = CoalWaterArt.get(name); if (!im) return;
+  const fw = frameM * 20 * (TILE / 40);
+  ctx.drawImage(im, cx - fw / 2, cy - fw / 2, fw, fw);
+}
+const _wireLedUp = (z) => (z - WIRE_LAYOUT.z) * _CW_TAN * 20 * (TILE / 40);
+
+// The cable's armoured jacket: a braided texture (a small baked pattern,
+// world-anchored) inside the sheath, lit along its top edge and shaded
+// underneath so it reads as a round cable, not a flat line.
+let _wireJacketPat = null, _wireBoxCv = null;
+function _wireJacket(path) {
+  if (!_wireJacketPat) {
+    const c = document.createElement('canvas'); c.width = c.height = 12;
+    const g = c.getContext('2d');
+    g.fillStyle = '#23272c'; g.fillRect(0, 0, 12, 12);
+    g.lineWidth = 2;
+    for (let k = -12; k < 24; k += 4) {
+      g.strokeStyle = '#4a5058'; g.beginPath(); g.moveTo(k, 0); g.lineTo(k + 12, 12); g.stroke();
+      g.strokeStyle = '#161a1d'; g.beginPath(); g.moveTo(k + 1.6, 0); g.lineTo(k + 13.6, 12); g.stroke();
+    }
+    _wireJacketPat = ctx.createPattern(c, 'repeat');
+    if (_wireJacketPat && _wireJacketPat.setTransform) _wireJacketPat.setTransform(new DOMMatrix().scale(0.25));
+  }
+  if (_wireJacketPat) { ctx.strokeStyle = _wireJacketPat; ctx.lineWidth = 4.8; ctx.stroke(path); }
+  ctx.save(); ctx.translate(1.2, 1.3); ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1.3; ctx.stroke(path); ctx.restore();
+  ctx.save(); ctx.translate(-1.2, -1.3); ctx.strokeStyle = 'rgba(220,228,236,0.28)'; ctx.lineWidth = 1.1; ctx.stroke(path); ctx.restore();
+}
+// A junction box face, baked once: brushed housing, bevel, four screws and
+// the LED bezel (the LED itself is drawn live in the state's colour).
+function _wireBoxSprite() {
+  if (_wireBoxCv) return _wireBoxCv;
+  const N = 48, c = document.createElement('canvas'); c.width = c.height = N;
+  const g = c.getContext('2d'), k = N / 9;
+  const bg = g.createLinearGradient(0, 0, N, N); bg.addColorStop(0, '#59606a'); bg.addColorStop(0.5, '#3a4048'); bg.addColorStop(1, '#22262c');
+  g.fillStyle = bg; g.beginPath(); g.roundRect(0, 0, N, N, 1.8 * k); g.fill();
+  g.fillStyle = '#2e333a'; g.beginPath(); g.roundRect(1.1 * k, 1.1 * k, N - 2.2 * k, N - 2.2 * k, 1.2 * k); g.fill();
+  for (let y = 1.6 * k; y < N - 1.4 * k; y += 0.55 * k) { g.fillStyle = `rgba(255,255,255,${(0.03 + 0.03 * Math.sin(y)).toFixed(3)})`; g.fillRect(1.3 * k, y, N - 2.6 * k, 0.25 * k); }
+  for (const [x, y] of [[1.9, 1.9], [7.1, 1.9], [1.9, 7.1], [7.1, 7.1]]) {
+    const sg = g.createRadialGradient(x * k - 0.2 * k, y * k - 0.2 * k, 0, x * k, y * k, 0.6 * k);
+    sg.addColorStop(0, '#d8dde2'); sg.addColorStop(1, '#5a6068');
+    g.fillStyle = sg; g.beginPath(); g.arc(x * k, y * k, 0.55 * k, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(20,24,28,0.8)'; g.lineWidth = 0.15 * k; g.beginPath(); g.moveTo(x * k - 0.4 * k, y * k); g.lineTo(x * k + 0.4 * k, y * k); g.stroke();
+  }
+  g.fillStyle = '#0e1114'; g.beginPath(); g.arc(N / 2, N / 2, 2.4 * k, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(200,210,220,0.35)'; g.lineWidth = 0.3 * k; g.beginPath(); g.arc(N / 2, N / 2, 2.4 * k, Math.PI, Math.PI * 1.8); g.stroke();
+  // leave the LED itself to the live pass: punch its spot clear
+  g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(N / 2, N / 2, 1.9 * k, 0, Math.PI * 2); g.fill();
+  return (_wireBoxCv = c);
 }
 
 function renderWire(e, px, py, t) {
@@ -557,16 +662,18 @@ function renderWire(e, px, py, t) {
         ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 4.4; ctx.stroke(path);
         ctx.restore();
       }
-      ctx.strokeStyle = '#1c2024'; ctx.lineWidth = 4.2; ctx.stroke(path);            // sheath
-      if (detail) { ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.save(); ctx.translate(-0.9, -0.9); ctx.stroke(path); ctx.restore(); }
-      if (stranded) ctx.setLineDash([4, 3]);
-      ctx.strokeStyle = core; ctx.lineWidth = coreW; ctx.stroke(path);             // core
-      ctx.setLineDash([]);
+      ctx.strokeStyle = '#121518'; ctx.lineWidth = 5.6; ctx.stroke(path);            // sheath
+      if (detail) _wireJacket(path);
+      if (coreW > 0) {                                                             // core: faults / out of range only
+        if (stranded) ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = core; ctx.lineWidth = coreW; ctx.stroke(path);
+        ctx.setLineDash([]);
+      }
       if (e.powered && !e.outOfRange && !faulted && detail) {                       // current pulses
         ctx.setLineDash([2, 10]);
         ctx.lineDashOffset = -(t * (12 + 36 * loadPct));
-        ctx.strokeStyle = `rgba(255,255,255,${(0.45 + 0.35 * loadPct).toFixed(3)})`;
-        ctx.lineWidth = 1.1; ctx.stroke(path);
+        ctx.strokeStyle = `rgba(255,255,255,${(0.16 + 0.2 * loadPct).toFixed(3)})`;
+        ctx.lineWidth = 0.9; ctx.stroke(path);
         ctx.setLineDash([]); ctx.lineDashOffset = 0;
       }
     }
@@ -657,6 +764,7 @@ const _wpGroups = new Map();     // state key -> { path, core, ... } for the blo
 const _wpSlow = [];              // [e, px, py, ...] wires left to renderWire
 const _wpSpools = [];            // [cx, cy, core, ...] wires with nothing to connect to
 const _wpWeather = [];           // [e, px, py, ...] storm-failed wires, for renderWireSpark
+const _wpBoxes = [];             // [cx, cy, ...] connector boxes in the block, for their baked face
 const _wpEnd = new Float64Array(8);   // this tile's arm end points: N, S, W, E as x,y pairs
 
 function renderWirePass(cStart, cEnd, rStart, rEnd, t) {
@@ -689,7 +797,8 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
   const baseThr = EntityDefs[T.WIRE].throughput;
   const half = TILE / 2;
   let all = null, hi = null, boxSh = null, box = null, haloHot = null, haloLit = null, ties = null, sparks = null;
-  _wpSpools.length = 0; _wpWeather.length = 0;
+  const tex = _wireArtReady(); let hP = null, vP = null; const legs = tex ? [] : null, tieAt = tex ? [] : null;
+  _wpSpools.length = 0; _wpWeather.length = 0; _wpBoxes.length = 0;
 
   for (let r = r0; r < r1; r++) {
     for (let c = c0; c < c1; c++) {
@@ -725,7 +834,7 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
       // the centre — same pixels, half the geometry to stroke on every layer.
       // The current pulses keep the halves (each dash pattern starts at the
       // tile edge and runs to the centre).
-      const pp = (detail && g.pulse) ? (g.pulsePath || (g.pulsePath = new Path2D())) : null;
+      const pp = (detail && g.pulse && !tex) ? (g.pulsePath || (g.pulsePath = new Path2D())) : null;   // no dashes over the rendered cable
       let arms = 0, vert = 0, mask = 0;
       for (let i = 0; i < 4; i++) {
         const dc = _WP_DC[i], dr = _WP_DR[i];
@@ -743,6 +852,7 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
             const ex = sx - dr * rc.l, ey = sy + dc * rc.l, sg = Math.sign(rc.l);
             all = all || new Path2D();
             all.moveTo(sx, sy); all.lineTo(ex, ey); g.path.moveTo(sx, sy); g.path.lineTo(ex, ey);
+            if (legs) legs.push(sx, sy, ex, ey);
             if (pp) { pp.moveTo(sx, sy); pp.lineTo(ex, ey); }
             if (isHi) { if (!hi) hi = new Path2D(); hi.moveTo(sx, sy); hi.lineTo(ex, ey); }
             if (sockets) _wireTerminals.push(ex, ey, -dr * sg, dc * sg, lit ? g.ledC : null);
@@ -755,6 +865,15 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
         arms++; if (i < 2) vert++;
       }
       const E = _wpEnd, gp = g.path;
+      if (tex) {
+        if (!hP) { hP = new Path2D(); vP = new Path2D(); }
+        if ((mask & 3) === 3) { vP.moveTo(E[0], E[1]); vP.lineTo(E[2], E[3]); }
+        else if (mask & 1)    { vP.moveTo(E[0], E[1]); vP.lineTo(cx, cy); }
+        else if (mask & 2)    { vP.moveTo(E[2], E[3]); vP.lineTo(cx, cy); }
+        if ((mask & 12) === 12) { hP.moveTo(E[4], E[5]); hP.lineTo(E[6], E[7]); }
+        else if (mask & 4)      { hP.moveTo(E[4], E[5]); hP.lineTo(cx, cy); }
+        else if (mask & 8)      { hP.moveTo(E[6], E[7]); hP.lineTo(cx, cy); }
+      }
       if ((mask & 3) === 3) { all.moveTo(E[0], E[1]); all.lineTo(E[2], E[3]); gp.moveTo(E[0], E[1]); gp.lineTo(E[2], E[3]); }
       else if (mask & 1)    { all.moveTo(E[0], E[1]); all.lineTo(cx, cy);     gp.moveTo(E[0], E[1]); gp.lineTo(cx, cy); }
       else if (mask & 2)    { all.moveTo(E[2], E[3]); all.lineTo(cx, cy);     gp.moveTo(E[2], E[3]); gp.lineTo(cx, cy); }
@@ -767,20 +886,25 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
         _wpSpools.push(cx, cy, g.core);
       } else if (arms === 2 && vert !== 1) {
         if (detail && ((e.col + e.row) % 2 === 0)) {                               // cable tie
-          if (!ties) ties = new Path2D();
-          if (vert === 2) ties.rect(cx - 3.2, cy - 1, 6.4, 2); else ties.rect(cx - 1, cy - 3.2, 2, 6.4);
+          if (tieAt) tieAt.push(cx, cy, vert === 2 ? 1 : 0, lit && !faulted && !e.outOfRange ? 1 : 0);
+          else {
+            if (!ties) ties = new Path2D();
+            if (vert === 2) ties.rect(cx - 3.6, cy - 1, 7.2, 2); else ties.rect(cx - 1, cy - 3.6, 2, 7.2);
+          }
         }
       } else {
         // connector box with a status LED
         if (!box) { box = new Path2D(); boxSh = new Path2D(); }
         boxSh.roundRect(cx - 3.8, cy - 3.2, 9, 9, 1.8);
+        _wpBoxes.push(cx, cy);
         box.roundRect(cx - 4.5, cy - 4.5, 9, 9, 1.8);
+        const ly = tex ? cy - _wireLedUp(WIRE_LAYOUT.boxLed) : cy, lr = tex ? 1.1 : 1.8, hr = tex ? 2.6 : 4;
         if ((e.powered || e.outOfRange || faulted) && detail) {
-          if (faulted) { if (!haloHot) haloHot = new Path2D(); haloHot.moveTo(cx + 4, cy); haloHot.arc(cx, cy, 4, 0, Math.PI * 2); }
-          else         { if (!haloLit) haloLit = new Path2D(); haloLit.moveTo(cx + 4, cy); haloLit.arc(cx, cy, 4, 0, Math.PI * 2); }
+          if (faulted) { if (!haloHot) haloHot = new Path2D(); haloHot.moveTo(cx + hr, ly); haloHot.arc(cx, ly, hr, 0, Math.PI * 2); }
+          else         { if (!haloLit) haloLit = new Path2D(); haloLit.moveTo(cx + hr, ly); haloLit.arc(cx, ly, hr, 0, Math.PI * 2); }
         }
         if (!g.led) g.led = new Path2D();
-        g.led.moveTo(cx + 1.8, cy); g.led.arc(cx, cy, 1.8, 0, Math.PI * 2);
+        g.led.moveTo(cx + lr, ly); g.led.arc(cx, ly, lr, 0, Math.PI * 2);
       }
 
       // Overload sparks at the joint
@@ -805,24 +929,44 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
       if (!g.glowRGB) continue;
       ctx.strokeStyle = `rgba(${g.glowRGB},${ga})`; ctx.stroke(g.path);
     }
-    ctx.save(); ctx.translate(1.2, 1.8);
-    ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 4.4; ctx.stroke(all);
+    if (!tex) {
+      ctx.save(); ctx.translate(1.2, 1.8);
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 4.4; ctx.stroke(all);
+      ctx.restore();
+    }
+  }
+  if (tex) {
+    // Live cable: a faint cool glow round it, breathing slowly, under the
+    // cable so its texture stays clear. Dead cable: no glow, and dulled.
+    if (detail) {
+      const ga = (0.16 + 0.07 * Math.sin(t * 2.2)).toFixed(3);
+      ctx.save(); ctx.lineCap = 'round'; ctx.lineWidth = 9; ctx.strokeStyle = `rgba(120,205,255,${ga})`;
+      for (const g of groups.values()) if (g.pulse) ctx.stroke(g.path);
+      ctx.restore();
+    }
+    _wireTexStroke(hP, vP, legs);                                                   // the rendered cable
+    ctx.save(); ctx.lineCap = 'butt'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(8,8,10,0.32)';
+    for (const g of groups.values()) if (!g.pulse && g.coreW === 0) ctx.stroke(g.path);
     ctx.restore();
   }
-  ctx.strokeStyle = '#1c2024'; ctx.lineWidth = 4.2; ctx.stroke(all);                // sheath
-  if (detail) { ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1; ctx.save(); ctx.translate(-0.9, -0.9); ctx.stroke(all); ctx.restore(); }
-  for (const g of groups.values()) {                                                // core
+  else {
+    ctx.strokeStyle = '#121518'; ctx.lineWidth = 5.6; ctx.stroke(all);              // sheath
+    if (detail) _wireJacket(all);
+  }
+  for (const g of groups.values()) {                                                // core: faults / out of range only
+    if (!(g.coreW > 0)) continue;
     if (g.stranded) ctx.setLineDash([4, 3]);
     ctx.strokeStyle = g.core; ctx.lineWidth = g.coreW; ctx.stroke(g.path);
     if (g.stranded) ctx.setLineDash([]);
   }
+  if (detail && !tex) { ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 0.5; ctx.save(); ctx.translate(-0.3, -0.3); ctx.stroke(all); ctx.restore(); }
   if (detail) {                                                                     // current pulses
     let dashed = false;
     for (const g of groups.values()) {
       if (!g.pulsePath) continue;
-      if (!dashed) { ctx.setLineDash([2, 10]); ctx.lineWidth = 1.1; dashed = true; }
+      if (!dashed) { ctx.setLineDash([2, 10]); ctx.lineWidth = 0.9; dashed = true; }
       ctx.lineDashOffset = -(t * (12 + 36 * g.loadPct));
-      ctx.strokeStyle = `rgba(255,255,255,${(0.45 + 0.35 * g.loadPct).toFixed(3)})`;
+      ctx.strokeStyle = `rgba(255,255,255,${(0.16 + 0.2 * g.loadPct).toFixed(3)})`;
       ctx.stroke(g.pulsePath);
     }
     if (dashed) { ctx.setLineDash([]); ctx.lineDashOffset = 0; }
@@ -838,11 +982,27 @@ function _renderWireBlock(c0, c1, r0, r1, t, detail, sockets) {
     ctx.beginPath(); ctx.arc(cx, cy, 2.6, 0.3, Math.PI * 1.85); ctx.stroke();
     ctx.fillStyle = '#5a5e62'; ctx.beginPath(); ctx.arc(cx, cy, 1, 0, Math.PI * 2); ctx.fill();
   }
-  if (ties) { ctx.fillStyle = '#3c4148'; ctx.fill(ties); }
-  if (box) {
+  if (ties) { ctx.fillStyle = '#6a7078'; ctx.fill(ties); if (detail) { ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.4; ctx.stroke(ties); } }
+  if (tieAt) {
+    const up = 0.19 * _CW_TAN * 20 * (TILE / 40);
+    for (let i = 0; i < tieAt.length; i += 4) {
+      _wireSprite(tieAt[i + 2] ? 'wire_tie_v' : 'wire_tie_h', tieAt[i], tieAt[i + 1], 2.0);
+      if (!detail) continue;
+      const x = tieAt[i], y = tieAt[i + 1] - up, on = tieAt[i + 3];         // the tie's power light
+      if (on) { ctx.fillStyle = 'rgba(90,255,140,0.3)'; ctx.beginPath(); ctx.arc(x, y, 1.9, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = on ? '#6aff9a' : '#2a2e30'; ctx.beginPath(); ctx.arc(x, y, 0.75, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  if (box && tex) {
+    for (let i = 0; i < _wpBoxes.length; i += 2) _wireSprite('wire_box', _wpBoxes[i], _wpBoxes[i + 1], 2.0);
+    if (haloHot) { ctx.fillStyle = 'rgba(255,70,60,0.35)'; ctx.fill(haloHot); }
+    if (haloLit) { ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill(haloLit); }
+    for (const g of groups.values()) if (g.led) { ctx.fillStyle = g.ledC; ctx.fill(g.led); }
+  } else if (box) {
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fill(boxSh);
     ctx.fillStyle = '#2c3138'; ctx.fill(box);
     ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 0.8; ctx.stroke(box);
+    if (detail) for (let i = 0; i < _wpBoxes.length; i += 2) ctx.drawImage(_wireBoxSprite(), _wpBoxes[i] - 4.5, _wpBoxes[i + 1] - 4.5, 9, 9);
     if (haloHot) { ctx.fillStyle = 'rgba(255,70,60,0.35)'; ctx.fill(haloHot); }
     if (haloLit) { ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fill(haloLit); }
     for (const g of groups.values()) if (g.led) { ctx.fillStyle = g.ledC; ctx.fill(g.led); }
@@ -950,7 +1110,259 @@ function _drawSolarReadout(e, cx, y, lvl, size) {
   ctx.textAlign = 'left';
 }
 
+/* ── Solar, rendered ─────────────────────────────────────────────────────
+   Built and rendered in Blender (scripts/render_solar.py, Poly Haven scans;
+   same camera as the wind turbines and geothermal sprites), one frame
+   centred on the footprint:
+   img/solar1_base (MK1: one fixed rack of two modules, combiner box),
+   img/solar2_base (MK2: fenced gravel yard, two 2x4 tables, inverter),
+   img/solar3_base (Array: pad, road, piers, slew drives, docks, heat
+   header, molten-salt tank, pump, mast, skid) and img/solar3_rows_<k>
+   (the four N-S tracker rows and their shadows at SOLAR_LAYOUT[3].steps[k]).
+   In code: output sheen and sun glint on the glass, dust film, status
+   LEDs, the wash robots, heat pulses, salt gauge, readout, highlight.
+   SOLAR_LAYOUT is the script's LAYOUT (metres; re-paste after a re-render).
+   The painted versions stay as the fallback. */
+const SOLAR_LAYOUT = {
+  1: {"frame":5.0,"glass":[[[-1.853,-0.432,0.384],[-0.188,-0.432,0.384],[-0.188,0.461,0.8],[-1.853,0.461,0.8]],[[-0.113,-0.432,0.384],[1.552,-0.432,0.384],[1.552,0.461,0.8],[-0.113,0.461,0.8]]],"led":[1.88,-0.162,0.56],"readout":[-0.15,0.6,1.0],"res":400},
+  2: {"frame":7.0,"glass":[[[-2.433,-1.529,0.495],[-1.407,-1.529,0.495],[-1.407,-0.981,0.751],[-2.433,-0.981,0.751]],[[-1.353,-1.529,0.495],[-0.328,-1.529,0.495],[-0.328,-0.981,0.751],[-1.353,-0.981,0.751]],[[-0.273,-1.529,0.495],[0.752,-1.529,0.495],[0.752,-0.981,0.751],[-0.273,-0.981,0.751]],[[0.807,-1.529,0.495],[1.833,-1.529,0.495],[1.833,-0.981,0.751],[0.807,-0.981,0.751]],[[-2.433,-0.931,0.774],[-1.407,-0.931,0.774],[-1.407,-0.383,1.03],[-2.433,-0.383,1.03]],[[-1.353,-0.931,0.774],[-0.328,-0.931,0.774],[-0.328,-0.383,1.03],[-1.353,-0.383,1.03]],[[-0.273,-0.931,0.774],[0.752,-0.931,0.774],[0.752,-0.383,1.03],[-0.273,-0.383,1.03]],[[0.807,-0.931,0.774],[1.833,-0.931,0.774],[1.833,-0.383,1.03],[0.807,-0.383,1.03]],[[-2.433,0.171,0.495],[-1.407,0.171,0.495],[-1.407,0.719,0.751],[-2.433,0.719,0.751]],[[-1.353,0.171,0.495],[-0.328,0.171,0.495],[-0.328,0.719,0.751],[-1.353,0.719,0.751]],[[-0.273,0.171,0.495],[0.752,0.171,0.495],[0.752,0.719,0.751],[-0.273,0.719,0.751]],[[0.807,0.171,0.495],[1.833,0.171,0.495],[1.833,0.719,0.751],[0.807,0.719,0.751]],[[-2.433,0.769,0.774],[-1.407,0.769,0.774],[-1.407,1.317,1.03],[-2.433,1.317,1.03]],[[-1.353,0.769,0.774],[-0.328,0.769,0.774],[-0.328,1.317,1.03],[-1.353,1.317,1.03]],[[-0.273,0.769,0.774],[0.752,0.769,0.774],[0.752,1.317,1.03],[-0.273,1.317,1.03]],[[0.807,0.769,0.774],[1.833,0.769,0.774],[1.833,1.317,1.03],[0.807,1.317,1.03]]],"led":[2.38,-0.256,0.86],"readout":[-0.6,1.75,1.3],"res":560},
+  3: {"frame":14.0,"rows":{"xs":[-4.6,-2.8,-1.0,0.8],"y0":-2.75,"y1":3.25,"z":1.05,"w":1.58,"n":6,"zoff":0.07},"steps":[-0.95,-0.713,-0.475,-0.237,0.0,0.237,0.475,0.713,0.95],"tank":[4.3,0.7,1.05,2.5],"gauge":[3.903,-0.283,0.5,2.0],"gaugeAng":-1.955,"pump":[3.02,0.7,0.36],"header":{"y":-3.05,"x":2.35,"z":0.25},"skidIn":[4.7,-2.0,0.4],"vent":[4.0,0.9,3.391],"anemo":[2.95,3.4,2.45],"docks":[[-4.6,3.63,1.05],[-2.8,3.63,1.05],[-1.0,3.63,1.05],[0.8,3.63,1.05]],"lamps":[[4.6,-3.382,0.85],[4.82,-3.382,0.85],[5.04,-3.382,0.85]],"bushings":[[4.75,-2.55,1.4],[5.05,-2.55,1.4],[5.35,-2.55,1.4]],"readout":[-1.4,-3.45,0.05],"res":840},
+};
+const _SOLAR_TAN = Math.tan(Math.PI / 6);
+const SolarArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/solar${name}.png`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ready(tier) {
+      if (_imageFillsOff) return false;
+      let ok = !!get(tier + '_base');
+      if (tier === 3) for (let k = 0; k < SOLAR_LAYOUT[3].steps.length; k++) if (!get('3_rows_' + k)) ok = false;
+      return ok;
+    },
+  };
+})();
+// Projection for a sprite centred on (cx, cy): metres (x east, y north, z up) to screen.
+function _solarProj(cx, cy) {
+  const M = 20 * (TILE / 40);
+  return (x, y, z) => [cx + x * M, cy - (y + z * _SOLAR_TAN) * M];
+}
+function _solarPath(P, q) {
+  q.forEach((p, i) => { const [x, y] = P(p[0], p[1], p[2]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+  ctx.closePath();
+}
+function _solarQuad(P, q) { ctx.beginPath(); _solarPath(P, q); }
+// Output sheen, a sun glint sweeping across, and a dust storm's film, laid
+// over the rendered glass quads.
+function _solarGlass(P, quads, lvl, dust, t, fine, x0, x1) {
+  if (lvl > 0.05) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(40,110,200,${(0.16 * lvl).toFixed(3)})`;
+    ctx.beginPath(); for (const q of quads) _solarPath(P, q); ctx.fill();
+    ctx.restore();
+    if (fine) {
+      ctx.save();
+      ctx.beginPath(); for (const q of quads) _solarPath(P, q); ctx.clip();
+      const w = x1 - x0, gx = x0 + (((t * 0.06) % 1.6) - 0.3) * w, gw = w * 0.12;
+      const gg = ctx.createLinearGradient(gx - gw, 0, gx + gw, 0);
+      gg.addColorStop(0, 'rgba(200,235,255,0)'); gg.addColorStop(0.5, `rgba(225,245,255,${(0.3 * lvl).toFixed(3)})`); gg.addColorStop(1, 'rgba(200,235,255,0)');
+      ctx.fillStyle = gg;
+      ctx.fillRect(gx - gw, -1e5, gw * 2, 2e5);
+      ctx.restore();
+    }
+  }
+  if (dust > 0.01) {
+    ctx.fillStyle = `rgba(172,134,84,${(0.5 * dust).toFixed(3)})`;
+    ctx.beginPath(); for (const q of quads) _solarPath(P, q); ctx.fill();
+  }
+}
+// MK1 / MK2.
+function _solarArtSmall(e, px, py, W, H, t, tier) {
+  const L = SOLAR_LAYOUT[tier], S = TILE / 40, M = 20 * S;
+  const cx = px + W / 2, cy = py + H / 2, P = _solarProj(cx, cy);
+  const half = L.frame / 2 * M;
+  const lvl = e.def.peakOutput > 0 ? Math.min(1, e.def.powerOutput / e.def.peakOutput) : 0;
+  const fine = Camera.zoom > 0.45;
+  if (tier === 2 && lvl > 0.05 && Camera.zoom > 0.5) drawGlowHalo(cx, cy, W * 0.8, [[0, '#80c8ff'], [1, 'transparent']], lvl * 0.4);
+  ctx.drawImage(SolarArt.get(tier + '_base'), cx - half, cy - half, half * 2, half * 2);
+  _solarGlass(P, L.glass, lvl, e.dust || 0, t, fine, px, px + W);
+  const [lx, ly] = P(...L.led), on = lvl > 0.05;
+  ctx.fillStyle = on ? `rgba(95,220,120,${(0.7 + 0.3 * Math.sin(t * 3)).toFixed(2)})` : '#3a4a40';
+  ctx.beginPath(); ctx.arc(lx, ly, 1 * S, 0, Math.PI * 2); ctx.fill();
+  const [rx, ry] = P(...L.readout);
+  _drawSolarReadout(e, rx, ry, lvl, tier === 1 ? 6 : 7);
+  drawNetworkHighlight(e, px, py, t);
+}
+// Array.
+function _solar3Step(tilt) {
+  const st = SOLAR_LAYOUT[3].steps;
+  let k = 0;
+  for (let i = 1; i < st.length; i++) if (Math.abs(st[i] - tilt) < Math.abs(st[k] - tilt)) k = i;
+  return k;
+}
+function _solar3RowQuads(a) {
+  const R = SOLAR_LAYOUT[3].rows, ux = Math.cos(a), uz = Math.sin(a), nx = -Math.sin(a), nz = Math.cos(a);
+  const h = R.w / 2, o = R.zoff + 0.014;
+  return R.xs.map(x => {
+    const c = (s, y) => [x + ux * h * s + nx * o, y, R.z + uz * h * s + nz * o];
+    return [c(-1, R.y0), c(1, R.y0), c(1, R.y1), c(-1, R.y1)];
+  });
+}
+function _solarAlong(P, pts, f) {
+  let tot = 0; const seg = [];
+  for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]); seg.push(d); tot += d; }
+  let d = f * tot;
+  for (let i = 0; i < seg.length; i++) {
+    if (d <= seg[i] || i === seg.length - 1) {
+      const k = seg[i] ? Math.min(1, d / seg[i]) : 0, a = pts[i], b = pts[i + 1];
+      return P(a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k);
+    }
+    d -= seg[i];
+  }
+  return P(...pts[0]);
+}
+function _solar3Art(e, px, py, t) {
+  const L = SOLAR_LAYOUT[3], R = L.rows, S = TILE / 40, M = 20 * S;
+  const W = TILE * 6, H = TILE * 4, cx = px + W / 2, cy = py + H / 2, P = _solarProj(cx, cy);
+  const half = L.frame / 2 * M;
+  const d = e.def, live = !e._ghost;
+  const lvl = d.peakOutput > 0 ? Math.min(1, d.powerOutput / d.peakOutput) : 0, lit = lvl > 0.05;
+  const sPct = d.saltCapacity > 0 ? Math.min(1, (e._saltKWh || 0) / d.saltCapacity) : 0;
+  const flow = e._saltFlow || 0, dark = DayNight.darkness();
+  const tilt = _solar3TiltQ(), k = _solar3Step(tilt), a = L.steps[k];
+  const fine = Camera.zoom > 0.4;
+  const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver(), Up = SplitPhase.wantUnder();
+  const [tx, ty, tr, th] = L.tank;
+
+  if (Up && live && Camera.zoom > 0.5) {
+    if (lit) { const [gx, gy] = P(-1.9, 0.25, 1); drawGlowHalo(gx, gy, W * 0.5, [[0, '#80c8ff'], [1, 'transparent']], lvl * 0.3); }
+    if (sPct > 0.05 && dark > 0.4) { const [gx, gy] = P(tx, ty, th * 0.5); drawGlowHalo(gx, gy, tr * M * 3, [[0, '#ff8a30'], [1, 'transparent']], sPct * 0.45 * dark); }
+  }
+  if (Sp) {
+    ctx.drawImage(SolarArt.get('3_base'), cx - half, cy - half, half * 2, half * 2);
+    ctx.drawImage(SolarArt.get('3_rows_' + k), cx - half, cy - half, half * 2, half * 2);
+  }
+  if (!Ap) return;
+
+  const quads = _solar3RowQuads(a);
+  if (live) {
+    const [x0] = P(R.xs[0] - R.w, 0, 0), [x1] = P(R.xs[R.xs.length - 1] + R.w, 0, 0);
+    _solarGlass(P, quads, lvl, e.dust || 0, t, fine, x0, x1);
+  }
+  // Wash robots: a gantry across each row, shuttling along it while powered.
+  {
+    const ux = Math.cos(a), uz = Math.sin(a), nx = -Math.sin(a), nz = Math.cos(a);
+    const h = R.w / 2 + 0.06, o = R.zoff + 0.12, len = 0.34;
+    R.xs.forEach((x, r) => {
+      const running = live && e._washing;
+      const ph = t * 0.16 + r * 2.1;
+      const pos = running ? 0.5 + 0.5 * Math.sin(ph) : 1;
+      const y = R.y0 + pos * (R.y1 - R.y0 - len);
+      const c = (s, yy, lift = 0) => [x + ux * h * s + nx * (o + lift), yy, R.z + uz * h * s + nz * (o + lift)];
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'; _solarQuad(P, [c(-1, y - 0.06, -0.1), c(1, y - 0.06, -0.1), c(1, y + len - 0.06, -0.1), c(-1, y + len - 0.06, -0.1)]); ctx.fill();
+      ctx.fillStyle = '#dfe4e8'; _solarQuad(P, [c(-1, y), c(1, y), c(1, y + len), c(-1, y + len)]); ctx.fill();
+      ctx.fillStyle = '#9aa4ac';
+      _solarQuad(P, [c(-1, y), c(-0.82, y), c(-0.82, y + len), c(-1, y + len)]); ctx.fill();
+      _solarQuad(P, [c(0.82, y), c(1, y), c(1, y + len), c(0.82, y + len)]); ctx.fill();
+      ctx.fillStyle = '#1d4c8a'; _solarQuad(P, [c(-0.4, y + 0.07, 0.01), c(0.4, y + 0.07, 0.01), c(0.4, y + len - 0.07, 0.01), c(-0.4, y + len - 0.07, 0.01)]); ctx.fill();
+      if (running && fine) {
+        ctx.strokeStyle = 'rgba(40,120,200,0.8)'; ctx.lineWidth = 0.8 * S;
+        ctx.beginPath();
+        const off = (t * 1.5) % 0.25;
+        for (let s = -0.8 + off; s < 0.8; s += 0.25) { const [ax, ay] = P(...c(s, y - 0.02)), [bx, by] = P(...c(s + 0.12, y - 0.02)); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); }
+        ctx.stroke();
+        const dir = Math.cos(ph) >= 0 ? -1 : 1;
+        for (let q = 0; q < 5; q++) {
+          const f = (t * 1.6 + q / 5) % 1;
+          const [sx, sy] = P(...c(-0.8 + ((q * 37) % 10) / 10 * 1.6, y + (dir < 0 ? -0.1 - f * 0.5 : len + 0.1 + f * 0.5)));
+          ctx.fillStyle = `rgba(150,220,255,${(0.7 * (1 - f)).toFixed(2)})`; ctx.fillRect(sx, sy, 1.4 * S, 1.4 * S);
+        }
+      }
+      const [lx, ly] = P(...c(0, y + len / 2, 0.03));
+      ctx.fillStyle = running ? `rgba(80,220,255,${(0.5 + 0.5 * Math.sin(t * 6 + r)).toFixed(2)})` : '#4a5258';
+      ctx.beginPath(); ctx.arc(lx, ly, 1.2 * S, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+  // Pump impeller, anemometer cups.
+  {
+    const [pxx, pyy] = P(...L.pump), spin = live && Math.abs(flow) > 0.5 ? t * 9 : 0.4;
+    ctx.strokeStyle = '#9aa6ac'; ctx.lineWidth = 0.8 * S; ctx.beginPath();
+    for (let b = 0; b < 3; b++) { const an = spin + b * Math.PI * 2 / 3; ctx.moveTo(pxx, pyy); ctx.lineTo(pxx + Math.cos(an) * 2.6 * S, pyy + Math.sin(an) * 2.6 * S); }
+    ctx.stroke();
+    const [ax, ay] = P(...L.anemo), anA = live ? t * (2 + WindState.speed * 10) : 0;
+    ctx.fillStyle = '#2e3236';
+    for (let c = 0; c < 3; c++) { const an = anA + c * Math.PI * 2 / 3; ctx.beginPath(); ctx.arc(ax + Math.cos(an) * 2.4 * S, ay + Math.sin(an) * 1 * S, 0.9 * S, 0, Math.PI * 2); ctx.fill(); }
+  }
+  // Heat pulses: from the rows into the tank while charging, tank to skid while it carries the array.
+  if (live && Math.abs(flow) > 0.5) {
+    const charging = flow > 0, Hh = L.header;
+    ctx.fillStyle = charging ? 'rgba(255,214,110,0.9)' : 'rgba(255,128,40,0.95)';
+    for (let q = 0; q < 4; q++) {
+      const f = (t * 0.5 + q / 4) % 1;
+      const path = charging
+        ? [[R.xs[q % R.xs.length], Hh.y, Hh.z], [Hh.x, Hh.y, Hh.z], [Hh.x, ty, Hh.z], [tx - tr, ty, Hh.z]]
+        : [[tx + 0.4, ty - tr, 0.4], L.skidIn];
+      const [hx, hy] = _solarAlong(P, path, f);
+      ctx.beginPath(); ctx.arc(hx, hy, 1.6 * S, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  // Sight gauge on the tank: molten salt level.
+  if (sPct > 0.01) {
+    const [gx, gy, z0, z1] = L.gauge, sx = -Math.sin(L.gaugeAng) * 0.07, sy = Math.cos(L.gaugeAng) * 0.07, zt = z0 + (z1 - z0) * sPct;
+    const [ax, ay] = P(gx, gy, zt), [, by] = P(gx, gy, z0);
+    const sg = ctx.createLinearGradient(0, ay, 0, by);
+    sg.addColorStop(0, '#ffe080'); sg.addColorStop(0.3, '#ff9a30'); sg.addColorStop(1, '#c0400c');
+    ctx.fillStyle = sg; _solarQuad(P, [[gx - sx, gy - sy, z0], [gx + sx, gy + sy, z0], [gx + sx, gy + sy, zt], [gx - sx, gy - sy, zt]]); ctx.fill();
+    ctx.fillStyle = `rgba(255,240,180,${(0.45 + 0.35 * Math.sin(t * 3)).toFixed(2)})`;
+    ctx.fillRect(ax - 1.5 * S, ay - 0.6 * S, 3 * S, 1.2 * S);
+  }
+  // Heat shimmer off the vent stack.
+  if (live && sPct > 0.08 && fine) {
+    const [vx, vy] = P(...L.vent);
+    for (let q = 0; q < 3; q++) {
+      const f = (t * 0.35 + q / 3) % 1;
+      ctx.fillStyle = `rgba(255,${170 + Math.round(60 * f)},110,${(0.28 * sPct * (1 - f)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(vx + Math.sin(t * 2 + q) * 2.5 * S, vy - f * 16 * S, (2.5 + f * 4) * S, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  if (live) {
+    const onSalt = flow < -0.5;
+    L.lamps.forEach((p, q) => {
+      const al = lvl > 0.01 ? 0.5 + 0.5 * Math.sin(t * 4 + q * 1.3) : 0.15, [lx, ly] = P(...p);
+      ctx.fillStyle = onSalt ? `rgba(255,170,40,${al.toFixed(2)})` : `rgba(90,255,140,${al.toFixed(2)})`;
+      ctx.fillRect(lx - 1.3 * S, ly - 1.3 * S, 2.6 * S, 2.6 * S);
+    });
+    if (dark > 0.5) {
+      const b = 0.5 + 0.5 * Math.sin(t * 2.4);
+      ctx.fillStyle = `rgba(255,180,60,${(0.35 + 0.6 * b).toFixed(2)})`;
+      for (const p of L.docks) { const [dx, dy] = P(...p); ctx.beginPath(); ctx.arc(dx, dy, 1.3 * S, 0, Math.PI * 2); ctx.fill(); }
+    }
+  }
+  if (live && lvl > 0.01) {
+    const [rx, ry] = P(...L.readout);
+    ctx.font = 'bold 8px Courier New'; ctx.textAlign = 'center';
+    ctx.lineWidth = 2.4; ctx.strokeStyle = 'rgba(0,0,0,0.85)'; ctx.lineJoin = 'round';
+    const txt = formatPower(d.powerOutput, 1) + (flow < -0.5 ? ' · SALT' : '');
+    ctx.strokeText(txt, rx, ry + 3); ctx.fillStyle = flow < -0.5 ? '#ffc070' : '#9ad8ff'; ctx.fillText(txt, rx, ry + 3);
+    ctx.textAlign = 'left';
+  }
+  drawNetworkHighlight(e, px, py, t);
+}
+
 function renderSolar(e, px, py, t) {
+    if (SolarArt.ready(1)) return _solarArtSmall(e, px, py, TILE * 2, TILE, t, 1);
     // 2×1: a single landscape module on a ground rack, junction box and
     // a short DC lead running off its east end.
     const W   = TILE * 2, H = TILE * 1;
@@ -1205,6 +1617,7 @@ function renderSolar(e, px, py, t) {
   function renderSubstation(e, px, py, t) {
     // Only render from anchor tile
     if (e.col * TILE !== px || e.row * TILE !== py) return;
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('ss1')) return _ssArt(e, px, py, t, 1);
     drawSubstationYard(e, px, py, t, {
       tiles: 2, tanks: 1, fans: false, cabinet: false, label: null,
       accent: [64, 160, 255], dim: 'rgba(128,146,170,0.7)', padFill: '#060e18',
@@ -1214,6 +1627,7 @@ function renderSolar(e, px, py, t) {
 
 function renderSubstation2(e, px, py, t) {
     if (e.col * TILE !== px || e.row * TILE !== py) return;
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('ss2')) return _ssArt(e, px, py, t, 2);
     drawSubstationYard(e, px, py, t, {
       tiles: 3, tanks: 2, fans: true, cabinet: true, label: 'MK2',
       accent: [90, 190, 255], dim: 'rgba(138,158,186,0.75)', padFill: '#070e20',
@@ -1230,6 +1644,7 @@ function renderSubstation2(e, px, py, t) {
    while discharging, so the direction of flow reads from across the map. */
 function renderSubstation3(e, px, py, t) {
     if (e.col * TILE !== px || e.row * TILE !== py) return;
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('ss3')) return _ssArt(e, px, py, t, 3);
     const W    = TILE * 4;
     const cx   = px + W / 2, cy = py + W / 2;
     const pct  = e.def.capacity > 0 ? Math.max(0, Math.min(1, e.charge / e.def.capacity)) : 0;
@@ -1419,6 +1834,7 @@ function renderSubstation3(e, px, py, t) {
   }
 
 function renderPowerTower(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('tower')) return _towerArt(e, px, py, t);
     // Power Tower — a steel lattice transmission pylon standing in its 2×2
     // plot: tapered legs on concrete footings, X-braced lattice panels, two
     // crossarms with hanging insulator strings, an earth-wire peak with a
@@ -1579,6 +1995,7 @@ function renderPowerTower(e, px, py, t) {
 // cabinets, cabled across to the building.
 function renderMonitor2(e, px, py, t) {
   if (!e._ghost && (e.col * TILE !== px || e.row * TILE !== py)) return;
+  if (!e._ghost && _gmOK(e, 'mon2', 4, 4)) return _mon2Art(e, px, py, t);
   const K = _nKit(px, py), { S, X, Y, R, RR, dot, ell, poly, ln, text, glow } = K;
   const on = !!e.powered, night = DayNight.darkness() > 0.3;
   const detail = Camera.zoom > 0.35, fine = Camera.zoom > 0.7;
@@ -1778,6 +2195,7 @@ function renderMonitor2(e, px, py, t) {
    arc gauge round the ring shows the charge. 240×240 units (_nKit). */
 function renderSubstation4(e, px, py, t) {
     if (e.col * TILE !== px || e.row * TILE !== py) return;
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('ss4')) return _ssArt(e, px, py, t, 4);
     const K = _nKit(px, py), { S, X, Y, R, RR, dot, ell, poly, ln, text } = K;
     const pct  = e.def.capacity > 0 ? Math.max(0, Math.min(1, e.charge / e.def.capacity)) : 0;
     const on   = e.powered && !e._lightningDamaged;
@@ -2000,6 +2418,7 @@ function renderSubstation4(e, px, py, t) {
    brightens and throws prominences as it fills. 320×320 units (_nKit). */
 function renderSubstation5(e, px, py, t) {
     if (e.col * TILE !== px || e.row * TILE !== py) return;
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('ss5')) return _ssArt(e, px, py, t, 5);
     const K = _nKit(px, py), { S, X, Y, R, RR, dot, ell, poly, ln, text } = K;
     const pct  = e.def.capacity > 0 ? Math.max(0, Math.min(1, e.charge / e.def.capacity)) : 0;
     const on   = e.powered && !e._lightningDamaged;
@@ -2173,6 +2592,7 @@ function renderSubstation5(e, px, py, t) {
 // side, survey trucks in the bay to the south-west, a forecourt and sign.
 function renderEngOffice(e, px, py, t) {
   if (!e._ghost && (e.col * TILE !== px || e.row * TILE !== py)) return;
+  if (_opsOK(e, 'eng', 10, 8, ['eng_base', 'eng_drone', 'hyp_fan', 'svdish_0'])) return _engArt(e, px, py, t);   // rendered (end of this file)
   const K = _nKit(px, py), { S, X, Y, R, RR, dot, ell, ln, text, glow } = K;
   const on = !!e.powered, night = DayNight.darkness() > 0.3;
   const detail = Camera.zoom > 0.35;
@@ -2557,6 +2977,7 @@ function renderBeacon(e, px, py, t) {
     //
     // Multi-tile guard — the main loop early-outs on non-anchor tiles, but the
     // drag-ghost path calls this directly at an arbitrary hover position.
+    if (_opsOK(e, 'beacon', 5, 6, ['beacon_base', 'svdish_0'])) return _beaconArt(e, px, py, t);   // rendered (end of this file)
     const _def = EntityDefs[T.BEACON];
     const fw = (e.width  || _def.width)  * TILE;
     const fh = (e.height || _def.height) * TILE;
@@ -2816,6 +3237,7 @@ function renderBeacon(e, px, py, t) {
   }
 
 function renderCamera(e, px, py, t) {
+    if (_amOK(e, 'cam', 1, 1, ['am_cam', 'am_camh_0'])) return _amCam(e, px, py, t);   // rendered (end of this file)
     // Security Camera — a steel CCTV pole on a bolted base plate with a
     // junction box and CCTV warning plate, and a bracket arm carrying a
     // bullet camera under its sunshield. Powered, the camera slowly pans
@@ -2978,6 +3400,7 @@ function renderCamera(e, px, py, t) {
 function renderEVCharger(e, px, py, t) {
   const W = (e.width || 1) * TILE, H = (e.height || 1) * TILE;
   if (W < TILE * 3) return _renderEVChargerPost(e, px, py, t);
+  if (_amOK(e, 'ev', 5, 4, ['am_ev', 'am_car_0'])) return _amEv(e, px, py, t);   // rendered (end of this file)
   const on = !!e.powered;
   const S = TILE / 40;
   const detail = Camera.zoom > 0.5;
@@ -3252,6 +3675,7 @@ function _renderEVChargerPost(e, px, py, t) {
   }
 
 function renderLamp(e, px, py, t) {
+    if (_amOK(e, 'lamp', 1, 1, ['am_lamp'])) return _amLamp(e, px, py, t);   // rendered (end of this file)
     // Street Light — a galvanised steel pole on a bolted base plate, with a
     // curved mast arm carrying a cobra-head luminaire and its photocell. It
     // only lights dusk to dawn (DemandCurves) and only when powered; lit, the
@@ -3334,6 +3758,7 @@ function renderLamp(e, px, py, t) {
   }
 
 function renderPole(e, px, py, t) {
+    if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('pole')) return _poleArt(e, px, py, t);
     // Power Pole — a creosoted timber utility pole: tapered shaft with
     // step bolts and an ID tag, a crossarm on diagonal braces carrying three
     // glass insulators, and on some poles a transformer can or a guy wire
@@ -3504,6 +3929,19 @@ function renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd) {
   const a = Math.min(0.22, dark * 0.3) * breathe;
   if (a <= 0.004) return;
   const u = TILE / 40;
+  if (typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready('pole')) {
+    // Rendered poles: no body glow; the red lamps, which the dark would
+    // otherwise swallow, are drawn again over it.
+    if (!_poleRedBlink()) return;
+    const L = POLE_LAYOUT.pole, k = Math.min(1, dark * 1.4);
+    for (const e of EntityRegistry.getByType(T.POLE)) {
+      if (e.powered || e.col < cStart - 1 || e.col > cEnd + 1 || e.row < rStart - 1 || e.row > rEnd + 1) continue;
+      const px = e.col * TILE + (typeof poleKerbShift === 'function' ? poleKerbShift(e, 17) : 0), py = e.row * TILE;
+      const lift = e._underWater ? L.pier * _CW_TAN * 20 * u * L.K : 0;
+      _poleRedLamps(_cwFrame(L, px + 20 * u, py + 36 * u - lift, L.K, L.K).P, L.ins, u, k);
+    }
+    return;
+  }
   for (const e of EntityRegistry.getByType(T.POLE)) {
     if (e.powered || e.col < cStart - 1 || e.col > cEnd + 1 || e.row < rStart - 1 || e.row > rEnd + 1) continue;
     const px = e.col * TILE + (typeof poleKerbShift === 'function' ? poleKerbShift(e, 17) : 0), py = e.row * TILE;
@@ -3512,6 +3950,7 @@ function renderUnpoweredPolesNight(ctx, dark, cStart, cEnd, rStart, rEnd) {
 }
 
 function renderSolar2(e, px, py, t) {
+    if (SolarArt.ready(2)) return _solarArtSmall(e, px, py, TILE * 3, TILE * 2, t, 2);
     // Render natively at 2×2 tile size — don't rely on canvas scaling
     const W   = TILE * 3, H = TILE * 2;
     const cx  = px + W / 2, cy = py + H / 2;
@@ -3655,6 +4094,7 @@ function _s3Row(x, y, w, d, tilt, lit, fine) {
 }
 
 function renderSolar3(e, px, py, t) {
+  if (SolarArt.ready(3)) return _solar3Art(e, px, py, t);
   const W = TILE * 6, H = TILE * 4;
   const d    = e.def;
   const live = !e._ghost;
@@ -3963,6 +4403,154 @@ RenderSplit.register(T.SOLAR3, {
   under(e, x, y, t) { SplitPhase.run('under', () => renderSolar3(e, x, y, t)); },
 });
 
+/* ── Wind turbines, rendered ─────────────────────────────────────────────
+   Built and rendered in Blender (scripts/render_wind.py, Poly Haven scans;
+   same camera as the geothermal sprites). Per tier N (1 = MK1 2×2, 2 = MK2
+   3×3, 3 = MK3 4×4), all in one frame centred on the footprint:
+   img/wind<N>_base (footing / yard, tower, nacelle, transformer, MK3
+   platform and livery, with shadows), wind<N>_rotor (blades and hub ring
+   at rest, blade 0 along v), wind<N>_rotor_ice (the same rimed),
+   wind<N>_rotorsh (the rotor's ground shadow alone) and wind<N>_spinner.
+   The rotor faces south-west and turns in its own plane: on screen that is
+   one affine map of the sprite, A·R(θ)·A⁻¹ with A the plane's axes u, v
+   projected (_windTurned); its ground shadow is the same with the axes cast
+   down the sun. Ice fades the rimed rotor in. In code: lights, anemometer,
+   MK3 bushings, porthole and tip lights, hub ring, readout, highlight.
+   WIND_LAYOUT is the script's LAYOUT (metres; re-paste after a re-render).
+   The painted turbines (_renderWindMkNPainted) stay as the fallback. */
+const WIND_LAYOUT = {
+  1: { frame: 7.0, hub: [-0.1875, -1.9248, 4.16], R: 1.6, res: 420 },
+  2: { frame: 10.5, hub: [-0.2875, -2.898, 6.75], R: 2.52, res: 630,
+       anemo: [0.2875, -1.902, 7.4], lights: [[0.069, -2.2805, 7.07]] },
+  3: { frame: 14.0, hub: [-0.4, -3.5728, 8.6], R: 3.6, res: 840,
+       anemo: [0.4, -2.1872, 9.3964], lights: [[-0.024, -2.9216, 8.98], [0.36, -2.2565, 8.98]],
+       bushings: [[0.8, -2.48, 0.99], [1.05, -2.48, 0.99], [1.3, -2.48, 0.99]], porthole: [-0.12, -3.23, 0.75] },
+  u: [0.866, -0.5, 0.0], v: [0.0523, 0.0905, 0.9945],
+};
+const _WIND_TAN = Math.tan(Math.PI / 6);
+const WindArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/wind${name}.png`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ready(tier) {
+      if (_imageFillsOff) return false;
+      let ok = true;
+      for (const p of ['base', 'rotor', 'rotor_ice', 'rotorsh', 'spinner']) if (!get(tier + '_' + p)) ok = false;
+      return ok;
+    },
+  };
+})();
+
+// Draw frame-sized sprite `im` turned by θ in a plane whose unit axes show
+// on screen as the columns of A ([[ax, ay], [bx, by]] = u, v), about (ox, oy).
+function _windTurned(im, A, th, ox, oy, fx, fy, fw) {
+  const [[a, b], [c, d]] = A, det = a * d - b * c;
+  if (Math.abs(det) < 1e-6) return;
+  const co = Math.cos(th), si = Math.sin(th);
+  // A·R
+  const r00 = a * co + c * si, r01 = -a * si + c * co;
+  const r10 = b * co + d * si, r11 = -b * si + d * co;
+  // (A·R)·A⁻¹
+  const i00 = d / det, i01 = -c / det, i10 = -b / det, i11 = a / det;
+  const m00 = r00 * i00 + r01 * i10, m01 = r00 * i01 + r01 * i11;
+  const m10 = r10 * i00 + r11 * i10, m11 = r10 * i01 + r11 * i11;
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.transform(m00, m10, m01, m11, 0, 0);
+  ctx.drawImage(im, fx - ox, fy - oy, fw, fw);
+  ctx.restore();
+}
+
+const _WIND_SPIN = { 1: [2.2, 0.3, 0.4, 2.0], 2: [1.8, 0.25, 0.35, 1.7], 3: [1.35, 0.18, 0.28, 1.3] };
+function _windArt(e, px, py, W, H, t, tier) {
+  const L = WIND_LAYOUT[tier], U = WIND_LAYOUT.u, V = WIND_LAYOUT.v;
+  const S = TILE / 40, M = 20 * S, on = !!e.powered;
+  const cx = px + W / 2, cy = py + H / 2;
+  const P = (x, y, z) => [cx + x * M, cy - (y + z * _WIND_TAN) * M];
+  const D = (x, y, z) => [x * M, -(y + z * _WIND_TAN) * M];
+  const SH = (x, y, z) => D(x + 0.3818 * z, y - 0.4727 * z, 0);
+  const Sp = SplitPhase.wantStatic(), Ap = SplitPhase.wantOver(), Up = SplitPhase.wantUnder();
+  const spd = WindState.speed, ice = e._ice || 0, spinM = TurbineIcing.spinMult(e);
+  const k = _WIND_SPIN[tier];
+  const ang = (Up || Ap) ? _windBladeAngle(e, spd * spinM, k[0], k[1] * spinM, k[2], k[3]) : 0;
+  const th = -ang;                                      // clockwise, seen from upwind
+  const half = L.res / 2 * (M / 60), fx = cx - half, fy = cy - half, fw = half * 2;
+  const im = (n) => WindArt.get(tier + '_' + n);
+  const [hx, hy, hz] = L.hub;
+  const dark = typeof DayNight !== 'undefined' ? DayNight.darkness() : 0, night = dark > 0.35;
+  ctx.save();
+
+  // the rotor's shadow sweeping the ground
+  if (Up) {
+    const [ox, oy] = P(hx + 0.3818 * hz, hy - 0.4727 * hz, 0);
+    _windTurned(im('rotorsh'), [SH(...U), SH(...V)], th, ox, oy, fx, fy, fw);
+  }
+  if (Sp) ctx.drawImage(im('base'), fx, fy, fw, fw);
+  if (Ap) {
+    const [ox, oy] = P(hx, hy, hz), A = [D(...U), D(...V)];
+    const fine = Camera.zoom > 0.6;
+    // MK2 / MK3: anemometer cups and the aviation light(s), on the nacelle
+    // roof behind the rotor: drawn first so the blades sweep over them.
+    if (tier >= 2) {
+      if (fine) {
+        const [ax, ay] = P(...L.anemo), anA = on ? t * spd * 12 : 0, r = (tier === 3 ? 2.6 : 2.2) * S;
+        for (let c = 0; c < 3; c++) {
+          const a = anA + c * Math.PI * 2 / 3;
+          ctx.fillStyle = '#2e3236'; ctx.beginPath(); ctx.arc(ax + Math.cos(a) * r, ay + Math.sin(a) * r * 0.45, 0.8 * S, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      const blink = 0.5 + 0.5 * Math.sin(t * (tier === 3 ? 2.1 : 2.3));
+      for (const [x, y, z] of L.lights) {
+        const [lx, ly] = P(x, y, z);
+        ctx.fillStyle = `rgba(255,50,40,${on ? 0.3 + 0.7 * blink : 0.15})`; ctx.beginPath(); ctx.arc(lx, ly, 1.2 * S, 0, Math.PI * 2); ctx.fill();
+        if (on && blink > 0.8) { ctx.fillStyle = 'rgba(255,60,40,0.22)'; ctx.beginPath(); ctx.arc(lx, ly, 5 * S, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+    _windTurned(im('rotor'), A, th, ox, oy, fx, fy, fw);
+    if (ice > 0.02) {
+      ctx.globalAlpha = Math.min(1, 0.25 + ice);
+      _windTurned(im('rotor_ice'), A, th, ox, oy, fx, fy, fw);
+      ctx.globalAlpha = 1;
+    }
+    ctx.drawImage(im('spinner'), fx, fy, fw, fw);
+    // MK3: tip lights at night, bushing hum, porthole (the hub's cyan output ring was dropped: it read as a glitch on the rendered rotor)
+    if (tier === 3) {
+      const def = EntityDefs[T.WIND3];
+      const outFrac = on && def ? Math.max(0, Math.min(1, ((e.def.powerOutput || 0) - def.baseOutput) / Math.max(1, def.maxOutput - def.baseOutput))) : 0;
+      if (on && night) for (let b = 0; b < 3; b++) {
+        const a = th + b * Math.PI * 2 / 3, pu = -Math.sin(a) * L.R * 0.97, pv = Math.cos(a) * L.R * 0.97;
+        const tx = ox + A[0][0] * pu + A[1][0] * pv, ty = oy + A[0][1] * pu + A[1][1] * pv;
+        ctx.fillStyle = 'rgba(120,240,255,0.9)'; ctx.beginPath(); ctx.arc(tx, ty, 1.2 * S, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(120,240,255,0.18)'; ctx.beginPath(); ctx.arc(tx, ty, 4.5 * S, 0, Math.PI * 2); ctx.fill();
+      }
+      if (on) L.bushings.forEach(([x, y, z], i) => {
+        const [bx, by] = P(x, y, z), hum = 0.35 + 0.45 * outFrac + 0.2 * Math.sin(t * 9 + i * 2);
+        ctx.fillStyle = `rgba(72,224,255,${hum.toFixed(2)})`; ctx.beginPath(); ctx.arc(bx, by, 1 * S, 0, Math.PI * 2); ctx.fill();
+      });
+      if (on && night) { const [qx, qy] = P(...L.porthole); ctx.fillStyle = '#ffe0a0'; ctx.beginPath(); ctx.arc(qx, qy, 0.9 * S, 0, Math.PI * 2); ctx.fill(); }
+    }
+    if (on) _windReadout(e, cx, py + H - (tier === 3 ? 1.5 : 1) * S, S, tier === 3 ? 7.5 : tier === 2 ? 6.5 : 6, tier === 1 ? '#9affc4' : tier === 2 ? '#8ae8ff' : '#9af0ff');
+    ctx.textAlign = 'left';
+    drawNetworkHighlight(e, px, py, t);
+  }
+  ctx.restore();
+}
+function _renderWindMk1(e, px, py, W, H, t) { if (WindArt.ready(1)) _windArt(e, px, py, W, H, t, 1); else _renderWindMk1Painted(e, px, py, W, H, t); }
+function _renderWindMk2(e, px, py, W, H, t) { if (WindArt.ready(2)) _windArt(e, px, py, W, H, t, 2); else _renderWindMk2Painted(e, px, py, W, H, t); }
+function _renderWindMk3(e, px, py, W, H, t) { if (WindArt.ready(3)) _windArt(e, px, py, W, H, t, 3); else _renderWindMk3Painted(e, px, py, W, H, t); }
+
 // Wind turbines are dispatched through dispatchScaledRender (authored 1×1),
 // so both entry points hand off to native-size renderers via _commNative.
 function renderWind(e, px, py, t)  { _commNative(e, px, py, t, _renderWindMk1); }
@@ -4092,7 +4680,7 @@ function _windGroundShadow(hubX, hubY, baseX, baseY, ang, blades, len, S) {
 }
 
 // ── Wind Turbine MK1 (2×2) ──
-function _renderWindMk1(e, px, py, W, H, t) {
+function _renderWindMk1Painted(e, px, py, W, H, t) {
   const S = TILE / 40, on = e.powered;
   const spd = WindState.speed, ice = e._ice || 0, spin = TurbineIcing.spinMult(e);
   const ang = _windBladeAngle(e, spd*spin, 2.2, 0.3*spin, 0.4, 2.0);
@@ -4131,7 +4719,7 @@ function _renderWindMk1(e, px, py, W, H, t) {
 }
 
 // ── Wind Turbine MK2 (3×3) ──
-function _renderWindMk2(e, px, py, W, H, t) {
+function _renderWindMk2Painted(e, px, py, W, H, t) {
   const S = TILE / 40, on = e.powered;
   const spd = WindState.speed, ice = e._ice || 0, spin = TurbineIcing.spinMult(e);
   const ang = _windBladeAngle(e, spd*spin, 1.8, 0.25*spin, 0.35, 1.7);
@@ -4195,6 +4783,7 @@ function _renderWindMk2(e, px, py, W, H, t) {
 
 function renderBattery(e, px, py, t) {
     if (e.col !== e.col) return;
+    if (_gmOK(e, 'bat', 1, 2)) return _batArt(e, px, py, t);
     // Battery Block — 1×2 grid-scale lithium cabinet on a concrete pad.
     // Authored on a 40×80 grid (S = TILE/40). The front window is a tall
     // cell stack that fills from the bottom with charge, coloured by level;
@@ -4336,6 +4925,7 @@ function renderBattery(e, px, py, t) {
 // (_rodGlowUntil, stamped by LightningDamageSystem).
 // ═══════════════════════════════════════════════════════════════════
 function renderLightningRod(e, px, py, t) {
+  if (!e._ghost && _gmOK(e, 'rod1', 3, 4)) return _rodArt(e, px, py, t, 1);
   // Derived from the footprint rather than hardcoded, so resizing the
   // entity in entity_defs.js rescales the whole mast automatically.
   const W = (e.width || 3) * TILE, H = (e.height || 4) * TILE;
@@ -4439,6 +5029,7 @@ function renderLightningRod(e, px, py, t) {
 // so a discharging MK2 is unmistakable from across the map.
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 function renderLightningRod2(e, px, py, t) {
+  if (!e._ghost && _gmOK(e, 'rod2', 4, 5)) return _rodArt(e, px, py, t, 2);
   const W = (e.width || 4) * TILE, H = (e.height || 5) * TILE;
   const cx = px + W / 2;
   const baseY = py + H * 0.93;
@@ -4648,6 +5239,7 @@ function _rod3Bolt(x0, y0, x1, y1, jag, segs) {
 }
 
 function renderLightningRod3(e, px, py, t) {
+  if (!e._ghost && _gmOK(e, 'rod3', 5, 6)) return _rodArt(e, px, py, t, 3);
   const W = (e.width || 5) * TILE, H = (e.height || 6) * TILE;
   const cx = px + W / 2;
   const baseY = py + H * 0.90;
@@ -4923,7 +5515,7 @@ function _mk3Blade(len, root, u, on, night, fine = true) {
   }
 }
 
-function _renderWindMk3(e, px, py, W, H, t) {
+function _renderWindMk3Painted(e, px, py, W, H, t) {
   const u = W / 160, on = !!e.powered;
   const spd = WindState.speed, ice = e._ice || 0, spin = TurbineIcing.spinMult(e);
   // Which passes of the static/animated split this call draws (all three for an
@@ -5137,8 +5729,1096 @@ function _renderWindMk3(e, px, py, W, H, t) {
    cheapest (frozen) tier. */
 RenderSplit.register(T.WIND3, {
   alwaysLive: true,
-  key(e) { return (e.powered ? 1 : 0) + ':' + (DayNight.darkness() > 0.35 ? 'n' : 'd'); },
+  key(e) { return (e.powered ? 1 : 0) + ':' + (DayNight.darkness() > 0.35 ? 'n' : 'd') + (WindArt.ready(3) ? 'r' : '-'); },
   under(e, x, y, t) {
     if (GfxQuality.smoothBuildings()) SplitPhase.run('under', () => renderEntityAt(e, x, y, t));
   },
 });
+
+/* ── Surge Protectors MK1–MK3 and Substations MK1–MK5, rendered ──────────
+   Built in Blender (scripts/render_grid_storage.py, sharing the coal/hydro
+   scene and materials). Small ones are authored larger and drawn at K
+   (GS_LAYOUT[name].K). MK4's gyroscope ring (ss4_gyro_0..23) and MK5's
+   armillary (ss5_arm_0..23) are 24-frame turns, stepped faster as they
+   bank. Live: arcs and sparks, load meters, oil-level gauges, busbar glow,
+   fans, capacitor cells, coil chase, cores, the star, plasma streams,
+   gauges and readouts. The painted renderers are the fallback. */
+const GS_LAYOUT = {
+  sp1: {"frame":9.0,"off":1.2,"K":0.333,"tops":[[-0.6,0.9,2.54],[1.2,0.9,2.54]],"gap":[0.3,0.9,2.44],"face":[0.3,-1.57,1.08],"res":396},
+  sp2: {"frame":11.0,"off":1.4,"K":0.5,"tops":[[-2.2,1.4,4.37],[0.0,1.4,4.37],[2.2,1.4,4.37]],"meter":[[-0.6,-2.57,1.6],[-0.3,-2.57,1.6],[0.0,-2.57,1.6],[0.3,-2.57,1.6],[0.6,-2.57,1.6]],"face":[0.0,-2.57,1.26],"res":462},
+  sp3: {"frame":16.0,"off":2.0,"K":0.5,"tops":[[-3.6,2.3,4.92],[-1.8,2.3,4.92],[0.0,2.3,4.92],[1.8,2.3,4.92],[3.6,2.3,4.92]],"fans":[[2.2,-1.6,1.14,0.38],[3.35,-1.6,1.14,0.38],[4.5,-1.6,1.14,0.38]],"meter":[[0.0,-5.45,1.5],[0.3,-5.45,1.5],[0.6,-5.45,1.5],[0.9,-5.45,1.5],[1.2,-5.45,1.5]],"face":[0.6,-5.43,1.5],"res":608},
+  ss1: {"frame":11.0,"off":1.2,"K":0.5,"tanks":[{"gauge":[0.0,-0.82,0.485,1.815],"tops":[[-0.3,-0.1,2.86],[0.45,-0.1,2.86],[1.2,-0.1,2.86]]}],"bars":[[[-2.4,2.3,3.25],[2.4,2.3,3.25]],[[-2.4,2.7,3.25],[2.4,2.7,3.25]],[[-2.4,3.1,3.25],[2.4,3.1,3.25]]],"res":462},
+  ss2: {"frame":15.0,"off":1.4,"K":0.5,"tanks":[{"gauge":[-2.4,-1.12,0.515,1.985],"tops":[[-2.72,-0.33,3.06],[-1.92,-0.33,3.06],[-1.12,-0.33,3.06]]},{"gauge":[2.4,-1.12,0.515,1.985],"tops":[[2.08,-0.33,3.06],[2.88,-0.33,3.06],[3.68,-0.33,3.06]]}],"fans":[[-3.2,-2.63,0.85,0.27],[-1.6,-2.63,0.85,0.27],[1.6,-2.63,0.85,0.27],[3.2,-2.63,0.85,0.27]],"bars":[[[-4.6,3.5,3.85],[4.6,3.5,3.85]],[[-4.6,3.9,3.85],[4.6,3.9,3.85]],[[-4.6,4.3,3.85],[4.6,4.3,3.85]]],"face":[-4.2,-5.02,1.32],"res":600},
+  ss3: {"frame":15.0,"off":1.2,"K":0.667,"ring":[0,0,1.2,3.0],"core":[0,0,1.3,0.8],"banks":[[[-4.2,-4.83,0.4],[-4.2,-4.83,0.78],[-4.2,-4.83,1.16],[-4.2,-4.83,1.54],[-4.2,-4.83,1.92]],[[4.2,-4.83,0.4],[4.2,-4.83,0.78],[4.2,-4.83,1.16],[4.2,-4.83,1.54],[4.2,-4.83,1.92]],[[-4.2,3.57,0.4],[-4.2,3.57,0.78],[-4.2,3.57,1.16],[-4.2,3.57,1.54],[-4.2,3.57,1.92]],[[4.2,3.57,0.4],[4.2,3.57,0.78],[4.2,3.57,1.16],[4.2,3.57,1.54],[4.2,3.57,1.92]]],"conduits":[[[-3.444,-3.444,0.35],[-2.4,-2.4,0.9]],[[3.444,-3.444,0.35],[2.4,-2.4,0.9]],[[-3.444,3.444,0.35],[-2.4,2.4,0.9]],[[3.444,3.444,0.35],[2.4,2.4,0.9]]],"beacons":[[-5.6,0,1.0],[5.6,0,1.0],[0,5.6,1.0]],"res":600},
+  ss4: {"frame":16.0,"off":1.8,"K":1.0,"ring":[0,0,2.2,3.3],"core":[0,0,2.2,1.0],"spires":[[-4.3,-4.3,4.45],[4.3,-4.3,4.45],[-4.3,4.3,4.45],[4.3,4.3,4.45]],"bus":[[[-3.655,-3.655,0.5],[-1.29,-1.29,1.8]],[[3.655,-3.655,0.5],[1.29,-1.29,1.8]],[[-3.655,3.655,0.5],[-1.29,1.29,1.8]],[[3.655,3.655,0.5],[1.29,1.29,1.8]]],"vents":[[0,4.6,1.1],[0,-4.6,1.1]],"kiosk":[3.9,-1.53,1.2],"res":640},
+  ss5: {"frame":21.0,"off":2.2,"K":1.0,"monos":[[5.174,2.143,4.0],[2.143,5.174,4.0],[-2.143,5.174,4.0],[-5.174,2.143,4.0],[-5.174,-2.143,4.0],[-2.143,-5.174,4.0],[2.143,-5.174,4.0],[5.174,-2.143,4.0]],"star":[0,0,3.4,1.2],"dais":[0,-7.08,0.8],"res":756},
+};
+function _gsJag(P, a, b, seed, t, amp) {
+  const [x1, y1] = P(...a), [x2, y2] = P(...b), n = 12, nx = -(y2 - y1), ny = x2 - x1, nl = Math.hypot(nx, ny) || 1;
+  ctx.beginPath(); ctx.moveTo(x1, y1);
+  for (let i = 1; i < n; i++) {
+    const u = i / n, v = Math.sin(seed * 91.7 + i * 13.1 + Math.floor(t * 14) * 7.3) * 43758.5; const off = ((v - Math.floor(v)) - 0.5) * 2 * amp * (0.35 + 0.65 * Math.sin(u * Math.PI));
+    ctx.lineTo(x1 + (x2 - x1) * u + nx / nl * off, y1 + (y2 - y1) * u + ny / nl * off);
+  }
+  ctx.lineTo(x2, y2);
+}
+function _gsArc(P, a, b, seed, t, rgb, S) {
+  ctx.save(); ctx.lineCap = 'round';
+  ctx.strokeStyle = `rgba(${rgb},0.35)`; ctx.lineWidth = 3 * S; _gsJag(P, a, b, seed, t, 6 * S); ctx.stroke();
+  ctx.strokeStyle = 'rgba(240,250,255,0.95)'; ctx.lineWidth = 0.9 * S; _gsJag(P, a, b, seed, t, 6 * S); ctx.stroke();
+  ctx.restore();
+}
+function _gsQuadV(P, x, y, z0, z1, hw, fill) {
+  const [ax, ay] = P(x - hw, y, z1), [bx, by] = P(x + hw, y, z0);
+  ctx.fillStyle = fill; ctx.fillRect(ax, ay, bx - ax, by - ay);
+}
+// Pseudo-random flicker in 0..1 that changes about seven times a second,
+// different for each seed: an arc shows while it is under its rate.
+function _ssFlick(t, seed) { const v = Math.sin((Math.floor(t * 7) + seed * 13.7) * 12.9898) * 43758.5453; return v - Math.floor(v); }
+function _gsPct(e) { return e.def && e.def.capacity > 0 ? Math.max(0, Math.min(1, e.charge / e.def.capacity)) : 0; }
+
+function _spArt(e, px, py, t, mk) {
+  const name = 'sp' + mk, L = GS_LAYOUT[name], W = (mk === 1 ? 1 : mk) * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const cx = px + W / 2, cy = py + W / 2;
+  const on = !!e.powered, accent = mk === 1 ? '#40e0ff' : mk === 2 ? '#00ffcc' : '#b070ff';
+  const [pct] = _spLoad(e, mk === 1 ? 85 : mk === 2 ? 250 : 85 * 360, accent);
+  const hot = pct > 0.85, rgb = hot ? '255,154,64' : mk === 3 ? '176,112,255' : mk === 2 ? '0,255,204' : '64,224,255';
+  const F = _cwFrame(L, cx, cy, L.K, L.K), { P, M } = F;
+  if (on && Camera.zoom > 0.5) drawGlowHalo(cx, cy - W * 0.15, W * 0.62, [[0, hot ? '#ff9040' : accent], [1, 'transparent']], 0.16 + 0.06 * Math.sin(t * 4));
+  ctx.save();
+  F.draw(CoalWaterArt.get(name + '_base'));
+  if (on) {
+    // corona on the grading rings, arcs jumping between neighbours (constantly when hot)
+    for (const tp of L.tops) { const [x, y] = P(...tp); const g = ctx.createRadialGradient(x, y, 0, x, y, 7 * S); g.addColorStop(0, `rgba(${rgb},${(0.35 + 0.2 * Math.sin(t * 5 + x)).toFixed(3)})`); g.addColorStop(1, `rgba(${rgb},0)`); ctx.fillStyle = g; ctx.fillRect(x - 7 * S, y - 7 * S, 14 * S, 14 * S); }
+    const rate = hot ? 1 : 0.18;
+    for (let i = 0; i < L.tops.length - 1; i++) {
+      if (((Math.sin(t * 2.3 + i * 1.7) + 1) / 2) > rate && !(hot && i % 1 === 0)) continue;
+      _gsArc(P, L.tops[i], L.tops[i + 1], i + mk * 3, t, rgb, S * L.K * 2);
+    }
+    if (mk === 1 && Math.sin(t * 3.1) > (hot ? -1 : 0.7)) { const [gx, gy] = P(...L.gap); ctx.fillStyle = `rgba(${rgb},0.9)`; ctx.beginPath(); ctx.arc(gx, gy, 1.2 * S, 0, TAU); ctx.fill(); }
+    if (L.meter) L.meter.forEach((p, i) => {
+      const lit = pct * 5 > i + 0.2, [mx, my] = P(...p);
+      ctx.fillStyle = lit ? (i >= 4 ? '#ff5030' : i >= 3 ? '#ffb030' : accent) : 'rgba(20,24,30,0.9)';
+      ctx.fillRect(mx - 0.11 * M * L.K, my - 0.09 * M * L.K, 0.22 * M * L.K, 0.18 * M * L.K);
+    });
+    if (L.fans) for (const [x, y, z, r] of L.fans) {
+      const [fx, fy] = P(x, y, z), rr = r * M * L.K, a = t * (hot ? 14 : 8);
+      ctx.strokeStyle = 'rgba(40,44,50,0.9)'; ctx.lineWidth = 0.8 * S;
+      ctx.beginPath(); for (let b = 0; b < 3; b++) { const q = a + b * TAU / 3; ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(q) * rr, fy + Math.sin(q) * rr * 0.87); } ctx.stroke();
+    }
+  }
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+
+function _ssArt(e, px, py, t, mk) {
+  const name = 'ss' + mk, L = GS_LAYOUT[name], tiles = [0, 2, 3, 4, 6, 8][mk], W = tiles * TILE, S = TILE / 40, TAU = Math.PI * 2;
+  const cx = px + W / 2, cy = py + W / 2;
+  const pct = _gsPct(e), on = e.powered && !e._lightningDamaged, hot = on && pct > 0.03;
+  const charging = on && !!e.charging, discharging = on && !e.charging && pct > 0.02 && pct < 0.99;
+  const F = _cwFrame(L, cx, cy, L.K, L.K), { P, M } = F, k = L.K;
+  const flowRGB = charging ? '110,230,255' : discharging ? '255,190,90' : '150,170,210';
+  const fine = Camera.zoom > 0.5;
+  ctx.save();
+  if (hot && Camera.zoom > 0.4) {
+    const col = mk === 5 ? '#ffb040' : mk >= 3 ? '#80e0ff' : '#40a0ff';
+    drawGlowHalo(cx, cy, W * 0.7, [[0, col], [1, 'transparent']], 0.12 + 0.25 * pct + 0.04 * Math.sin(t * 2));
+  }
+  F.draw(CoalWaterArt.get(name + '_base'));
+  if (mk <= 2) {
+    // oil level in each tank's sight glass = state of charge; busbars glow; fans; arcs while charging
+    for (const tk of L.tanks) {
+      const [gx, gy, z0, z1] = tk.gauge;
+      _gsQuadV(P, gx, gy, z0, z0 + (z1 - z0) * pct, 0.04, hot ? `rgba(90,190,255,${(0.75 + (charging ? 0.2 * Math.sin(t * 8) : 0)).toFixed(3)})` : 'rgba(60,80,100,0.7)');
+    }
+    if (hot) for (const [a, b] of L.bars) {
+      const [ax, ay] = P(...a), [bx, by] = P(...b);
+      ctx.strokeStyle = `rgba(${flowRGB},${(0.25 + 0.5 * pct).toFixed(3)})`; ctx.lineWidth = 1.4 * S;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    }
+    if (charging && fine && Math.sin(t * 5.3) > 0.6) { const b = L.bars[1]; _gsArc(P, b[0], [(b[0][0] + b[1][0]) / 2, b[0][1], b[0][2] + 0.6], 3, t, '110,230,255', S * k * 2); }
+    if (L.fans) for (const [x, y, z, r] of L.fans) {
+      const [fx, fy] = P(x, y, z), rr = r * M * k, a = hot ? t * (charging ? 12 : 6) : 0.4;
+      ctx.strokeStyle = 'rgba(40,44,50,0.9)'; ctx.lineWidth = 0.7 * S;
+      ctx.beginPath(); for (let b = 0; b < 3; b++) { const q = a + b * TAU / 3; ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.cos(q) * rr, fy + Math.sin(q) * rr); } ctx.stroke();
+    }
+  } else if (mk === 3) {
+    const [rx, ry, rz, R] = L.ring;
+    // coil chase round the ring, faster as it banks; core brightening
+    if (hot) {
+      for (let i = 0; i < 12; i++) {
+        const a = i * TAU / 12 + t * (0.4 + pct * 1.6), [x, y] = P(rx + Math.cos(a) * R, ry + Math.sin(a) * R, rz + 0.55);
+        ctx.fillStyle = `rgba(150,230,255,${(0.35 + 0.5 * pct).toFixed(3)})`; ctx.beginPath(); ctx.arc(x, y, 1.4 * S, 0, TAU); ctx.fill();
+      }
+      const [qx, qy] = P(...L.core.slice(0, 3)); const g = ctx.createRadialGradient(qx, qy, 0, qx, qy, 14 * S);
+      g.addColorStop(0, `rgba(200,240,255,${(0.4 + 0.5 * pct).toFixed(3)})`); g.addColorStop(0.5, `rgba(140,110,255,${(0.25 * pct).toFixed(3)})`); g.addColorStop(1, 'rgba(140,110,255,0)');
+      ctx.fillStyle = g; ctx.fillRect(qx - 14 * S, qy - 14 * S, 28 * S, 28 * S);
+    }
+    // capacitor cells light bottom to top with charge
+    const lit = Math.round(pct * 5);
+    for (const cells of L.banks) cells.forEach(([x, y, z], i) => _gsQuadV(P, x, y, z - 0.12, z + 0.12, 0.58, i < lit && on ? `rgba(110,230,255,${(0.7 + 0.2 * Math.sin(t * 3 + i)).toFixed(3)})` : 'rgba(20,26,34,0.6)'));
+    // conduit pulses: inward while charging, outward while discharging
+    if (fine && (charging || discharging)) for (const [a, b] of L.conduits) for (let q = 0; q < 2; q++) {
+      const f = (t * 0.8 + q / 2) % 1, [x, y] = _cwAlong(P, charging ? [a, b] : [b, a], f);
+      ctx.fillStyle = `rgba(${flowRGB},0.9)`; ctx.beginPath(); ctx.arc(x, y, 1.1 * S, 0, TAU); ctx.fill();
+    }
+    L.beacons.forEach((p, i) => { const [x, y] = P(...p); ctx.fillStyle = on ? (Math.sin(t * 2 + i) > 0 ? `rgba(${flowRGB},0.95)` : 'rgba(40,60,80,0.8)') : '#5a1e1a'; ctx.beginPath(); ctx.arc(x, y, 1 * S, 0, TAU); ctx.fill(); });
+  } else if (mk === 4) {
+    const coreRGB = pct < 0.5 ? [Math.round(90 + 160 * pct), Math.round(220 - 100 * pct), 255] : [Math.round(170 + 85 * (pct - 0.5) * 2), Math.round(170 + 85 * (pct - 0.5) * 2), 255];
+    const CR = coreRGB.join(',');
+    const [qx, qy] = P(...L.core.slice(0, 3));
+    if (hot) { const g = ctx.createRadialGradient(qx, qy, 0, qx, qy, (10 + 14 * pct) * S); g.addColorStop(0, `rgba(255,255,255,${(0.6 + 0.3 * pct).toFixed(3)})`); g.addColorStop(0.35, `rgba(${CR},0.7)`); g.addColorStop(1, `rgba(${CR},0)`); ctx.fillStyle = g; ctx.fillRect(qx - 26 * S, qy - 26 * S, 52 * S, 52 * S); }
+    const f = Math.floor(t * (hot ? 0.25 + pct * 0.9 : 0.05) * 24) % 24;
+    F.draw(CoalWaterArt.get('ss4_gyro_' + f));
+    if (charging && fine) {
+      const ring4 = [0, 1, 3, 2];   // spires in order round the plinth: neighbours only
+      ring4.forEach((si, i) => { const s = L.spires[si]; if (Math.sin(t * 4 + i * 1.9) > 0.55) _gsArc(P, s, L.spires[ring4[(i + 1) % 4]], i, t, CR, S); if (Math.sin(t * 3.3 + i) > 0.75) _gsArc(P, s, L.core.slice(0, 3), i + 9, t, CR, S); });
+    }
+    if (fine && (charging || discharging)) for (const [a, b] of L.bus) for (let q = 0; q < 2; q++) {
+      const fr = (t * 0.7 + q / 2) % 1, [x, y] = _cwAlong(P, charging ? [a, b] : [b, a], fr);
+      ctx.fillStyle = `rgba(${flowRGB},0.9)`; ctx.beginPath(); ctx.arc(x, y, 1.2 * S, 0, TAU); ctx.fill();
+    }
+    if (hot && fine) for (const [x, y, z] of L.vents) for (let q = 0; q < 3; q++) {
+      const fr = (t * 0.5 + q / 3) % 1, [vx, vy] = P(x, y, z);
+      ctx.fillStyle = `rgba(225,240,255,${(0.3 * (1 - fr)).toFixed(3)})`; ctx.beginPath(); ctx.arc(vx + Math.sin(q + t) * 2 * S, vy - fr * 10 * S, (1.5 + fr * 3) * S, 0, TAU); ctx.fill();
+    }
+    // holographic charge gauge round the ring
+    if (on) { const [rx, ry, rz, R] = L.ring; ctx.strokeStyle = `rgba(${CR},0.7)`; ctx.lineWidth = 1.2 * S; ctx.beginPath();
+      for (let i = 0; i <= 48; i++) { const a = -Math.PI / 2 - pct * TAU * i / 48, [x, y] = P(rx + Math.cos(a) * (R + 0.9), ry + Math.sin(a) * (R + 0.9), 0.4); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); } ctx.stroke(); }
+    const [kx, ky] = P(...L.kiosk); ctx.fillStyle = on ? `rgba(${flowRGB},0.8)` : '#101418'; ctx.fillRect(kx - 3 * S, ky - 1.5 * S, 6 * S, 3 * S);
+  } else {
+    const sun = pct < 0.5 ? [255, Math.round(120 + 160 * pct), Math.round(40 + 60 * pct)] : [255, Math.round(200 + 55 * (pct - 0.5) * 2), Math.round(70 + 170 * (pct - 0.5) * 2)];
+    const SUN = sun.join(',');
+    const [sx, sy] = P(...L.star.slice(0, 3)), sr = (0.5 + 0.9 * pct) * M;
+    if (hot) {
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr * 2.6);
+      g.addColorStop(0, 'rgba(255,255,240,1)'); g.addColorStop(0.3, `rgba(${SUN},0.95)`); g.addColorStop(0.6, `rgba(${SUN},0.35)`); g.addColorStop(1, `rgba(${SUN},0)`);
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, sr * 2.6, 0, TAU); ctx.fill();
+      if (fine) for (let q = 0; q < 4; q++) {                                   // prominences
+        const a = q * TAU / 4 + t * 0.3, f = 0.5 + 0.5 * Math.sin(t * 1.7 + q * 2);
+        ctx.strokeStyle = `rgba(${SUN},${(0.5 * f).toFixed(3)})`; ctx.lineWidth = 1.4 * S;
+        ctx.beginPath(); ctx.arc(sx + Math.cos(a) * sr, sy + Math.sin(a) * sr, sr * 0.45 * f, a - 1.2, a + 1.2); ctx.stroke();
+      }
+    }
+    const f = Math.floor(t * (hot ? 0.15 + pct * 0.6 : 0.04) * 24) % 24;
+    F.draw(CoalWaterArt.get('ss5_arm_' + f));
+    // crystal heads fill with charge; plasma streams in (charging) or out (discharging)
+    L.monos.forEach(([x, y, z], i) => {
+      const [mx, my] = P(x, y, z + 0.1);
+      if (hot) { const g = ctx.createRadialGradient(mx, my, 0, mx, my, 7 * S); g.addColorStop(0, `rgba(255,220,140,${(0.25 + 0.6 * pct).toFixed(3)})`); g.addColorStop(1, 'rgba(255,200,120,0)'); ctx.fillStyle = g; ctx.fillRect(mx - 7 * S, my - 7 * S, 14 * S, 14 * S); }
+      if (fine && (charging || discharging)) for (let q = 0; q < 3; q++) {
+        const fr = (t * 0.6 + q / 3 + i * 0.1) % 1, path = charging ? [[x, y, z], L.star.slice(0, 3)] : [L.star.slice(0, 3), [x, y, z]], [qx, qy] = _cwAlong(P, path, fr);
+        ctx.fillStyle = charging ? `rgba(${SUN},0.85)` : 'rgba(255,150,60,0.85)'; ctx.beginPath(); ctx.arc(qx, qy, 1.2 * S, 0, TAU); ctx.fill();
+      }
+    });
+    const [dx, dy] = P(...L.dais); ctx.fillStyle = on ? `rgba(255,214,120,0.8)` : '#101418'; ctx.fillRect(dx - 6 * S, dy - 1.5 * S, 12 * S, 3 * S);
+  }
+  // Electricity whenever it is live: corona on the terminals and arcs
+  // crackling between them, busier while charge is moving.
+  if (on && fine) {
+    const rate = (charging ? 0.5 : discharging ? 0.38 : 0.2) + 0.15 * pct;
+    const eRGB = mk === 5 ? '255,214,140' : mk === 4 ? '170,200,255' : '150,225,255';
+    const pairs = [], ends = [];
+    if (mk <= 2) {
+      for (const tk of L.tanks) { tk.tops.forEach((p, i) => { ends.push(p); if (i) pairs.push([tk.tops[i - 1], p]); }); }
+      const b = L.bars[0]; pairs.push([b[0], [(b[0][0] + b[1][0]) / 2, b[0][1], b[0][2]]], [[(b[0][0] + b[1][0]) / 2, b[0][1], b[0][2]], b[1]]);
+    } else if (mk === 3) {
+      const [rx, ry, rz, R] = L.ring, core = L.core.slice(0, 3);
+      for (let i = 0; i < 6; i++) { const a = i * TAU / 6 + 0.3, q = [rx + Math.cos(a) * R, ry + Math.sin(a) * R, rz + 0.55]; ends.push(q); pairs.push([q, core]); }
+    } else if (mk === 4) {
+      const ring4 = [0, 1, 3, 2], [rx, ry, rz, R] = L.ring;
+      ring4.forEach((si, i) => {
+        const sp = L.spires[si]; ends.push(sp); pairs.push([sp, L.spires[ring4[(i + 1) % 4]]]);
+        const a = Math.atan2(sp[1] - ry, sp[0] - rx); pairs.push([sp, [rx + Math.cos(a) * R, ry + Math.sin(a) * R, rz]]);
+      });
+    } else {
+      const star = L.star.slice(0, 3);
+      L.monos.forEach((m, i) => { const top = [m[0], m[1], m[2] + 0.5]; ends.push(top); pairs.push([top, star]); pairs.push([top, [L.monos[(i + 1) % 8][0], L.monos[(i + 1) % 8][1], L.monos[(i + 1) % 8][2] + 0.5]]); });
+    }
+    for (const q of ends) {
+      const [x, y] = P(...q), r = (mk <= 2 ? 4 : 6) * S, g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, `rgba(${eRGB},${(0.3 + 0.25 * Math.abs(Math.sin(t * 9 + x))).toFixed(3)})`); g.addColorStop(1, `rgba(${eRGB},0)`);
+      ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    pairs.forEach(([a, b], i) => { if (_ssFlick(t, i + mk * 7) < rate) _gsArc(P, a, b, i + mk * 5, t, eRGB, S * (mk <= 2 ? k * 1.2 : k)); });
+    // Every terminal throws streamers into the air like a Tesla coil: the
+    // MK4's corner spires most, the small yards' bushings a little.
+    const sk = mk <= 2 ? 0.35 : mk === 3 ? 0.5 : 1, nS = mk === 4 ? 3 : mk === 5 ? 2 : 1;
+    ends.forEach((sp, i) => {
+      for (let q = 0; q < nS; q++) {
+        const r = _ssFlick(t * 1.6, i * 5 + q + 40 + mk * 11);
+        if (r > (mk === 4 ? 0.55 : 0.35) + 0.3 * pct - (mk === 4 ? 0.3 * (1 - pct) : 0)) continue;
+        const a = r * 40 + q * 2.1, d = (0.6 + 0.9 * _ssFlick(t * 1.6, i * 5 + q + 60)) * sk;
+        const tip = [sp[0] + Math.cos(a) * d, sp[1] + Math.sin(a) * d, sp[2] + (0.4 + 0.9 * _ssFlick(t * 1.6, i * 5 + q + 80)) * sk];
+        ctx.save(); ctx.lineCap = 'round';
+        ctx.strokeStyle = `rgba(${eRGB},0.4)`; ctx.lineWidth = 2.2 * S * Math.max(0.6, sk); _gsJag(P, sp, tip, i * 3 + q, t, 3 * S * sk); ctx.stroke();
+        ctx.strokeStyle = 'rgba(240,250,255,0.9)'; ctx.lineWidth = 0.7 * S; _gsJag(P, sp, tip, i * 3 + q, t, 3 * S * sk); ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+  // readout
+  if (fine) {
+    ctx.textAlign = 'center'; ctx.font = `bold ${mk >= 4 ? 8 : 7}px "Courier New", monospace`;
+    const txt = on ? Math.round(pct * 100) + '%' : (e._lightningDamaged ? 'STRUCK: OFFLINE' : 'OFFLINE');
+    ctx.lineWidth = 2.2; ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.strokeText(txt, cx, py + W - 4);
+    ctx.fillStyle = on ? (hot ? `rgba(${mk === 5 ? '255,214,120' : '128,214,255'},0.95)` : 'rgba(150,165,190,0.8)') : 'rgba(255,90,70,0.95)'; ctx.fillText(txt, cx, py + W - 4);
+    ctx.textAlign = 'left';
+  }
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+
+/* ── Power pole and power tower, rendered ───────────────────────────────
+   Built in Blender (scripts/render_poles.py, sharing the coal/hydro scene
+   and materials) at real size and drawn at K (the pole at 1/2, the pylon at
+   1/4) so they keep the painted ones' footprint. The pole picks its guy wire
+   and transformer can from the tile hash as before; dead timber is the
+   weathered grey render. Live: insulator glow, the blinking ID tag, arcing
+   and smoke on a failed pole; on the pylon the glowing strings, corona after
+   dark, the beacon, and sparks and smoke when lightning has struck. The
+   painted versions above are the fallback. */
+const POLE_LAYOUT = {"pole": {"frame": 11.0, "off": 0.6, "K": 0.5, "ins": [[-0.601, -0.151, 7.788], [0.001, -0.153, 7.788], [0.601, -0.153, 7.788]], "tag": [0, -0.135, 1.9], "pier": 0.55}, "tower": {"frame": 33.0, "off": 1.6, "K": 0.25, "beacon": [0, 0, 28.7], "tips": [[-6.6, 0, 21.755], [6.6, 0, 21.755], [-5.3, 0, 16.755], [5.3, 0, 16.755]], "feet": [[-2.964, -2.964], [-2.964, 2.964], [2.964, -2.964], [2.964, 2.964]]}};
+// Unpowered poles and pylons flash their lamps red: on for half of each
+// 0.8 s, on the wall clock so a cached bitmap (FixtureCache) shows the
+// phase it was baked in and re-bakes as it flips.
+function _poleRedBlink() { return (performance.now() % 800) < 400; }
+function _poleRedLamps(P, pts, u, a) {
+  for (const p of pts) {
+    const [x, y] = P(...p);
+    ctx.fillStyle = `rgba(255,40,30,${(0.35 * a).toFixed(3)})`; ctx.beginPath(); ctx.arc(x, y, 3.2 * u, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(255,70,50,${(0.95 * a).toFixed(3)})`; ctx.beginPath(); ctx.arc(x, y, 1.2 * u, 0, Math.PI * 2); ctx.fill();
+  }
+}
+function _poleArt(e, px, py, t) {
+  const L = POLE_LAYOUT.pole, u = TILE / 40, TAU = Math.PI * 2;
+  const on = e.powered, failed = !!e.failed, stranded = !!e.outOfRange;
+  const live = on && !failed, detail = Camera.zoom > 0.5;
+  const hash = (k) => { const v = Math.sin((e.col||0)*12.9898 + (e.row||0)*78.233 + k*37.719)*43758.5453; return v - Math.floor(v); };
+  const inWater = !!e._underWater;
+  const F0 = _cwFrame(L, px + 20 * u, py + 36 * u, L.K, L.K);
+  const lift = inWater ? L.pier * _CW_TAN * F0.M * L.K : 0;
+  const F = _cwFrame(L, px + 20 * u, py + 36 * u - lift, L.K, L.K), { P } = F;
+  const side = hash(2) < 0.5 ? -1 : 1;
+  if (live && detail) { const [gx, gy] = P(0, 0.2, 7.4); drawGlowHalo(gx, gy, TILE * 0.5, [[0, '#a8f0a0'], [1, 'transparent']], 0.10 + 0.05 * Math.sin(t * 2)); }
+  if (!inWater && hash(1) < 0.45) F0.draw(CoalWaterArt.get('pole_guy_' + (side < 0 ? 0 : 1)));
+  F0.draw(CoalWaterArt.get(inWater ? 'pole_pier' : 'pole_foot'));
+  F.draw(CoalWaterArt.get('pole_base_' + (!on && !e._iconThumb ? 0 : 1)));
+  if (hash(3) < 0.4) F.draw(CoalWaterArt.get('pole_xf_' + (side < 0 ? 1 : 0)));
+  if (!on && !e._iconThumb && _poleRedBlink()) _poleRedLamps(P, L.ins, u, 1);
+  if (live && detail) L.ins.forEach((p, i) => {
+    const [x, y] = P(...p);
+    ctx.fillStyle = `rgba(170,255,170,${(0.22 + 0.16 * Math.sin(t * 3 + i)).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(x, y, 3 * u, 0, TAU); ctx.fill();
+  });
+  if (stranded && Math.sin(t * 6) > 0) { const [x, y] = P(...L.tag); ctx.fillStyle = '#f0a020'; ctx.fillRect(x - 1.1 * u, y - 1.3 * u, 2.2 * u, 2.6 * u); }
+  if (failed) {
+    const [ax, ay] = P(0, 0.2, 7.3), flick = Math.sin(t * 23) * Math.sin(t * 37);
+    if (flick > -0.2) {
+      ctx.strokeStyle = `rgba(255,${200 + Math.round(55 * flick)},120,0.95)`; ctx.lineWidth = 0.7 * u;
+      for (let k = 0; k < 4; k++) {
+        const a = t * 9 + k * 1.7, r0 = 1.5 * u, r1 = (4 + 2 * Math.sin(t * 13 + k)) * u;
+        ctx.beginPath();
+        ctx.moveTo(ax + Math.cos(a) * r0, ay + Math.sin(a) * r0);
+        ctx.lineTo(ax + Math.cos(a + 0.4) * (r0 + r1) * 0.6, ay + Math.sin(a + 0.4) * (r0 + r1) * 0.6);
+        ctx.lineTo(ax + Math.cos(a) * r1, ay + Math.sin(a) * r1);
+        ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(255,240,200,0.9)'; ctx.beginPath(); ctx.arc(ax, ay, 1.3 * u, 0, TAU); ctx.fill();
+    }
+    for (let k = 0; k < 3; k++) {
+      const f = (t * 0.5 + k / 3) % 1;
+      ctx.fillStyle = `rgba(90,90,95,${(0.35 * (1 - f)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(ax + f * 4 * u, ay - (2 + f * 10) * u, (1 + f * 3) * u, 0, TAU); ctx.fill();
+    }
+  }
+}
+function _towerArt(e, px, py, t) {
+  const L = POLE_LAYOUT.tower, u = TILE / 40, TAU = Math.PI * 2;
+  const damaged = !!e._lightningDamaged, live = e.powered && !damaged;
+  const detail = Camera.zoom > 0.5, dark = DayNight.darkness();
+  const M = 20 * u;
+  const F = _cwFrame(L, px + 40 * u, py + 74 * u - 2.964 * M * L.K, L.K, L.K), { P } = F;
+  F.draw(CoalWaterArt.get(e._waterFooting ? 'tower_piers' : 'tower_feet'));
+  F.draw(CoalWaterArt.get(damaged ? 'tower_dmg' : 'tower_base'));
+  if (detail && live) L.tips.forEach(([x, y, z], i) => {
+    const [gx, gy] = P(x, y, z), r = (dark > 0.3 ? 6 : 4) * u;
+    const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+    g.addColorStop(0, `rgba(150,215,255,${(0.35 + 0.12 * Math.sin(t * 3 + i) + (dark > 0.3 ? 0.15 : 0)).toFixed(3)})`); g.addColorStop(1, 'rgba(150,215,255,0)');
+    ctx.fillStyle = g; ctx.fillRect(gx - r, gy - r, r * 2, r * 2);
+  });
+  if (!e.powered && !damaged && _poleRedBlink()) {
+    const [bx, by] = P(...L.beacon);
+    ctx.fillStyle = 'rgba(255,40,30,0.4)'; ctx.beginPath(); ctx.arc(bx, by, 4.5 * u, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ff3a2a'; ctx.beginPath(); ctx.arc(bx, by, 1.5 * u, 0, TAU); ctx.fill();
+  }
+  if (detail && e.powered && !damaged) {
+    const [bx, by] = P(...L.beacon), blink = Math.sin(t * 2.8) > 0.2;
+    if (blink) { ctx.fillStyle = 'rgba(255,60,40,0.35)'; ctx.beginPath(); ctx.arc(bx, by, 3.8 * u, 0, TAU); ctx.fill(); }
+    ctx.fillStyle = blink ? '#ff4030' : '#7a2018'; ctx.beginPath(); ctx.arc(bx, by, 1.3 * u, 0, TAU); ctx.fill();
+  }
+  if (damaged) {
+    const [x, y, z] = L.tips[1], [sx, sy] = P(x, y, z - 1.4);
+    if (Math.sin(t * 19) * Math.sin(t * 31) > -0.1) {
+      ctx.strokeStyle = 'rgba(255,220,140,0.95)'; ctx.lineWidth = 0.65 * u; ctx.beginPath();
+      for (let k = 0; k < 4; k++) { const a = t * 8 + k * 1.6; ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(a) * 3.75 * u, sy + Math.sin(a) * 3.75 * u); }
+      ctx.stroke();
+    }
+    const [tx, ty] = P(0, 0, 24);
+    for (let k = 0; k < 4; k++) {
+      const f = (t * 0.35 + k / 4) % 1;
+      ctx.fillStyle = `rgba(80,78,76,${(0.4 * (1 - f)).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(tx + (f * 7.5 + Math.sin(t + k) * 2) * u, ty - f * 17 * u, (1.9 + f * 4.75) * u, 0, TAU); ctx.fill();
+    }
+  }
+}
+
+/* ── Battery Block, Circuit Switches, Monitoring Stations, rendered ─────
+   Built in Blender (scripts/render_grid_misc.py, on render_nuclear.py's
+   materials). Live: the battery's eight roof bays filling with charge in
+   its level colour, a sweep while charging, the LCD and LEDs; the switch's
+   blades (closed / raised open sprites), the arc as it opens, current on
+   the busbar while closed, the beacon(s), the handle, the roster gauge and
+   OPEN / CLOSED; the monitors' screens (supply / demand history, the MK2's
+   per-network status rack), their tracking dishes (the research station's
+   rsdish_k sprites) and beacons. The painted renderers are the fallback. */
+const GRIDMISC_LAYOUT = {
+  bat: {"frame":6.5,"off":0.7,"lcd":[-0.5,0.5,-1.45,1.67,2.03],"leds":[[0.6,-1.45,1.95],[0.6,-1.45,1.8],[0.6,-1.45,1.65]],"bays":[[-0.6,0.6,-1.37,-1.07,2.345],[-0.6,0.6,-1.0,-0.7,2.345],[-0.6,0.6,-0.63,-0.33,2.345],[-0.6,0.6,-0.26,0.04,2.345],[-0.6,0.6,0.11,0.41,2.345],[-0.6,0.6,0.48,0.78,2.345],[-0.6,0.6,0.85,1.15,2.345],[-0.6,0.6,1.22,1.52,2.345]],"terminals":[[-0.4,1.55,2.6],[0.4,1.55,2.6]]},
+  cs1: {"frame":11.0,"off":1.0,"handle":[2.46,-1.8,0.55,1.87],"gauge":[-2.8,0.7,-2.4,2.28,1],"bus":[[-2.3,3.35,3.0],[2.3,3.35,3.0]],"tipsClosed":[[-1.8,1.0,2.91],[0.0,1.0,2.91],[1.8,1.0,2.91]],"tipsOpen":[[-1.8,2.251,4.764],[0.0,2.251,4.764],[1.8,2.251,4.764]],"jaws":[[-1.8,1.0,2.95],[0.0,1.0,2.95],[1.8,1.0,2.95]],"beacons":[[-2.85,-1.0,2.65]],"status":[-0.5,-3.5,0.0]},
+  cs2: {"frame":15.0,"off":1.0,"handle":[4.36,-2.5,0.65,2.21],"gauge":[-4.7,2.6,-3.4,2.68,2],"bus":[[-4.7,3.95,3.2],[4.7,3.95,3.2]],"tipsClosed":[[-4.2,1.4,3.11],[-2.7,1.4,3.11],[-1.2,1.4,3.11],[1.2,1.4,3.11],[2.7,1.4,3.11],[4.2,1.4,3.11]],"tipsOpen":[[-4.2,2.776,5.15],[-2.7,2.776,5.15],[-1.2,2.776,5.15],[1.2,2.776,5.15],[2.7,2.776,5.15],[4.2,2.776,5.15]],"jaws":[[-4.2,1.4,3.15],[-2.7,1.4,3.15],[-1.2,1.4,3.15],[1.2,1.4,3.15],[2.7,1.4,3.15],[4.2,1.4,3.15]],"beacons":[[-4.82,-1.72,5.02],[-4.38,-1.72,5.02],[-4.82,-1.28,5.02],[-4.38,-1.28,5.02]],"status":[-0.5,-4.5,0.0]},
+  mon1: {"frame":8.0,"off":1.4,"screen":[-1.05,1.05,-1.25,0.05,1.19,1.84],"beacon":[0.6,1.1,7.55],"dish":[-0.55,1.1,4.6,0.55]},
+  mon2: {"frame":11.0,"off":1.2,"windows":[-3.3,1.3,-2.86,0.85,2.35],"wall":[-3.1,1.1,0.35,2.85,3.621,4.559],"rack":[-3.15,-0.25,-1.75,-0.25,3.67],"fans":[[0.35,-0.3,3.83,0.18],[0.85,-0.3,3.83,0.18],[0.35,-1.4,3.83,0.18],[0.85,-1.4,3.83,0.18]],"dish":[2.8,2.4,1.6,0.85],"beacon":[2.8,0.1,6.65],"cabLeds":[[3.35,-1.86,0.9],[3.35,-2.56,0.9]]},
+};
+function _gmRect(P, x0, x1, y0, y1, za, zb) {
+  const [ax, ay] = P(x0, y1, zb), [bx, by] = P(x1, y0, za);
+  return [ax, ay, bx - ax, by - ay];
+}
+function _gmGlow(x, y, r, rgb, a) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+}
+
+function _batArt(e, px, py, t) {
+  const L = GRIDMISC_LAYOUT.bat, W = TILE, H = TILE * 2, S = TILE / 40, TAU = Math.PI * 2;
+  const F = _cwFrame(L, px + W / 2, py + H / 2, 1, 1), { P, M } = F;
+  const cap = (e.def && e.def.capacity) || 0, pct = cap > 0 ? Math.max(0, Math.min(1, (e.charge || 0) / cap)) : 0;
+  const charging = !!e.charging, live = pct > 0.02;
+  const lc = pct > 0.5 ? [110, 240, 90] : pct > 0.2 ? [245, 205, 60] : [255, 105, 70], rgb = lc.join(',');
+  ctx.save();
+  if (live && Camera.zoom > 0.5) drawGlowHalo(px + W / 2, py + H * 0.45, TILE * 1.05, [[0, `rgb(${rgb})`], [1, 'transparent']], pct * 0.12 + (charging ? 0.07 + 0.04 * Math.sin(t * 4) : 0.02));
+  F.draw(CoalWaterArt.get('bat_base'));
+  // the cell bays fill front to back with charge
+  const n = L.bays.length, fillN = pct * n;
+  L.bays.forEach(([x0, x1, y0, y1, z], i) => {
+    const f = Math.max(0, Math.min(1, fillN - i)); if (f <= 0) return;
+    const [rx, ry, rw, rh] = _gmRect(P, x0, x1, y0, y1, z, z);
+    const g = ctx.createLinearGradient(rx, 0, rx + rw, 0);
+    const a = f < 1 ? 0.35 + 0.5 * f : 0.85;
+    g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(0.3, `rgba(${lc.map(v => Math.min(255, v + 60)).join(',')},${a})`); g.addColorStop(1, `rgba(${lc.map(v => Math.round(v * 0.6)).join(',')},${a})`);
+    ctx.fillStyle = g; ctx.fillRect(rx, ry, rw, rh);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(rx + 1, ry + 0.5, rw - 2, Math.max(0.6, rh * 0.15));
+  });
+  if (charging && live) {
+    const lit = Math.max(1, Math.ceil(fillN)), k = Math.floor((t * 4) % lit), b = L.bays[k];
+    const [rx, ry, rw, rh] = _gmRect(P, b[0], b[1], b[2], b[3], b[4], b[4]);
+    ctx.fillStyle = 'rgba(235,255,220,0.45)'; ctx.fillRect(rx, ry, rw, rh);
+  }
+  // LCD and status LEDs on the front
+  const [lx0, lx1, ly, lz0, lz1] = L.lcd, [ax, ay] = P(lx0, ly, lz1), [bx, by] = P(lx1, ly, lz0);
+  ctx.fillStyle = live ? `rgba(${rgb},0.95)` : '#2a3a2e'; ctx.font = `bold ${Math.max(3, (by - ay) * 0.95).toFixed(1)}px monospace`;
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText(`${Math.round(pct * 100)}%`, bx - 1, (ay + by) / 2);
+  if (charging && Math.sin(t * 8) > -0.3) { ctx.fillStyle = '#ffe060'; ctx.textAlign = 'left'; ctx.fillText('⚡', ax + 1, (ay + by) / 2); }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  [[live, '#60ff70', '#1d2a20'], [charging && Math.sin(t * 6) > 0, '#ffd040', '#2a2614'], [pct < 0.15 && Math.sin(t * 5) > 0, '#ff4a3a', '#2a1614']].forEach(([on, c, d], i) => {
+    const [x, y] = P(...L.leds[i]); ctx.fillStyle = on ? c : d; ctx.beginPath(); ctx.arc(x, y, 0.9 * S, 0, TAU); ctx.fill();
+  });
+  ctx.restore();
+  if (InspectionPanel.isOpen() && InspectionPanel.target === e) {
+    ctx.save(); ctx.strokeStyle = '#a0ff60'; ctx.lineWidth = 2 / Camera.zoom; ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 4); ctx.strokeRect(px + 1, py + 1, W - 2, H - 2); ctx.restore();
+  }
+}
+
+function _csArt(e, px, py, t, mk) {
+  const L = GRIDMISC_LAYOUT['cs' + mk], W = TILE * (e.width || (mk === 1 ? 4 : 6)), H = TILE * (e.height || (mk === 1 ? 4 : 5));
+  const F = _cwFrame(L, px + W / 2, py + H / 2, 1, 1), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const open = typeof CircuitSwitchSystem !== 'undefined' && CircuitSwitchSystem.isOpen(e);
+  const fine = Camera.zoom > 0.5, night = DayNight.darkness() > 0.3;
+  const live = open ? '#ff5038' : mk === 2 ? '#40e0ff' : '#50e070', liveRGB = open ? '255,80,56' : mk === 2 ? '64,224,255' : '80,224,112';
+  const pulse = 0.5 + 0.5 * Math.sin(t * (open ? 5 : 1.4));
+  ctx.save();
+  F.draw(CoalWaterArt.get(`cs${mk}_base`));
+  F.draw(CoalWaterArt.get(`cs${mk}_${open ? 'open' : 'closed'}`));
+  // current along the incoming bus while closed
+  if (!open && fine) {
+    const [a, b] = L.bus, [ax, ay] = P(...a), [bx, by] = P(...b);
+    for (let k = 0; k < 4; k++) {
+      const ph = ((t * 0.5) + k / 4) % 1, x = ax + (bx - ax) * ph, y = ay + (by - ay) * ph;
+      ctx.fillStyle = `rgba(255,236,170,${(0.85 - ph * 0.5).toFixed(3)})`; ctx.fillRect(x - 2 * S, y - 1.2 * S, 4 * S, 2.4 * S);
+    }
+  }
+  // the arc drawn out as it opens: from each jaw up toward its raised blade
+  if (open && fine) {
+    L.jaws.forEach((j, i) => {
+      if (Math.sin(t * 7 + i * 2.1) < 0.2) return;
+      const [jx, jy] = P(...j), [tx, ty] = P(...L.tipsOpen[i]);
+      ctx.strokeStyle = `rgba(190,225,255,${(0.3 + 0.55 * pulse).toFixed(3)})`; ctx.lineWidth = 1.1 * S; ctx.beginPath(); ctx.moveTo(jx, jy);
+      for (let q = 1; q < 5; q++) { const f = q / 5; ctx.lineTo(jx + (tx - jx) * f + Math.sin(t * 40 + q * 3 + i) * 2 * S, jy + (ty - jy) * f); }
+      ctx.lineTo(tx, ty); ctx.stroke();
+      if (night) _gmGlow((jx + tx) / 2, (jy + ty) / 2, 14 * S, '190,225,255', 0.25 * pulse);
+    });
+  }
+  // beacon(s)
+  for (const b of L.beacons) {
+    const [x, y] = P(...b);
+    ctx.globalAlpha = open ? 0.45 + 0.55 * pulse : 0.92; ctx.fillStyle = live; ctx.beginPath(); ctx.arc(x, y, 2.6 * S, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+    if (night) _gmGlow(x, y, 16 * S, liveRGB, open ? 0.25 + 0.25 * pulse : 0.3);
+  }
+  // operating handle up (open) or down (closed) its track
+  {
+    const [hx, hy, z0, z1] = L.handle, [x, y] = P(hx, hy, open ? z1 : z0);
+    ctx.fillStyle = open ? '#ff6a4a' : '#7ad88a'; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 0.8 * S;
+    ctx.beginPath(); ctx.roundRect(x - 2 * S, y - 3 * S, 4.5 * S, 6 * S, 1.2 * S); ctx.fill(); ctx.stroke();
+  }
+  // roster gauge on the roof
+  if (fine && typeof CircuitSwitchSystem !== 'undefined') {
+    const cap = (e.def && e.def.switchCapacity) || CircuitSwitchSystem.CAPACITY_W, used = CircuitSwitchSystem.assignedPeak(e);
+    const frac = Math.max(0, Math.min(1, cap > 0 ? used / cap : 0));
+    const [x0, x1, y, z, rows] = L.gauge, SEG = 10 * rows;
+    for (let r = 0; r < rows; r++) for (let k = 0; k < 10; k++) {
+      const idx = r * 10 + k, on = (idx + 0.5) / SEG <= frac;
+      const col = !on ? '#22262a' : idx >= SEG - 2 * rows ? '#ff8040' : idx >= SEG - 4 * rows ? '#ffc040' : (mk === 2 ? '#40e0ff' : '#40c0ff');
+      const sx0 = x0 + (x1 - x0) * k / 10, sx1 = x0 + (x1 - x0) * (k + 0.8) / 10, yy = y + r * 0.22;
+      const [ax, ay] = P(sx0, yy + 0.08, z), [bx, by] = P(sx1, yy - 0.08, z);
+      ctx.fillStyle = col; ctx.fillRect(ax, ay, bx - ax, Math.max(1, by - ay));
+    }
+  }
+  if (fine) {
+    const [sx, sy, sz] = L.status, [x, y] = P(sx, sy, sz);
+    ctx.font = `bold ${Math.max(6, 9 * S)}px monospace`; ctx.textAlign = 'center';
+    ctx.lineWidth = 2.4; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(open ? 'OPEN' : 'CLOSED', x, Math.min(y, py + H - 4));
+    ctx.fillStyle = open ? 'rgba(255,150,120,0.95)' : (mk === 2 ? 'rgba(140,230,255,0.95)' : 'rgba(150,235,175,0.92)');
+    ctx.fillText(open ? 'OPEN' : 'CLOSED', x, Math.min(y, py + H - 4)); ctx.textAlign = 'left';
+  }
+  ctx.restore();
+}
+
+// Supply / demand history bars with a net trace, inside (x, y, w, h).
+function _monScreen1(e, x, y, w, h, t, on) {
+  ctx.fillStyle = '#02100c'; ctx.fillRect(x, y, w, h);
+  if (!on) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.strokeStyle = 'rgba(64,255,200,0.10)'; ctx.lineWidth = 0.5;
+  for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(x, y + h * i / 4); ctx.lineTo(x + w, y + h * i / 4); ctx.stroke(); }
+  const gen = PowerNetwork.stats.totalGenerated, con = PowerNetwork.stats.totalConsumed;
+  e._monHist = e._monHist || []; e._monHistT = e._monHistT || 0;
+  if (t - e._monHistT > 0.4) { e._monHistT = t; e._monHist.push({ gen, con }); if (e._monHist.length > 10) e._monHist.shift(); }
+  const hist = e._monHist.length ? e._monHist : [{ gen, con }];
+  const maxV = Math.max(1, ...hist.map(q => Math.max(q.gen, q.con))), bh = h - 3, slot = w / hist.length, bw = Math.max(1, slot / 2 - 0.8);
+  hist.forEach((q, i) => {
+    const sx = x + i * slot, gh = (q.gen / maxV) * bh, ch = (q.con / maxV) * bh;
+    ctx.fillStyle = `rgba(0,200,255,${(0.55 + 0.2 * Math.sin(t * 4)).toFixed(3)})`; ctx.fillRect(sx, y + h - 1.5 - gh, bw, gh);
+    ctx.fillStyle = `rgba(255,180,40,${(0.55 + 0.2 * Math.sin(t * 4 + 1)).toFixed(3)})`; ctx.fillRect(sx + bw + 0.8, y + h - 1.5 - ch, bw, ch);
+  });
+  if (hist.length > 1) {
+    ctx.strokeStyle = 'rgba(200,255,240,0.85)'; ctx.lineWidth = 0.8; ctx.beginPath();
+    hist.forEach((q, i) => { const lx = x + i * slot + slot / 2, ly = y + h - 1.5 - ((q.gen - q.con + maxV) / (2 * maxV)) * bh; if (i) ctx.lineTo(lx, ly); else ctx.moveTo(lx, ly); });
+    ctx.stroke();
+  }
+  const scan = (t * 0.7) % 1; ctx.fillStyle = 'rgba(64,255,200,0.18)'; ctx.fillRect(x + w * scan - 3, y, 4, h);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'; for (let i = 0; i < h; i += 2.5) ctx.fillRect(x, y + i, w, 0.8);
+  ctx.restore();
+}
+function _monDish(P, d, t, on, ph) {
+  if (typeof RS_LAYOUT === 'undefined') return;
+  const [x, y, z, r] = d, [ox, oy] = P(x, y, z), az = ph + (on ? t * 0.35 : 0);
+  _cwFrame(RS_LAYOUT.domeFrame, ox, oy, r, r).draw(CoalWaterArt.get('rsdish_' + _rsIdx(az)));
+}
+function _mon1Art(e, px, py, t) {
+  const L = GRIDMISC_LAYOUT.mon1, W = TILE * 2, H = TILE * 2, S = TILE / 40, TAU = Math.PI * 2;
+  const F = _cwFrame(L, px + W / 2, py + H / 2, 1, 1), { P } = F, on = e.powered;
+  ctx.save();
+  F.draw(CoalWaterArt.get('mon1_base'));
+  const [x0, x1, y0, y1, za, zb] = L.screen, [rx, ry, rw, rh] = _gmRect(P, x0, x1, y0, y1, za, zb);
+  _monScreen1(e, rx, ry, rw, rh, t, on);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + rw * 0.4, ry); ctx.lineTo(rx, ry + rh * 0.6); ctx.closePath(); ctx.fill();
+  _monDish(P, L.dish, t, on, 0.6);
+  const [bx, by] = P(...L.beacon), blink = on && Math.sin(t * 3) > 0.2;
+  ctx.fillStyle = blink ? '#ff3020' : '#501810'; ctx.beginPath(); ctx.arc(bx, by, 1.6 * S, 0, TAU); ctx.fill();
+  if (on && Camera.zoom > 0.5) { ctx.strokeStyle = 'rgba(64,255,200,0.4)'; ctx.lineWidth = 0.7 * S; for (let q = 0; q < 2; q++) { const f = (t * 1.2 + q * 0.5) % 1; ctx.globalAlpha = 1 - f; ctx.beginPath(); ctx.arc(bx, by, (2 + f * 9) * S, 0, TAU); ctx.stroke(); } ctx.globalAlpha = 1; }
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+function _mon2Art(e, px, py, t) {
+  const L = GRIDMISC_LAYOUT.mon2, W = TILE * 4, H = TILE * 4, S = TILE / 40, TAU = Math.PI * 2, teal = '64,255,204';
+  const F = _cwFrame(L, px + W / 2, py + H / 2, 1, 1), { P, M } = F, on = !!e.powered, dark = DayNight.darkness(), night = dark > 0.3;
+  const s = PowerNetwork.stats, detail = Camera.zoom > 0.35;
+  ctx.save();
+  F.draw(CoalWaterArt.get('mon2_base'));
+  // the glazed front lit from inside
+  if (on) { const [x0, x1, y, z0, z1] = L.windows, [ax, ay] = P(x0, y, z1), [bx, by] = P(x1, y, z0); ctx.fillStyle = night ? 'rgba(170,255,232,0.55)' : 'rgba(120,186,196,0.25)'; ctx.fillRect(ax, ay, bx - ax, by - ay); }
+  // the video wall: supply (filled) and demand traces, bars beside them
+  {
+    const [x0, x1, y0, y1, za, zb] = L.wall, [rx, ry, rw, rh] = _gmRect(P, x0, x1, y0, y1, za, zb);
+    ctx.fillStyle = '#03110d'; ctx.fillRect(rx, ry, rw, rh);
+    if (on) {
+      const g = s.totalGenerated || 0, c = s.totalConsumed || 0;
+      e._monHist = e._monHist || [];
+      if (!e._monHistT || t - e._monHistT > 0.5 || t < e._monHistT) { e._monHistT = t; e._monHist.push([g, c]); if (e._monHist.length > 32) e._monHist.shift(); }
+      let top = 1; for (const [a, b] of e._monHist) top = Math.max(top, a, b); top *= 1.1;
+      const pw = rw * 0.8, hist = e._monHist, X = k => rx + 2 + k * (pw - 4) / 31, Y = v => ry + rh - 2 - (rh - 4) * v / top;
+      ctx.save(); ctx.beginPath(); ctx.rect(rx, ry, pw, rh); ctx.clip();
+      ctx.strokeStyle = `rgba(${teal},0.13)`; ctx.lineWidth = 0.6; ctx.beginPath();
+      for (let k = 1; k < 4; k++) { ctx.moveTo(rx, ry + rh * k / 4); ctx.lineTo(rx + pw, ry + rh * k / 4); }
+      for (let k = 1; k < 6; k++) { ctx.moveTo(rx + pw * k / 6, ry); ctx.lineTo(rx + pw * k / 6, ry + rh); } ctx.stroke();
+      if (hist.length > 1) {
+        ctx.fillStyle = 'rgba(240,192,64,0.16)'; ctx.beginPath(); ctx.moveTo(X(0), ry + rh); hist.forEach((v, k) => ctx.lineTo(X(k), Y(v[0]))); ctx.lineTo(X(hist.length - 1), ry + rh); ctx.closePath(); ctx.fill();
+        for (const [idx, col] of [[0, '#f0c040'], [1, '#ff9070']]) { ctx.strokeStyle = col; ctx.lineWidth = 1.4 * S; ctx.beginPath(); hist.forEach((v, k) => { if (k) ctx.lineTo(X(k), Y(v[idx])); else ctx.moveTo(X(k), Y(v[idx])); }); ctx.stroke(); }
+      }
+      ctx.restore();
+      const bw = rw * 0.07;
+      for (const [i, v, col] of [[0, g, '#f0c040'], [1, c, '#ff9070']]) {
+        const bx = rx + pw + bw * 0.4 + i * bw * 1.3, h = (rh - 4) * Math.min(1, v / top);
+        ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(bx, ry + 2, bw, rh - 4); ctx.fillStyle = col; ctx.fillRect(bx, ry + rh - 2 - h, bw, h);
+      }
+      if (g < c - 0.05 && Math.sin(t * 6) > 0) { ctx.fillStyle = 'rgba(255,60,40,0.22)'; ctx.fillRect(rx, ry, rw, rh); }
+      _gmGlow(rx + rw / 2, ry + rh / 2, rw * 0.6, teal, night ? 0.18 : 0.06);
+    }
+  }
+  // the status rack: one module per network, lamp and load bar
+  {
+    const [x0, x1, y0, y1, z] = L.rack, [rx, ry, rw, rh] = _gmRect(P, x0, x1, y0, y1, z, z);
+    const order = typeof _gridNetworkOrder === 'function' ? _gridNetworkOrder(s) : [], mw = rw / 8;
+    for (let k = 0; k < 8; k++) {
+      const id = order[k], mx = rx + k * mw + mw * 0.12, mwi = mw * 0.76;
+      ctx.fillStyle = '#10201e'; ctx.fillRect(mx, ry + rh * 0.08, mwi, rh * 0.84);
+      let col = '#1c2626', load = 0, short = false;
+      if (on && id !== undefined) {
+        const gs = (s.genSources || []).find(n => n.netId === id), cs = (s.conSources || []).find(n => n.netId === id);
+        const sup = gs ? gs.supply : 0, dem = cs ? cs.demand : 0;
+        short = sup < dem - 0.05; load = sup > 0 ? Math.min(1, dem / sup) : (dem > 0 ? 1 : 0);
+        col = short ? (Math.sin(t * 6) > 0 ? '#ff5040' : '#601810') : '#50e890';
+      }
+      ctx.fillStyle = col; ctx.beginPath(); ctx.arc(mx + mwi / 2, ry + rh * 0.22, Math.min(mwi * 0.3, 2.2 * S), 0, TAU); ctx.fill();
+      if (detail && load > 0) { const bh = rh * 0.5 * load; ctx.fillStyle = short ? '#ff6a50' : load > 0.85 ? '#ffd040' : `rgba(${teal},0.8)`; ctx.fillRect(mx + mwi * 0.3, ry + rh * 0.86 - bh, mwi * 0.4, bh); }
+    }
+  }
+  // rooftop plant fans, the dish, the mast beacon, cabinet LEDs
+  if (detail) for (const [x, y, z, r] of L.fans) {
+    const [fx, fy] = P(x, y, z), a = on ? t * 6 + x * 3 : x, rr = r * M;
+    ctx.strokeStyle = 'rgba(200,210,210,0.8)'; ctx.lineWidth = 1 * S; ctx.beginPath();
+    for (let b = 0; b < 2; b++) { const q = a + b * Math.PI / 2; ctx.moveTo(fx - Math.cos(q) * rr, fy - Math.sin(q) * rr); ctx.lineTo(fx + Math.cos(q) * rr, fy + Math.sin(q) * rr); }
+    ctx.stroke();
+  }
+  _monDish(P, L.dish, t, on, 0.6);
+  { const [bx, by] = P(...L.beacon), blink = on && Math.sin(t * 2.6) > 0.2; ctx.fillStyle = blink ? '#ff3020' : '#501810'; ctx.beginPath(); ctx.arc(bx, by, 1.8 * S, 0, TAU); ctx.fill(); if (blink && night) _gmGlow(bx, by, 10 * S, '255,60,40', 0.3); }
+  L.cabLeds.forEach((p, i) => { const [x, y] = P(...p); ctx.fillStyle = on ? (Math.sin(t * 4 + i * 2) > 0 ? '#50e890' : '#1e5a3a') : '#1c2626'; ctx.beginPath(); ctx.arc(x, y, 1 * S, 0, TAU); ctx.fill(); });
+  ctx.restore();
+  drawNetworkHighlight(e, px, py, t);
+}
+
+function _gmOK(e, kind, w, h) {
+  return (e.width || w) === w && (e.height || h) === h && typeof CoalWaterArt !== 'undefined' && CoalWaterArt.ready(kind);
+}
+
+/* ── Lightning Rods MK1-MK3, rendered ───────────────────────────────────
+   Built in Blender (scripts/render_rods.py). Live, as the painted rods:
+   charge (storm overhead, surge still flowing, or the 2.5 s flash after an
+   interception) lights the tip corona, the toroids, arcs across the crown,
+   the MK3's plasma column with pulses climbing it, its capacitor heads and
+   beacons; a strike flares the whole spire. */
+const ROD_LAYOUT = {
+  rod1: {"frame":12.5,"off":1.2,"tip":[0.0,-1.6,15.3],"box":[1.6,-3.53,0.42],"mast":[[0.0,-1.6,0.6],[0.0,-1.6,13.0]]},
+  rod2: {"frame":15.5,"off":1.6,"strip":[-0.55,0.55,-3.83,0.55],"toroid":[0.0,-2.2,14.6,1.3],"spikes":[[0.0,-1.5,18.0],[-0.606,-2.55,18.0],[0.606,-2.55,18.0]],"tip":[0.0,-2.2,18.9],"mast":[[0.0,-2.2,1.3],[0.0,-2.2,16.0]]},
+  rod3: {"frame":20.0,"off":2.6,"caps":[[-3.9,-3.9,1.75],[-3.9,-3.04,1.75],[-3.9,-2.18,1.75],[-3.9,-1.32,1.75],[3.9,-3.9,1.75],[3.9,-3.04,1.75],[3.9,-2.18,1.75],[3.9,-1.32,1.75]],"platform":[0.0,-2.6,11.56,1.5],"beacons":[[-1.45,-2.6,12.51],[1.45,-2.6,12.51]],"column":[[0.0,-2.6,0.6],[0.0,-2.6,19.5]],"toroids":[[0.0,-2.6,13.91,1.4],[0.0,-2.6,17.9,1.4]],"spikes":[[0.742,-1.858,21.5],[-0.742,-1.858,21.5],[-0.742,-3.342,21.5],[0.742,-3.342,21.5]],"sphere":[0.0,-2.6,20.1,0.65],"tip":[0.0,-2.6,22.9]},
+};
+function _rodCharge(e, surgeMax, idle) {
+  const stormy = typeof LightningSystem !== 'undefined' && LightningSystem.isActive();
+  const now = performance.now(), hot = !!(e._rodGlowUntil && now < e._rodGlowUntil);
+  const hotK = hot ? Math.max(0, (e._rodGlowUntil - now) / 2500) : 0;
+  const surge = typeof LightningDamageSystem !== 'undefined' ? LightningDamageSystem.surgeWatts(e) / (e.def?.surgeMax || surgeMax) : 0;
+  return { hot, hotK, stormy, surge, charge: hot ? 1 : Math.max(surge, stormy ? idle + 0.16 : idle) };
+}
+function _rodGlow(x, y, r, rgb, a) {
+  if (a <= 0.01) return;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(${rgb},${Math.min(1, a).toFixed(3)})`); g.addColorStop(1, `rgba(${rgb},0)`);
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+function _rodRing(P, ring, rgb, a, w) {
+  const [x, y, z, R] = ring; ctx.strokeStyle = `rgba(${rgb},${Math.min(1, a).toFixed(3)})`; ctx.lineWidth = w; ctx.beginPath();
+  for (let i = 0; i <= 48; i++) { const q = i / 48 * Math.PI * 2, [sx, sy] = P(x + Math.cos(q) * R, y + Math.sin(q) * R, z); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy); }
+  ctx.stroke();
+}
+function _rodArt(e, px, py, t, mk) {
+  const L = ROD_LAYOUT['rod' + mk], dims = [0, [3, 4], [4, 5], [5, 6]][mk];
+  const W = (e.width || dims[0]) * TILE, H = (e.height || dims[1]) * TILE, S = TILE / 40;
+  const F = _cwFrame(L, px + W / 2, py + H / 2, 1, 1), { P, M } = F;
+  const c = _rodCharge(e, [0, 18, 42, 130][mk], 0.12), { hot, hotK, charge } = c;
+  const pulse = 0.5 + 0.5 * Math.sin(t * 3.1), fast = 0.5 + 0.5 * Math.sin(t * 13);
+  const detail = Camera.zoom > 0.45, rgb = mk === 3 ? '200,180,255' : '170,230,255';
+  ctx.save();
+  F.draw(CoalWaterArt.get(`rod${mk}_base`));
+  ctx.globalCompositeOperation = 'lighter';
+  // a strike, or a surge still draining, lights the whole mast
+  if (hot || c.surge > 0.05) {
+    const [a, b] = L.mast || L.column, [ax, ay] = P(...a), [bx, by] = P(...b), k = hot ? 0.55 * (0.5 + 0.5 * hotK) : 0.25 * c.surge;
+    ctx.strokeStyle = `rgba(${rgb},${k.toFixed(3)})`; ctx.lineWidth = (mk === 3 ? 30 : 20) * S; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  }
+  if (mk === 2 || mk === 3) {
+    for (const ring of (L.toroids || [L.toroid])) {                     // the toroids charging
+      _rodRing(P, ring, rgb, 0.15 + 0.55 * charge * (0.7 + 0.3 * pulse), 3.2 * S);
+      if (charge > 0.2) _rodRing(P, ring, '255,255,255', 0.3 * charge * fast, 1.1 * S);
+    }
+  }
+  if (mk === 3) {
+    // the plasma column, pulses climbing it faster with charge
+    const [a, b] = L.column, [ax, ay] = P(...a), [bx, by] = P(...b), ci = 0.35 + 0.65 * charge;
+    ctx.strokeStyle = `rgba(${rgb},${(0.35 * ci).toFixed(3)})`; ctx.lineWidth = 7 * S; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,255,255,${(0.25 * ci).toFixed(3)})`; ctx.lineWidth = 1.6 * S; ctx.stroke();
+    const sp = 0.25 + charge * 1.1;
+    for (let q = 0; q < 4; q++) {
+      const f = (t * sp + q / 4) % 1, x = ax + (bx - ax) * f, y = ay + (by - ay) * f;
+      _rodGlow(x, y, 6 * S, rgb, 0.7 * ci * Math.sin(f * Math.PI));
+    }
+    for (const p of L.caps) { const [x, y] = P(...p); _rodGlow(x, y, 4 * S, rgb, 0.2 + 0.6 * charge * pulse); }
+  }
+  // arcs across the crown
+  if (detail && L.spikes && charge > 0.3 && fast > 0.45) {
+    const hub = L.sphere ? L.sphere.slice(0, 3) : L.tip;
+    ctx.globalCompositeOperation = 'source-over';
+    L.spikes.forEach((s, i) => {
+      if (Math.sin(t * 7 + i * 2.3) < 0.1) return;
+      const next = L.spikes[(i + 1) % L.spikes.length];
+      ctx.save(); ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(${rgb},0.5)`; ctx.lineWidth = 2.4 * S; _gsJag(P, s, i % 2 ? hub : next, i + mk * 5, t, 4 * S); ctx.stroke();
+      ctx.strokeStyle = 'rgba(245,250,255,0.95)'; ctx.lineWidth = 0.8 * S; _gsJag(P, s, i % 2 ? hub : next, i + mk * 5, t, 4 * S); ctx.stroke();
+      ctx.restore();
+    });
+    ctx.globalCompositeOperation = 'lighter';
+  }
+  // corona at the tip: always a faint bead, blooming with charge, flaring on a strike
+  {
+    const [tx, ty] = P(...L.tip);
+    const glow = hot ? 1 : c.surge > 0.01 ? Math.min(1, 0.3 + c.surge * (0.6 + 0.4 * pulse)) : c.stormy ? 0.35 + 0.3 * pulse : 0.18;
+    const r = TILE * (hot ? [0, 1.1, 1.6, 2.2][mk] * (0.6 + 0.4 * (hotK || 1)) : [0, 0.5, 0.55 + charge * 0.9, 0.6 + charge * 1.1][mk]);
+    _rodGlow(tx, ty, r, rgb, 0.85 * glow);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = hot ? '#ffffff' : (mk === 3 ? '#e8d8ff' : '#e0a060'); ctx.beginPath(); ctx.arc(tx, ty, (hot ? 2.6 : 1.6) * S, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // status: the ground box LED (MK1), the bunker strip (MK2), platform beacons (MK3)
+  if (L.box) { const [x, y] = P(...L.box); ctx.fillStyle = charge > 0.15 ? `rgba(${rgb},${(0.5 + 0.5 * pulse).toFixed(3)})` : '#203038'; ctx.fillRect(x - 2 * S, y - 1 * S, 4 * S, 2 * S); }
+  if (L.strip) { const [x0, x1, y, z] = L.strip, [ax, ay] = P(x0, y, z), [bx] = P(x1, y, z); ctx.fillStyle = `rgba(120,220,255,${(0.25 + 0.6 * charge * (0.6 + 0.4 * pulse)).toFixed(3)})`; ctx.fillRect(ax, ay - 1.5 * S, bx - ax, 3 * S); }
+  if (L.beacons) L.beacons.forEach((p, i) => { const [x, y] = P(...p), on = Math.sin(t * 3 + i * Math.PI) > 0; ctx.fillStyle = on ? '#ff3020' : '#501810'; ctx.beginPath(); ctx.arc(x, y, 1.6 * S, 0, Math.PI * 2); ctx.fill(); });
+  ctx.restore();
+}
+
+
+/* ── Amenities, rendered (scripts/render_amenities.py) ──
+   Street Lamp and Security Camera are real-size posts drawn at K = 0.5 (like
+   the power poles); the camera head is its own sprite at 9 pan angles
+   (am_camh_k). EV Charging Station: plaza, bays, pillars, solar canopy and
+   equipment yard (am_ev) with top-down cars in six paints (am_car_k) driven
+   in and out live. Cell Tower (am_cell) and Fiber Hub (am_fiber; its dishes
+   are the survey dish sprites svdish_k). Live: light pools and lenses, the
+   camera's pan, REC LED, IR ring and view cone, charge cables, pillar
+   screens and rings, the kerb and fascia LEDs, battery buffer LEDs, the
+   totem, the aviation light, sector pulses, shelter LEDs, A/C and chiller
+   fans, skylights, the emblem, sign, trench pulses, splice LEDs, generator
+   smoke, the uplink board and pad lights. Default sizes only; ghosts and
+   legacy sizes keep the painted art. */
+const AM_LAYOUT = {"lamp":{"lens":[1.78,-0.7,6.36],"pool":[1.6,-0.9,0],"rect":[-0.8,5.256,-4.688,3.926]},"cam":{"jled":[0.2,-0.8,1.66],"pivot":[0.65,-0.7,3.88],"rect":[-0.75,2.88,-3.479,2.483],"heads":[{"lens":[-0.277,-0.16,-0.302],"rec":[0.01,0.006,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[-0.226,-0.226,-0.302],"rec":[0.008,0.008,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[-0.16,-0.277,-0.302],"rec":[0.006,0.01,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[-0.083,-0.309,-0.302],"rec":[0.003,0.011,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[-0.0,-0.32,-0.302],"rec":[0.0,0.011,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[0.083,-0.309,-0.302],"rec":[-0.003,0.011,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[0.16,-0.277,-0.302],"rec":[-0.006,0.01,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[0.226,-0.226,-0.302],"rec":[-0.008,0.008,-0.082],"rect":[-0.85,0.85,-0.85,1.023]},{"lens":[0.277,-0.16,-0.302],"rec":[-0.01,0.006,-0.082],"rect":[-0.85,0.85,-0.85,1.023]}]},"ev":{"bays":[[-3.819,-1.55],[-2.056,-1.55],[-0.294,-1.55],[1.469,-1.55]],"kerb":[-4.65,2.3,-3.55,0.18],"pillars":[{"screen":[-3.969,-3.669,0.79,1.34,1.56],"ring":[-3.819,0.78,1.0],"plug":[-3.519,0.7,0.42]},{"screen":[-2.206,-1.906,0.79,1.34,1.56],"ring":[-2.056,0.78,1.0],"plug":[-1.756,0.7,0.42]},{"screen":[-0.444,-0.144,0.79,1.34,1.56],"ring":[-0.294,0.78,1.0],"plug":[0.006,0.7,0.42]},{"screen":[1.319,1.619,0.79,1.34,1.56],"ring":[1.469,0.78,1.0],"plug":[1.769,0.7,0.42]}],"fascia":[-4.7,2.35,1.32,2.83],"sign":[-1.175,1.33,3.0],"underlight":[-1.175,0.95,0.3],"batt":[3.25,4.25,-1.28,0.4,1.6],"totem":[4.55,-2.99,2.35],"frame":[-5,5,-4,4],"rect":[-5.3,6.589,-5.896,6.205],"cars":[{"port":[0.7,1.55,0.8],"rect":[-1.3,1.866,-3.151,3.287]},{"port":[0.7,1.55,0.8],"rect":[-1.3,1.866,-3.151,3.287]},{"port":[0.7,1.55,0.8],"rect":[-1.3,1.866,-3.151,3.287]},{"port":[0.7,1.55,0.8],"rect":[-1.3,1.866,-3.151,3.287]},{"port":[0.7,1.55,0.8],"rect":[-1.3,1.866,-3.151,3.287]},{"port":[0.7,1.55,0.8],"rect":[-1.3,1.866,-3.151,3.287]}]},"cell":{"doorLight":[-2.7,-2.99,2.1],"leds":[[-2.05,-2.935,2.0],[-1.85,-2.935,2.0],[-1.65,-2.935,2.0],[-1.45,-2.935,2.0]],"acFan":[-1.85,-3.45,1.52,0.26],"batt":[2.12,2.58,-2.83,0.82,1.08],"sectors":[[0.0,-3.13,10.15,-1.571],[1.152,-1.135,10.15,0.524],[-1.152,-1.135,10.15,2.618]],"avLight":[0.0,-1.8,10.23],"frame":[-4,4,-4,4],"rect":[-4.3,8.753,-9.813,10.882]},"fiber":{"trench":{"y":[-1.95,0.145],"x":[1.2,0.145],"hub":[1.2,-1.95,0.145]},"glaze":[-4.2,1.0,-0.6,2.2,2.8],"signboard":[-4.05,-1.05,-0.61,1.07,1.93],"entry":[-0.1,-0.61,1.0],"fans":[[-3.2,3.25,4.82,0.42],[-1.55,3.25,4.82,0.42],[0.1,3.25,4.82,0.42]],"skylights":[[-3.5,1.85,3.59],[-2.6,1.85,3.59],[-1.7,1.85,3.59],[-0.8,1.85,3.59]],"emblem":[-1.7,0.5,3.49],"dishes":[[3.0,3.2,0.9,0.85],[3.0,1.0,0.9,0.85]],"exhaust":[3.85,-0.45,2.15],"genLed":[3.5,-1.33,1.2],"cabs":[[[-3.97,-3.3,0.95],[-3.97,-3.3,0.75],[-3.97,-3.3,0.55]],[[-2.97,-3.3,0.95],[-2.97,-3.3,0.75],[-2.97,-3.3,0.55]],[[-1.97,-3.3,0.95],[-1.97,-3.3,0.75],[-1.97,-3.3,0.55]],[[-0.97,-3.3,0.95],[-0.97,-3.3,0.75],[-0.97,-3.3,0.55]],[[0.03,-3.3,0.95],[0.03,-3.3,0.75],[0.03,-3.3,0.55]]],"board":[[1.9,-4.42,0.36],[4.3,-4.42,0.36],[1.9,-3.641,0.81]],"lights":[[-4.3,-4.3,0.88],[4.3,4.3,0.88],[4.3,-4.3,0.88],[1.6,4.3,0.88]],"frame":[-5,5,-5,5],"rect":[-5.3,7.097,-7.525,7.956]}};
+const _AM_K = 0.5;
+function _amOK(e, key, w, h, imgs) {
+  if (e._ghost || !AM_LAYOUT || !AM_LAYOUT[key] || (e.width || w) !== w || (e.height || h) !== h) return false;
+  if (typeof AdvNukeArt === 'undefined' || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  for (const n of imgs) if (!AdvNukeArt.get(n)) return false;
+  return true;
+}
+// Draw a sprite authored in metres at scale k (k = 1 is _anFrame's own draw).
+function _amDraw(F, im, rect, k, ox = 0, oy = 0) {
+  if (!im) return;
+  const [x0, x1, v0, v1] = rect, [cx, cy] = F.P(0, 0, 0), M = F.M;
+  ctx.drawImage(im, cx + (x0 * k + ox) * M, cy - (v1 * k + oy) * M, (x1 - x0) * k * M, (v1 - v0) * k * M);
+}
+const _amPK = (F, k) => (x, y, z = 0) => F.P(x * k, y * k, z * k);
+// LED lettering lit on a rendered board ([bottom-left, bottom-right, top-left]).
+function _amBoardText(F, pts, lines, on) {
+  const [b0, b1, b2] = pts.map(p => F.P(...p)), x = b0[0], y = b2[1], w = b1[0] - b0[0], h = b0[1] - b2[1];
+  if (!on || w < 4) return;
+  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); ctx.globalCompositeOperation = 'lighter';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const n = lines.length, tot = lines.reduce((s, l) => s + l[2], 0);
+  let yy = y + h * 0.08;
+  lines.forEach(([txt, rgb, wt]) => {
+    const lh = h * 0.84 * wt / tot; let fs = lh * 0.8;
+    ctx.font = `bold ${fs.toFixed(1)}px Courier New`;
+    const tw = ctx.measureText(txt).width; if (tw > w * 0.9) { fs *= w * 0.9 / tw; ctx.font = `bold ${fs.toFixed(1)}px Courier New`; }
+    ctx.fillStyle = `rgba(${rgb},0.92)`; ctx.fillText(txt, x + w / 2, yy + lh / 2); yy += lh;
+  });
+  ctx.globalCompositeOperation = 'source-over';
+  if (h > 10) { ctx.fillStyle = 'rgba(0,0,0,0.28)'; const st = Math.max(1, h / 16); for (let q = y; q < y + h; q += st) ctx.fillRect(x, q, w, st * 0.35); }
+  ctx.restore();
+}
+function _amLed(x, y, r, rgb, a) { if (a > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(x, y, r, rgb, a); ctx.restore(); } }
+
+// ── Street Lamp ──
+function _amLamp(e, px, py, t) {
+  const L = AM_LAYOUT.lamp, F = _anFrame(e, px, py), P = _amPK(F, _AM_K), M = F.M;
+  const isOn = e.powered && DemandCurves.get(T.LAMP, null, DayNight.hour()) > 0, dark = DayNight.darkness(), detail = Camera.zoom > 0.5;
+  const [lx, ly] = P(...L.lens), [gx, gy] = P(...L.pool);
+  if (isOn && detail) {
+    const s = 0.3 + 0.7 * dark;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const pool = ctx.createRadialGradient(gx, gy, 0, gx, gy, 1.3 * M);
+    pool.addColorStop(0, `rgba(255,214,150,${(0.5 * s).toFixed(3)})`); pool.addColorStop(0.55, `rgba(255,200,130,${(0.18 * s).toFixed(3)})`); pool.addColorStop(1, 'rgba(255,200,130,0)');
+    ctx.fillStyle = pool; ctx.beginPath(); ctx.ellipse(gx, gy, 1.3 * M, 0.75 * M, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  _amDraw(F, AdvNukeArt.get('am_lamp'), L.rect, _AM_K);
+  if (isOn && detail) {
+    const s = 0.3 + 0.7 * dark;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const cone = ctx.createLinearGradient(0, ly, 0, gy);
+    cone.addColorStop(0, `rgba(255,224,160,${(0.24 * s).toFixed(3)})`); cone.addColorStop(1, 'rgba(255,224,160,0)');
+    ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(lx - 0.12 * M, ly); ctx.lineTo(lx + 0.12 * M, ly); ctx.lineTo(gx + 0.9 * M, gy); ctx.lineTo(gx - 1.0 * M, gy); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    drawGlowHalo(lx, ly, 0.45 * M, [[0, '#fff2c8'], [1, 'transparent']], 0.6 + 0.1 * Math.sin(t * 1.5));
+    ctx.fillStyle = 'rgba(255,246,210,0.95)'; ctx.beginPath(); ctx.ellipse(lx, ly, 0.16 * M, 0.05 * M, 0, 0, Math.PI * 2); ctx.fill();
+    if (dark > 0.5) { ctx.fillStyle = 'rgba(240,230,210,0.85)';
+      for (let k = 0; k < 2; k++) { const a = t * (3.1 + k * 1.3) + k * 2.1 + (e.col || 0);
+        ctx.beginPath(); ctx.arc(lx + Math.cos(a) * 0.22 * M, ly + (0.15 + Math.sin(a * 1.4) * 0.1) * M, Math.max(0.6, 0.025 * M), 0, Math.PI * 2); ctx.fill(); } }
+  }
+}
+
+// ── Security Camera ──
+function _amCam(e, px, py, t) {
+  const L = AM_LAYOUT.cam, F = _anFrame(e, px, py), P = _amPK(F, _AM_K), M = F.M;
+  const on = !!e.powered, dark = DayNight.darkness(), detail = Camera.zoom > 0.5;
+  const phase = (e.col || 0) * 1.7 + (e.row || 0) * 0.9, sweep = Math.sin(t * 0.45 + phase);
+  const pan = on ? Math.sign(sweep) * Math.pow(Math.abs(sweep), 0.6) : 0.15;
+  const N = L.heads.length, k = Math.max(0, Math.min(N - 1, Math.round((pan + 1) / 2 * (N - 1)))), H = L.heads[k];
+  const [pvx, pvy, pvz] = L.pivot, lens = [pvx + H.lens[0], pvy + H.lens[1], pvz + H.lens[2]];
+  const [lx, ly] = P(...lens);
+  if (on && detail) {   // view cone sweeping the ground
+    const s = 0.35 + 0.65 * dark, dx = H.lens[0], dy = H.lens[1], d = Math.hypot(dx, dy) || 1;
+    const [gx, gy] = P(pvx + dx / d * 3.2, pvy + dy / d * 3.2, 0);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const cone = ctx.createLinearGradient(lx, ly, gx, gy);
+    cone.addColorStop(0, `rgba(170,200,255,${(0.2 * s).toFixed(3)})`); cone.addColorStop(1, `rgba(170,200,255,${(0.05 * s).toFixed(3)})`);
+    ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(lx - 0.04 * M, ly - 0.04 * M); ctx.lineTo(lx + 0.04 * M, ly + 0.03 * M);
+    ctx.lineTo(gx + 0.45 * M, gy); ctx.lineTo(gx - 0.45 * M, gy); ctx.closePath(); ctx.fill();
+    const spot = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.5 * M);
+    spot.addColorStop(0, `rgba(180,210,255,${(0.22 * s).toFixed(3)})`); spot.addColorStop(1, 'rgba(180,210,255,0)');
+    ctx.fillStyle = spot; ctx.beginPath(); ctx.ellipse(gx, gy, 0.5 * M, 0.17 * M, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  _amDraw(F, AdvNukeArt.get('am_cam'), L.rect, _AM_K);
+  _amDraw(F, AdvNukeArt.get('am_camh_' + k), H.rect, _AM_K, pvx * _AM_K, (pvy + pvz * Math.tan(Math.PI / 6)) * _AM_K);
+  if (!detail) return;
+  { const [jx, jy] = P(...L.jled); _amLed(jx, jy, 0.05 * M, on ? '70,224,122' : '60,60,60', on ? 0.9 : 0); }
+  if (on) {
+    const [rx, ry] = P(pvx + H.rec[0], pvy + H.rec[1], pvz + H.rec[2]), rec = Math.sin(t * 3.2 + phase) > -0.3;
+    _amLed(rx, ry, 0.07 * M, '255,58,48', rec ? 0.95 : 0);
+    if (dark > 0.35) _amLed(lx, ly, 0.08 * M, '255,60,50', 0.3 + 0.4 * dark);
+    else { ctx.fillStyle = 'rgba(200,230,255,0.7)'; ctx.beginPath(); ctx.arc(lx, ly, Math.max(0.5, 0.015 * M), 0, Math.PI * 2); ctx.fill(); }
+  }
+}
+
+// ── EV Charging Station ──
+function _amEv(e, px, py, t) {
+  const L = AM_LAYOUT.ev, F = _anFrame(e, px, py), { P, M } = F;
+  const on = !!e.powered, detail = Camera.zoom > 0.5, dark = DayNight.darkness(), TN = Math.tan(Math.PI / 6);
+  const seed = (e.col * 73856093) ^ (e.row * 19349663);
+  const rnd = (n) => { const x = Math.sin(seed * 0.0001 + n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+  F.draw(AdvNukeArt.get('am_ev'), L.rect);
+  const CYCLE = 38, CK = 0.85, nc = L.cars.length, charging = [];
+  // cars roll in from the south edge, charge, and leave (clipped to the plaza)
+  const [cx0, cy0] = P(-5, -4, 0), [cx1, cy1] = P(5, 4, 3.5);
+  ctx.save(); ctx.beginPath(); ctx.rect(cx0, cy1, cx1 - cx0, cy0 - cy1); ctx.clip();
+  L.bays.forEach(([bx, by], b) => {
+    const ph = t / CYCLE + rnd(b + 1), win = Math.floor(ph), f = ph - win;
+    if (rnd(b * 7 + win * 3.1) <= 0.3) return;
+    const ci = Math.floor(rnd(b * 11 + win * 5.7) * nc) % nc, C = L.cars[ci];
+    let y = by, chg = false;
+    if (f < 0.10) y = by - (1 - f / 0.10) * 4.5; else if (f > 0.90) y = by - ((f - 0.90) / 0.10) * 4.5; else chg = true;
+    if (chg && on) { const [gx, gy] = P(bx, y, 0.1); _amLed(gx, gy, 1.4 * M, '64,255,128', 0.22); }
+    _amDraw(F, AdvNukeArt.get('am_car_' + ci), C.rect, CK, bx, y);
+    if (chg) charging.push({ b, x: bx, y, port: C.port, prog: (f - 0.10) / 0.80 });
+  });
+  ctx.restore();
+  // charge cables, pillar screens and rings
+  L.pillars.forEach((p, b) => {
+    const ch = charging.find(c => c.b === b), [ax, ay] = P(...p.plug);
+    if (ch) {
+      const [qx, qy] = P(ch.x + ch.port[0] * CK, ch.y + ch.port[1] * CK, ch.port[2] * CK);
+      ctx.strokeStyle = '#0e1012'; ctx.lineWidth = Math.max(1, 0.06 * M); ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + qx) / 2 + 0.2 * M, Math.max(ay, qy) + 0.2 * M, qx, qy); ctx.stroke();
+      if (on) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(64,255,128,${(0.55 + 0.35 * Math.sin(t * 6 - b)).toFixed(3)})`;
+        ctx.lineWidth = Math.max(0.6, 0.03 * M); ctx.setLineDash([0.08 * M, 0.1 * M]); ctx.lineDashOffset = -t * 0.4 * M;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.quadraticCurveTo((ax + qx) / 2 + 0.2 * M, Math.max(ay, qy) + 0.2 * M, qx, qy); ctx.stroke(); ctx.restore(); }
+    }
+    if (!on) return;
+    const [s0x, s0y] = P(p.screen[0], p.screen[2], p.screen[4]), [s1x, s1y] = P(p.screen[1], p.screen[2], p.screen[3]);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = ch ? 'rgba(64,255,128,0.85)' : 'rgba(90,200,255,0.6)';
+    ctx.fillRect(s0x + (s1x - s0x) * 0.1, s0y + (s1y - s0y) * 0.35, (s1x - s0x) * 0.8 * (ch ? Math.min(1, 0.15 + ch.prog) : 0.35), (s1y - s0y) * 0.3);
+    ctx.restore();
+    const [rx, ry] = P(...p.ring);
+    ctx.strokeStyle = ch ? `hsl(${150 + 30 * Math.sin(t * 4 - b)},90%,60%)` : '#40ff80'; ctx.lineWidth = Math.max(0.8, 0.04 * M);
+    ctx.beginPath(); ctx.ellipse(rx, ry, 0.1 * M, 0.1 * M, 0, 0, Math.PI * 2); ctx.stroke();
+    _amLed(rx, ry, 0.22 * M, ch ? '64,255,200' : '64,255,128', 0.35);
+  });
+  if (!detail) return;
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  { const [k0, k1, ky, kz] = L.kerb, [ax, ay] = P(k0, ky, kz), [bx] = P(k1, ky, kz);
+    ctx.fillStyle = on ? 'rgba(64,255,128,0.55)' : 'rgba(0,0,0,0)'; ctx.fillRect(ax, ay - 0.04 * M, bx - ax, 0.08 * M); }
+  if (on) {
+    const [f0, f1, fy, fz] = L.fascia, [ax, ay] = P(f0, fy, fz), [bx] = P(f1, fy, fz);
+    ctx.fillStyle = 'rgba(64,255,128,0.6)'; ctx.fillRect(ax, ay - 0.03 * M, bx - ax, 0.06 * M);
+    const [ux, uy] = P(...L.underlight); _anGlow(ux, uy, 3.2 * M, '210,255,225', 0.08 + 0.12 * dark);
+    const [tx, ty] = P(...L.totem); _anGlow(tx, ty, 0.6 * M, '64,255,128', 0.35 + 0.1 * Math.sin(t * 2));
+  }
+  ctx.restore();
+  // totem bolt and battery buffer LEDs
+  { const [tx, ty] = P(...L.totem), s = 0.2 * M;
+    ctx.fillStyle = on ? '#40ff80' : '#2a7a4a'; ctx.beginPath();
+    ctx.moveTo(tx + 0.2 * s, ty - 0.75 * s); ctx.lineTo(tx - 0.45 * s, ty + 0.1 * s); ctx.lineTo(tx - 0.05 * s, ty + 0.1 * s);
+    ctx.lineTo(tx - 0.2 * s, ty + 0.75 * s); ctx.lineTo(tx + 0.45 * s, ty - 0.1 * s); ctx.lineTo(tx + 0.05 * s, ty - 0.1 * s); ctx.closePath(); ctx.fill(); }
+  { const [b0, b1, by, bz0, bz1] = L.batt, [ax, ay] = P(b0, by, bz1), [bx, bby] = P(b1, by, bz0);
+    const level = on ? 0.55 + 0.25 * Math.sin(t * 0.4) + (charging.length ? -0.12 : 0.12) : 0.2, n = 8, hh = (bby - ay) / n;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let q = 0; q < n; q++) { const lit = (q + 1) / n <= level;
+      ctx.fillStyle = lit ? (q > 5 ? 'rgba(255,208,64,0.85)' : 'rgba(64,255,128,0.8)') : 'rgba(64,255,128,0.06)';
+      ctx.fillRect(ax + (bx - ax) * 0.15, bby - (q + 1) * hh + hh * 0.15, (bx - ax) * 0.7, hh * 0.7); }
+    ctx.restore(); }
+}
+
+// ── Cell Tower ──
+function _amCell(e, px, py, t) {
+  const L = AM_LAYOUT.cell, F = _anFrame(e, px, py), { P, M } = F;
+  const on = !!e.powered, detail = Camera.zoom > 0.5, dark = DayNight.darkness();
+  F.draw(AdvNukeArt.get('am_cell'), L.rect);
+  { const [x, y, z, r] = L.acFan; _anFan(F, x, y, z, r, on ? t * 9 : 0.5); }
+  if (detail) {
+    L.leds.forEach(([x, y, z], k) => { const [lx, ly] = P(x, y, z), lit = on && Math.sin(t * (5 + k * 1.7) + k * 2.3) > -0.2;
+      _amLed(lx, ly, 0.08 * M, ['64,255,128', '64,192,255', '64,255,128', '255,192,64'][k], lit ? 0.95 : 0); });
+    { const [dx, dy] = P(...L.doorLight); _amLed(dx, dy, 0.35 * M, '255,236,180', on && dark > 0.3 ? 0.6 : 0); }
+    { const [b0, b1, by, bz0, bz1] = L.batt, [ax, ay] = P(b0, by, bz1), [bx, bby] = P(b1, by, bz0);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = on ? 'rgba(64,208,112,0.8)' : 'rgba(0,0,0,0)';
+      ctx.fillRect(ax + (bx - ax) * 0.1, ay + (bby - ay) * 0.25, (bx - ax) * 0.8 * (on ? 0.55 + 0.45 * Math.abs(Math.sin(t * 0.4)) : 0), (bby - ay) * 0.5); ctx.restore(); }
+  }
+  // signal pulses out along each sector's bearing
+  if (on && Camera.zoom > 0.4) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = Math.max(0.8, 0.05 * M);
+    L.sectors.forEach(([x, y, z, a], i) => { const [sx, sy] = P(x, y, z);
+      for (let k = 0; k < 2; k++) { const ph = (t * 0.65 + k * 0.5 + i * 0.33) % 1, r = (0.4 + ph * 3) * M;
+        ctx.strokeStyle = `rgba(90,205,255,${((1 - ph) * 0.38).toFixed(3)})`;
+        ctx.beginPath(); ctx.ellipse(sx, sy, r, r * 0.55, 0, -a - 0.45, -a + 0.45); ctx.stroke(); } });
+    ctx.restore();
+  }
+  const blink = Math.pow(Math.max(0, Math.sin(t * 1.8)), 3), [ax, ay] = P(...L.avLight);
+  if (on) { _amLed(ax, ay, 0.8 * M, '255,90,90', blink * 0.7); _amLed(ax, ay, 0.12 * M, '255,120,110', 0.35 + 0.65 * blink); }
+  if (e.reliability !== undefined && e.reliability < 80) { const [rx, ry] = P(3.6, 3.6, 0); ctx.fillStyle = e.reliability < 50 ? '#ff4444' : '#f0a020'; ctx.beginPath(); ctx.arc(rx, ry, 0.12 * M, 0, Math.PI * 2); ctx.fill(); }
+}
+
+// ── Fiber Hub ──
+function _amFiber(e, px, py, t) {
+  const L = AM_LAYOUT.fiber, F = _anFrame(e, px, py), { P, M } = F;
+  const on = !!e.powered, fine = Camera.zoom > 0.5, dark = DayNight.darkness(), pulse = 0.5 + 0.5 * Math.sin(t * 2.2);
+  const FIB = ['64,224,255', '255,80,208', '160,255,64'];
+  F.draw(AdvNukeArt.get('am_fiber'), L.rect);
+  // trench pulses racing out west, east and south from the hub
+  if (on && fine) {
+    const { y: [ty, tz], x: [tx], hub: [hx] } = L.trench;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 9; i++) { const ph = (t * 0.35 + i / 9) % 1, dir = i % 3; ctx.fillStyle = `rgba(${FIB[Math.floor(i / 3) % 3]},${(1 - ph * 0.7).toFixed(3)})`;
+      let q; if (dir === 0) q = P(hx - ph * (hx + 4.6), ty, tz); else if (dir === 1) q = P(hx + ph * (4.6 - hx), ty, tz); else q = P(tx, ty - ph * (ty + 4.6), tz);
+      if (dir < 2) ctx.fillRect(q[0] - 0.15 * M, q[1] - 0.05 * M, 0.3 * M, 0.1 * M); else ctx.fillRect(q[0] - 0.05 * M, q[1] - 0.15 * M, 0.1 * M, 0.3 * M); }
+    ctx.restore();
+  }
+  L.fans.forEach(([x, y, z, r], k) => _anFan(F, x, y, z, r, on ? t * 6 + k : k));
+  // dishes slowly tracking
+  L.dishes.forEach(([x, y, z, k], i) => _svDish(F, x, y, z, k, (i ? 2.4 : 0.7) + (on ? Math.sin(t * 0.25 + i * 2) * 0.35 : 0)));
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.skylights.forEach(([x, y, z], k) => { const [sx, sy] = P(x, y, z); _anGlow(sx, sy, 0.45 * M, '120,230,255', on ? 0.3 + 0.15 * Math.sin(t * 1.5 + k) : 0); });
+  { const [x, y, z] = L.emblem, [ex, ey] = P(x, y, z); _anGlow(ex, ey, 0.5 * M, '232,251,255', on ? 0.3 + 0.3 * pulse : 0); }
+  { const [g0, g1, gy, gz0, gz1] = L.glaze, [ax, ay] = P(g0, gy, gz1), [bx, by] = P(g1, gy, gz0);
+    ctx.fillStyle = on ? `rgba(140,235,255,${(dark > 0.3 ? 0.45 : 0.12).toFixed(3)})` : 'rgba(0,0,0,0)'; ctx.fillRect(ax, ay, bx - ax, by - ay); }
+  { const [ex, ey] = P(...L.entry); _anGlow(ex, ey, 0.7 * M, '216,246,255', on ? (dark > 0.3 ? 0.55 : 0.2) : 0); }
+  if (fine) L.cabs.forEach((leds, k) => leds.forEach(([x, y, z], l) => { const [lx, ly] = P(x, y, z), lit = on && Math.sin(t * 3 + k * 1.7 + l * 0.9) > 0.1;
+    _anGlow(lx, ly, 0.08 * M, FIB[(k + l) % 3], lit ? 0.95 : 0); }));
+  { const [lx, ly] = P(...L.genLed); _anGlow(lx, ly, 0.1 * M, on ? '64,192,96' : '255,170,30', on ? 0.8 : 0.5 + 0.5 * Math.sin(t * 5)); }
+  if (on && dark > 0.3) L.lights.forEach(([x, y, z]) => { const [lx, ly] = P(x, y, z); _anGlow(lx, ly, 0.9 * M, '255,240,200', 0.25 * dark); _anGlow(lx, ly, 0.1 * M, '255,245,215', 0.9); });
+  ctx.restore();
+  if (!on && fine) { const [ex, ey] = P(...L.exhaust); _wfSmoke(ex, ey, TILE / 40 * 0.4, t, '80,80,80', true, 0.45); }
+  // sign and uplink board
+  { const [x0, x1, y, z0, z1] = L.signboard; _amBoardText(F, [[x0, y, z0], [x1, y, z0], [x0, y, z1]], [['FIBER HUB', '191,246,255', 1]], on); }
+  const fhSeed = Math.abs(Math.sin((e.col || 0) * 12.9898 + (e.row || 0) * 78.233)), fhHour = DayNight.hour();
+  const fhDay = 0.55 + 0.45 * Math.sin((fhHour - 10) / 24 * Math.PI * 2), fhRel = e.reliability !== undefined ? Math.max(0.35, e.reliability / 100) : 1;
+  const fhUtil = Math.max(0.06, Math.min(0.99, fhDay * fhRel * (0.85 + fhSeed * 0.30) + 0.04 * Math.sin(t * 0.7 + fhSeed * 6)));
+  _amBoardText(F, L.board, [[`${Math.max(1, Math.round(100 * fhUtil))} Gb/s`, '64,224,255', 1.6], ['100G UPLINK', '160,255,120', 1]], on);
+  if (e.reliability !== undefined && e.reliability < 80) { const [rx, ry] = P(4.6, 4.6, 0); ctx.fillStyle = e.reliability < 50 ? '#ff4444' : '#f0a020'; ctx.beginPath(); ctx.arc(rx, ry, 0.15 * M, 0, Math.PI * 2); ctx.fill(); }
+}
+
+
+/* ── Comms Beacon, Engineering Office, Throttle Governor, rendered
+   (scripts/render_ops.py beacon / eng / gov). The beacon's tracking dish and
+   the office's dish are the survey dish sprites (svdish_k); the office's
+   drones are eng_drone. Live: radar scope, cabinet and head LEDs, the
+   rotating beacon, aviation light, dish slew and uplink pulses, contracts
+   tag; the glass map table's runs and faults, the control room's desks and
+   network graph under its glass, roof fans, radar bar, drones lifting off
+   and landing, hangar / window / van lights, the LED sign; the governor's
+   conduits, dial needle, lamp and spinning flyballs. Default sizes only;
+   ghosts keep the painted art. */
+const OPS_LAYOUT = {"beacon":{"dish":[-2.3,-3.3,4.8,1.25],"headLeds":[[-0.45,-3.91,12.55],[-0.15,-3.91,12.55],[0.15,-3.91,12.55],[0.45,-3.91,12.55]],"beacon":[0.0,-3.3,13.35],"avLight":[0.0,-3.3,14.65],"scope":[-3.3,-5.14,1.5,0.36],"doorLight":[-2.2,-5.16,2.15],"cabLeds":[[2.3,-5.03,1.15],[2.49,-5.03,1.15],[2.68,-5.03,1.15]],"frame":[-5,5,-6,6],"rect":[-5.3,11.081,-13.457,14.845]},"eng":{"dome":[-3.0,1.0,2.9,4.2],"domeWins":[[-4.95,-4.05,1.5],[-3.65,-4.05,1.5],[-2.35,-4.05,1.5],[-1.05,-4.05,1.5]],"map":[3.55,8.45,2.35,5.85,3.36],"fans":[[4.0,1.45,3.9,0.38],[5.3,1.45,3.9,0.38],[6.6,1.45,3.9,0.38],[7.9,1.45,3.9,0.38]],"opsWins":[[3.975,0.44,1.8],[5.325,0.44,1.8],[6.675,0.44,1.8],[8.025,0.44,1.8]],"kiosk":[2.1,2.55,1.3],"radar":[1.85,6.15,4.45],"dish":[-8.2,6.1,0.7,1.05],"pads":[[4.1,-2.4,0.4],[6.0,-2.4,0.4],[7.9,-2.4,0.4]],"hangar":[[4.1,-4.56,1.1],[6.0,-4.56,1.1],[7.9,-4.56,1.1]],"vans":[[-8.3,-5.9,1.58],[-6.85,-5.9,1.58],[-5.4,-5.9,1.58]],"sign":[[-4.95,-7.22,0.21],[2.05,-7.22,0.21],[-4.95,-6.441,0.66]],"frame":[-10,10,-8,8],"rect":[-10.3,12.097,-10.525,10.956],"droneRect":[-0.8,0.8,-0.8,0.944]},"gov":{"dial":[-0.65,-1.5,0.6,0.26],"lamp":[0.75,-1.51,1.45],"fly":[0.0,-0.125,3.05,2.3],"centre":[0,-0.225,0],"frame":[-2,2,-2,2],"rect":[-2.3,3.55,-3.848,4.148]}};
+function _opsOK(e, key, w, h, imgs) {
+  if (e._ghost || !OPS_LAYOUT || !OPS_LAYOUT[key] || (e.width || w) !== w || (e.height || h) !== h) return false;
+  if (typeof AdvNukeArt === 'undefined' || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff)) return false;
+  for (const n of imgs) if (!AdvNukeArt.get(n)) return false;
+  return true;
+}
+
+// ── Communications Beacon ──
+function _beaconArt(e, px, py, t) {
+  const L = OPS_LAYOUT.beacon, F = _anFrame(e, px, py), { P, M } = F, fw = F.W, fh = F.H, cx = px + fw / 2;
+  const _cs = typeof ContractSystem !== 'undefined' ? ContractSystem : null;
+  const sweeping = !!(_cs && _cs.isSearching && _cs.isSearching()), on = e.powered && sweeping, lit = !!e.powered;
+  const detail = Camera.zoom > 0.5, dark = DayNight.darkness();
+  F.draw(AdvNukeArt.get('beacon_base'), L.rect);
+  // radar scope in the cabin window
+  { const [x, y, z, r] = L.scope, [sx, sy] = P(x, y, z), rr = r * M, ry = rr * 0.72;
+    ctx.fillStyle = on ? '#06220e' : lit ? '#0c1a12' : '#0a0e0c'; ctx.beginPath(); ctx.ellipse(sx, sy, rr, ry, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = on ? 'rgba(80,255,130,0.5)' : 'rgba(60,140,90,0.3)'; ctx.lineWidth = Math.max(0.5, 0.02 * M);
+    ctx.beginPath(); ctx.ellipse(sx, sy, rr * 0.55, ry * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+    if (on) { const a = t * 2.2;
+      for (let k = 0; k < 6; k++) { const ak = a - k * 0.12; ctx.strokeStyle = `rgba(90,255,140,${(0.8 - k * 0.13).toFixed(2)})`; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + Math.cos(ak) * rr, sy + Math.sin(ak) * ry); ctx.stroke(); }
+      const blip = (Math.floor(t * 0.5) * 2.4) % (Math.PI * 2), since = ((a - blip) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+      if (since < 1.5) _amLed(sx + Math.cos(blip) * rr * 0.7, sy + Math.sin(blip) * ry * 0.7, 0.06 * M, '255,220,120', 1 - since / 1.5); } }
+  L.cabLeds.forEach(([x, y, z], i) => { const [lx, ly] = P(x, y, z); _amLed(lx, ly, 0.07 * M, '90,200,255', on ? 0.25 + 0.6 * Math.abs(Math.sin(t * 3 + i * 1.1)) : 0); });
+  { const [dx, dy] = P(...L.doorLight); _amLed(dx, dy, 0.35 * M, '255,242,192', lit && dark > 0.3 ? 0.6 : 0); }
+  // tracking dish: slews during a sweep, parked otherwise; uplink pulses
+  { const [x, y, z, k] = L.dish, az = on ? Math.PI * 0.85 + 0.4 * Math.sin(t * 0.3) + 0.12 * Math.sin(t * 0.83) : Math.PI * 0.75;
+    const [fx, fy] = _svDish(F, x, y, z, k, az);
+    if (on && Camera.zoom > 0.4) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = Math.max(0.8, 0.06 * M);
+      const dir = Math.atan2(-Math.sin(az), Math.cos(az));
+      for (let q = 0; q < 3; q++) { const ph = (t * 0.5 + q / 3) % 1; ctx.strokeStyle = `rgba(90,168,255,${((1 - ph) * 0.5).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(fx, fy, (0.3 + ph * 3.2) * M, dir - 0.35, dir + 0.35); ctx.stroke(); }
+      _anGlow(fx, fy, 0.25 * M, '140,210,255', 0.8); ctx.restore(); } }
+  // head LEDs, rotating beacon, aviation light
+  L.headLeds.forEach(([x, y, z], k) => { const [lx, ly] = P(x, y, z); _amLed(lx, ly, 0.07 * M, '90,208,255', on && Math.sin(t * 4 + k * 1.6) > 0 ? 0.95 : 0); });
+  { const [bx, by, bz] = L.beacon, spin = on ? t * 3.2 : 0.9, reach = 0.75;
+    const [ax, ay] = P(bx + Math.cos(spin) * reach, by + Math.sin(spin) * reach, bz), [tx, ty] = P(bx - Math.cos(spin) * reach, by - Math.sin(spin) * reach, bz);
+    const near = (1 - Math.sin(spin)) / 2;
+    const lamp = () => { if (on && detail) _amLed(ax, ay, 0.6 * M, '122,200,255', 0.05 + 0.65 * near * near);
+      ctx.fillStyle = on ? `rgba(191,230,255,${(0.45 + 0.55 * near).toFixed(3)})` : lit ? '#6a8aa8' : '#3a4652'; ctx.beginPath(); ctx.arc(ax, ay, (0.08 + 0.05 * near) * M, 0, Math.PI * 2); ctx.fill(); };
+    if (near < 0.5) lamp();
+    ctx.strokeStyle = lit ? '#dfe6ec' : '#6a7078'; ctx.lineWidth = Math.max(1, 0.09 * M); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.fillStyle = lit ? '#8a96a2' : '#3a4048'; ctx.beginPath(); ctx.arc(tx, ty, 0.07 * M, 0, Math.PI * 2); ctx.fill();
+    if (near >= 0.5) lamp(); }
+  { const blink = Math.pow(Math.max(0, Math.sin(t * 1.5)), 3), [ax, ay] = P(...L.avLight);
+    if (on) { _amLed(ax, ay, 0.5 * M, '255,90,90', blink * 0.55); _amLed(ax, ay, 0.1 * M, '255,110,100', 0.35 + 0.65 * blink); } }
+  // contracts-waiting tag (as the painted beacon)
+  const waiting = (e.powered && _cs && !_cs.hasContract() && _cs.getOffers) ? _cs.getOffers().length : 0;
+  if (waiting > 0 && Camera.zoom > 0.35) {
+    const bob = Math.sin(t * 1.5) * (fh * 0.012), breath = 0.5 + 0.5 * Math.sin(t * 1.5);
+    const label = waiting > 1 ? `${waiting} CONTRACTS` : '1 CONTRACT', tagH = fh * 0.072, font = Math.max(6, Math.round(tagH * 0.60));
+    ctx.save(); ctx.font = `${font}px monospace`;
+    const tagW = ctx.measureText(label).width + tagH * 1.1, tagX = cx - tagW / 2, tagY = py - fh * 0.06 + bob;
+    if (Camera.zoom > 0.5) drawGlowHalo(cx, tagY + tagH / 2, tagW * 0.95, [[0, '#ffc850'], [1, 'transparent']], 0.10 + breath * 0.12);
+    drawRoundRect(tagX, tagY, tagW, tagH, tagH * 0.34, 'rgba(24,16,4,0.92)', `rgba(255,200,80,${0.5 + breath * 0.35})`, 1.3);
+    ctx.fillStyle = `rgba(255,214,120,${0.85 + breath * 0.15})`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, cx, tagY + tagH * 0.55); ctx.restore();
+  }
+  if ((e.reliability !== undefined) && e.reliability < 80) {
+    ctx.save(); ctx.fillStyle = e.reliability < 50 ? '#ff4444' : '#f0a020'; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(cx + fw * 0.34, py + fh * 0.30, 3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+}
+
+// ── Engineering Office ──
+function _engArt(e, px, py, t) {
+  const L = OPS_LAYOUT.eng, F = _anFrame(e, px, py), { P, M } = F;
+  const on = !!e.powered, night = DayNight.darkness() > 0.3, detail = Camera.zoom > 0.35, blue = '122,216,255';
+  F.draw(AdvNukeArt.get('eng_base'), L.rect);
+  const glw = (x, y, r, rgb, a) => _amLed(x, y, r, rgb, a);
+  // the glass map table on the ops centre: fault-finding runs across a grid
+  if (on) {
+    const [x0, x1, y0, y1, z] = L.map, [ax, ay] = P(x0, y1, z), [bx, by] = P(x1, y0, z), w = bx - ax, h = by - ay;
+    const m = (u, v) => [ax + (u - 271) / 98 * w, ay + (v - 43) / 70 * h];
+    ctx.save(); ctx.beginPath(); ctx.rect(ax, ay, w, h); ctx.clip(); ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = `rgba(${blue},0.06)`; ctx.fillRect(ax, ay, w, h);
+    if (detail) { ctx.strokeStyle = `rgba(${blue},0.13)`; ctx.lineWidth = 0.6; ctx.beginPath();
+      for (let k = 1; k < 7; k++) { ctx.moveTo(ax, ay + h * k / 7); ctx.lineTo(bx, ay + h * k / 7); }
+      for (let k = 1; k < 10; k++) { ctx.moveTo(ax + w * k / 10, ay); ctx.lineTo(ax + w * k / 10, by); } ctx.stroke(); }
+    const RUNS = [[[278, 104], [278, 60], [304, 60], [304, 84], [330, 84]], [[330, 84], [330, 54], [362, 54]], [[304, 84], [304, 104], [350, 104], [350, 74], [362, 74]]];
+    const u = (t / 12) % 1; ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(1, 0.07 * M);
+    RUNS.forEach((pts, i) => { const f = Math.max(0, Math.min(1, (u - i * 0.18) / 0.2)); if (f <= 0) return;
+      let total = 0; for (let k = 1; k < pts.length; k++) total += Math.abs(pts[k][0] - pts[k - 1][0]) + Math.abs(pts[k][1] - pts[k - 1][1]);
+      let left = f * total; ctx.strokeStyle = [`rgba(${blue},0.95)`, 'rgba(255,216,96,0.95)', 'rgba(120,255,170,0.95)'][i];
+      ctx.beginPath(); ctx.moveTo(...m(...pts[0]));
+      for (let k = 1; k < pts.length && left > 0; k++) { const len = Math.abs(pts[k][0] - pts[k - 1][0]) + Math.abs(pts[k][1] - pts[k - 1][1]), g = Math.min(1, left / len);
+        ctx.lineTo(...m(pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * g, pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * g)); left -= len; }
+      ctx.stroke(); });
+    const NODES = [[278, 104], [304, 60], [330, 84], [362, 54], [350, 104], [362, 74]];
+    ctx.fillStyle = `rgba(${blue},0.9)`; for (const [nx, ny] of NODES) { const [qx, qy] = m(nx, ny); ctx.fillRect(qx - 0.12 * M, qy - 0.12 * M, 0.24 * M, 0.24 * M); }
+    if (u > 0.62) { const [fx, fy] = m(...NODES[1 + Math.floor(t / 12) % (NODES.length - 1)]), p = 0.5 + 0.5 * Math.sin(t * 7);
+      ctx.strokeStyle = `rgba(255,90,72,${(0.55 + 0.45 * p).toFixed(2)})`; ctx.lineWidth = Math.max(1, 0.06 * M); ctx.beginPath(); ctx.arc(fx, fy, (0.35 + p * 0.15) * M, 0, Math.PI * 2); ctx.stroke(); }
+    ctx.restore();
+  }
+  // the control room under its glass: desks round the wall, the network graph, a sweep
+  if (on) {
+    const [cx, cy, z, R] = L.dome, Q = (x, y) => P(cx + x, cy + y, z);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    { const [gx, gy] = Q(0, 0); _anGlow(gx, gy, R * M, blue, night ? 0.35 : 0.14); }
+    if (detail) for (let k = 0; k < 10; k++) { const a = k * Math.PI / 5 + 0.3, [dx, dy] = Q(Math.cos(a) * 3.4, Math.sin(a) * 3.4);
+      _anGlow(dx, dy, 0.35 * M, blue, 0.35 + 0.3 * Math.sin(t * 2 + k * 1.7)); }
+    const spin = t * 0.22, N = [];
+    for (let k = 0; k < 5; k++) { const a = spin + k * Math.PI * 2 / 5; N.push(Q(Math.cos(a) * 1.8, Math.sin(a) * 1.8)); }
+    for (let k = 0; k < 3; k++) { const a = -spin * 1.6 + k * Math.PI * 2 / 3; N.push(Q(Math.cos(a) * 0.75, Math.sin(a) * 0.75)); }
+    ctx.strokeStyle = `rgba(${blue},0.75)`; ctx.lineWidth = Math.max(1, 0.06 * M); ctx.beginPath();
+    for (let k = 0; k < 5; k++) { ctx.moveTo(...N[k]); ctx.lineTo(...N[(k + 1) % 5]); ctx.moveTo(...N[k]); ctx.lineTo(...N[5 + k % 3]); }
+    ctx.stroke();
+    const sw = t * 1.4, [ox, oy] = Q(0, 0), sg = ctx.createRadialGradient(ox, oy, 0, ox, oy, 2.4 * M);
+    sg.addColorStop(0, `rgba(${blue},0.34)`); sg.addColorStop(1, `rgba(${blue},0)`);
+    ctx.fillStyle = sg; ctx.beginPath(); ctx.moveTo(ox, oy); ctx.arc(ox, oy, 2.4 * M, sw - 0.5, sw); ctx.closePath(); ctx.fill();
+    const bad = Math.floor(t / 10) % 5;
+    N.forEach(([nx, ny], k) => { ctx.fillStyle = k === bad ? '#ff5a48' : `rgba(${blue},0.95)`; ctx.beginPath(); ctx.arc(nx, ny, (k < 5 ? 0.22 : 0.16) * M, 0, Math.PI * 2); ctx.fill(); });
+    { const p = 0.5 + 0.5 * Math.sin(t * 6); ctx.strokeStyle = `rgba(255,90,72,${(0.4 + 0.5 * p).toFixed(2)})`; ctx.lineWidth = Math.max(1, 0.06 * M);
+      ctx.beginPath(); ctx.arc(N[bad][0], N[bad][1], (0.4 + p * 0.2) * M, 0, Math.PI * 2); ctx.stroke(); }
+    for (let k = 0; k < 16; k++) { const a = k * Math.PI / 8, b = 0.4 + 0.6 * Math.max(0, Math.sin(t * 2.4 - k * 0.8)), [lx, ly] = Q(Math.cos(a) * (R + 0.5), Math.sin(a) * (R + 0.5));
+      _anGlow(lx, ly, 0.12 * M, blue, b); }
+    ctx.restore();
+  }
+  L.fans.forEach(([x, y, z, r], k) => _anFan(F, x, y, z, r, on ? t * 7 + k : k));
+  { const [x, y, z] = L.radar, a = on ? t * 1.6 : 0.5, [ax, ay] = P(x - Math.cos(a) * 0.75, y - Math.sin(a) * 0.75, z), [bx, by] = P(x + Math.cos(a) * 0.75, y + Math.sin(a) * 0.75, z);
+    ctx.strokeStyle = on ? '#e8eef4' : '#40464e'; ctx.lineWidth = Math.max(1, 0.12 * M); ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    const bl = on && Math.sin(t * 3) > 0.2, [cx, cy] = P(x, y, z + 0.1); _amLed(cx, cy, 0.3 * M, '255,64,48', bl ? 0.7 : 0); }
+  { const [x, y, z, k] = L.dish; _svDish(F, x, y, z, k, on ? 2.4 + Math.sin(t * 0.3) * 0.8 : 2.8); }
+  // night lights: windows, kiosk, hangar doors; van beacons; the sign
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  if (on && night) {
+    [...L.domeWins, ...L.opsWins].forEach(([x, y, z]) => { const [wx, wy] = P(x, y, z); _anGlow(wx, wy, 0.5 * M, '200,235,255', 0.4); });
+    L.hangar.forEach(([x, y, z]) => { const [hx, hy] = P(x, y, z); _anGlow(hx, hy, 0.9 * M, '255,226,160', 0.5); });
+  }
+  { const [kx, ky] = P(...L.kiosk); _anGlow(kx, ky, 0.6 * M, '190,232,255', on ? (night ? 0.55 : 0.2) : 0); }
+  if (on) L.vans.forEach(([x, y, z], k) => { const [vx, vy] = P(x, y, z); _anGlow(vx, vy, 0.25 * M, '255,176,32', Math.sin(t * 5 + k * 2) > 0.5 ? 0.9 : 0.1); });
+  if (on && detail) L.pads.forEach(([x, y, z]) => { for (let k = 0; k < 6; k++) { const a = k * Math.PI / 3, [lx, ly] = P(x + Math.cos(a) * 0.8, y + Math.sin(a) * 0.8, z); _anGlow(lx, ly, 0.07 * M, night ? '96,255,144' : '58,122,72', 0.9); } });
+  ctx.restore();
+  // drones lifting off their pads on a loop and coming back
+  L.pads.forEach(([ppx, ppy, ppz], k) => {
+    const u = on ? ((t + k * 13) / 39) % 1 : 0, air = u > 0.55 ? Math.min(1, (u - 0.55) / 0.05, (1 - u) / 0.05) : 0;
+    const a = (u - 0.55) / 0.45 * Math.PI * 2, rx = 7.5 + k * 0.7, ry = 4.3 + k * 0.5;
+    const x = ppx + (Math.cos(a) - 1) * rx * air, y = ppy + Math.sin(a) * ry * air, z = ppz + air * (0.6 + 3 * Math.abs(Math.sin(a / 2)));
+    if (air > 0) { const [sx, sy] = P(x, y, 0.2); ctx.fillStyle = 'rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(sx, sy, 0.4 * M, 0.25 * M, 0, 0, Math.PI * 2); ctx.fill(); }
+    _amDraw(F, AdvNukeArt.get('eng_drone'), L.droneRect, 1.4 + air * 0.4, x, y + z * Math.tan(Math.PI / 6));
+    if (on) { const [lx, ly] = P(x, y, z + 0.2); _amLed(lx, ly, 0.08 * M, '255,64,48', Math.sin(t * 8 + k) > 0 ? 0.9 : 0); if (night && air > 0) _amLed(lx, ly, 0.6 * M, '255,250,220', 0.3); }
+  });
+  _amBoardText(F, L.sign, [['ENGINEERING OFFICE', '155,228,255', 1]], on);
+  if (!on) { const [x, y, z] = L.dome, [nx, ny] = P(x, y, z); ctx.font = `bold ${Math.max(7, 0.7 * M).toFixed(1)}px Courier New`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255,90,70,0.9)'; ctx.fillText('NO POWER', nx, ny); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; }
+}

@@ -389,6 +389,22 @@ const GeoSteam = (() => {
       if (o.col + o.w + 2 < cStart || o.col - 2 > cEnd || o.row + o.h + 1 < rStart || o.row - o.h * 2 > rEnd) continue;
       drawOne(ctx, o, t, detail, prevA);
     }
+    // The wells' silencers (the rendered well only: the painted one puffs
+    // its own): a full column while the well flows, a thin breath while it
+    // is pumped with no turbine to take the steam.
+    if (typeof _geoWellLayout === 'function') {
+      const sprite = CoolingTowerPlume.puffSprite('warm');
+      for (const e of EntityRegistry.getByType(T.GEOWELL)) {
+        if (!e.powered || !GeoWellArt.ready(e._rotation || 0)) continue;
+        if (e.col + 5 < cStart || e.col - 2 > cEnd || e.row + 3 < rStart || e.row - 6 > rEnd) continue;
+        const L = _geoWellLayout(e, e.col * TILE, e.row * TILE);
+        const wd = wind(e, t), seed = e.col * 0.53 + e.row * 0.19;
+        if (e._flowing) column(ctx, sprite, L.throatX, L.throatY, t, seed, Math.max(5, Math.round(12 * detail)), 6,
+          TILE * 2.4, 9, 30, 0.6, wd, prevA);
+        else column(ctx, sprite, L.throatX, L.throatY - 4, t, seed, Math.max(2, Math.round(4 * detail)), 6,
+          TILE * 0.9, 3, 10, 0.16, wd, prevA);
+      }
+    }
     ctx.restore();
     ctx.globalAlpha = prevA;
   }
@@ -396,7 +412,245 @@ const GeoSteam = (() => {
   return { renderAll };
 })();
 
+/* ── Geothermal Well ─────────────────────────────────────────────────────
+   Rendered in Blender (scripts/render_geo_well.py, Poly Haven scans):
+   img/geowell_head_{n,e,s,w}.png — the concrete cellar slab, chequer plate
+   over the cellar, the valve tree (two master valves, flow cross, wing
+   valve, swab valve, gauge), a lamp mast, and the insulated outlet leaving
+   the slab toward n/e/s/w — and img/geowell_silencer.png, the red-oxide
+   silencer on its plinth. Both are drawn at GEOWELL_SCALE world px per
+   image px, anchored at the anchors the script prints. In code: the
+   insulated line on from the slab edge to the output port, the bleed line
+   to the silencer, their shadows and piers, the gauge needle, the lamp at
+   night and the plate. The silencer's steam is GeoSteam's (drawn after the
+   scene). Until the images load, or while image fills are off (file://
+   read-back, see withoutImageFills), the painted well below is drawn. */
+const GEOWELL_SCALE = 0.25;                 // world px per sprite px
+const GEOWELL_A = {                         // ANCHORS from render_geo_well.py (sprite px)
+  head: { base: [160, 160], gauge: [160, 59.2], lamp: [96, 130.7], slab: 104 },   // slab: half-width, sprite px
+  sil:  { base: [164, 224], throat: [164, 85.4], inlet: [95.2, 198.6] },
+};
+const GEOWELL_SIL = 0.82;                   // the silencer is drawn a little under the head's scale
+const GEOWELL_PIPE_E = 5.2;                // the outlet's height on screen (0.45 m), world px
+const GEOWELL_BLEED_E = 6.35;               // the silencer inlet's (0.55 m)
+const GeoWellArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/geowell_${name}.png`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  // A warm lamp glow, made once (drawn 'lighter').
+  let glowSp = null;
+  function glow() {
+    if (glowSp) return glowSp;
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,226,170,1)'); gr.addColorStop(0.2, 'rgba(255,196,120,0.55)');
+    gr.addColorStop(0.55, 'rgba(255,170,90,0.14)'); gr.addColorStop(1, 'rgba(255,160,80,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    return (glowSp = c);
+  }
+  return {
+    head(rot) { return get('head_' + 'nesw'[rot & 3]); },
+    silencer() { return get('silencer'); },
+    // Ready to draw the rendered well (all of it, so it never pops in by halves).
+    ready(rot) { return !_imageFillsOff && !!(this.head(rot) && this.silencer()); },
+    // The wellhead's mast lamp and the light it throws on the slab, over the
+    // night overlay (render_main_loop.js, beside SiteYard.renderNight).
+    renderNight(g, dark, cStart, cEnd, rStart, rEnd) {
+      if (dark < 0.25 || failed) return;
+      const a = Math.min(1, (dark - 0.25) / 0.35), k = GEOWELL_SCALE, H = GEOWELL_A.head, S = TILE / 40;
+      const sp = glow();
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      for (const e of EntityRegistry.getByType(T.GEOWELL)) {
+        if (!e.powered || e.col + 4 < cStart || e.col - 1 > cEnd || e.row + 3 < rStart || e.row - 2 > rEnd) continue;
+        if (!this.ready(e._rotation || 0)) continue;
+        const L = _geoWellLayout(e, e.col * TILE, e.row * TILE);
+        const lx = L.hx + (H.lamp[0] - H.base[0]) * k, ly = L.hy + (H.lamp[1] - H.base[1]) * k;
+        const gx = L.hx - 10 * S, gy = L.hy + 8 * S, R = 30 * S;
+        g.globalAlpha = 0.42 * a; g.drawImage(sp, gx - R, gy - R, R * 2, R * 2);    // pool on the slab
+        g.globalAlpha = a;        g.drawImage(sp, lx - 6 * S, ly - 6 * S, 12 * S, 12 * S);
+      }
+      g.restore();
+    },
+  };
+})();
+
+// Where the parts of well e drawn at (px, py) sit, in world px. Shared with
+// GeoSteam (the silencer's plume) — keep it free of drawing.
+function _geoWellLayout(e, px, py) {
+  const w = (e.width || 3) * TILE;
+  const h = (EntityDefs[T.GEOWELL].visualHeight || e.height || 3) * TILE;
+  const hFoot = (e.height || EntityDefs[T.GEOWELL].height || 2) * TILE;
+  const dw = e._depositWidth || 2, dh = e._depositHeight || 2;
+  const hx = px + dw * TILE / 2, hy = py + dh * TILE / 2;
+  const silX = px + w * 0.82, silY = py + TILE * 0.65;
+  const k = GEOWELL_SCALE * GEOWELL_SIL, A = GEOWELL_A.sil;
+  return { w, h, hFoot, hx, hy, silX, silY,
+           throatX: silX + (A.throat[0] - A.base[0]) * k, throatY: silY + (A.throat[1] - A.base[1]) * k };
+}
+
 function renderGeoWell(e, px, py, t) {
+  const rot = (e._rotation || 0) & 3;
+  if (!GeoWellArt.ready(rot)) { _renderGeoWellPainted(e, px, py, t); return; }
+  const L = _geoWellLayout(e, px, py);
+  const { w, h, hFoot, hx, hy, silX, silY } = L;
+  const cx = px + w / 2, cy = py + h / 2;
+  const on = e.powered, flowing = !!e._flowing;
+  const S = TILE / 40, k = GEOWELL_SCALE;
+  const zoom = typeof Camera !== 'undefined' ? Camera.zoom : 1;
+  ctx.save();
+
+  // ── The deposit this well taps, redrawn under it (see the painted well) ──
+  const dw = e._depositWidth || 2, dh = e._depositHeight || 2;
+  if (e._depositCol !== undefined && typeof renderGeoDeposit === 'function' &&
+      GridManager.getEntity(e._depositCol, e._depositRow) !== e._linkedDeposit) {
+    renderGeoDeposit({ type: T.GEODEPOSIT, col: e._depositCol, row: e._depositRow,
+      width: dw, height: dh, _geoPhase: e._depositPhase || 0, _hasWell: true },
+      px + (e._depositCol - e.col) * TILE, py + (e._depositRow - e.row) * TILE, t);
+  }
+
+  // ── Port geometry (must match GeothermalSystem.wellOutputPort) ──
+  const half = TILE * 0.5;
+  let portX, portY;
+  if      (rot === 0) { portX = cx;            portY = py - half; }
+  else if (rot === 1) { portX = px + w + half; portY = cy; }
+  else if (rot === 2) { portX = cx;            portY = py + (e._southPortLow ? h : hFoot) + half; }
+  else                { portX = px - half;     portY = cy; }
+
+  // ── The insulated line: out of the slab toward the port, one jog onto
+  // the port's axis just clear of the slab, then straight to the port. ──
+  const dir = [[0, -1], [1, 0], [0, 1], [-1, 0]][rot];
+  const edge = GEOWELL_A.head.slab * k;
+  const sx = hx + dir[0] * edge, sy = hy + dir[1] * edge;
+  const spur = [[sx, sy]];
+  if (dir[0] === 0) {
+    const jy = sy + dir[1] * 6 * S;
+    if (Math.abs(portX - sx) > 0.5) spur.push([sx, jy], [portX, jy]);
+  } else {
+    const jx = sx + dir[0] * 6 * S;
+    if (Math.abs(portY - sy) > 0.5) spur.push([jx, sy], [jx, portY]);
+  }
+  spur.push([portX, portY]);
+  // Bleed line from the silencer's inlet back to the tree.
+  const A = GEOWELL_A.sil, ks = k * GEOWELL_SIL;
+  const inX = silX + (A.inlet[0] - A.base[0]) * ks;
+  const bx = hx + 16 * S, by = Math.max(silY, hy - 16 * S);
+  const bleed = by > silY + 0.5 ? [[inX, silY], [bx, silY], [bx, by]] : [[inX, silY], [bx, silY]];
+
+  const detail = zoom > 0.45;
+  _geoPipeShadow(spur, 3.4 * S, 6.8 * S);
+  _geoPipeShadow(bleed, 0.55 / 0.45 * 3.4 * S * GEOWELL_SIL, 5.2 * S * GEOWELL_SIL);
+  if (detail) _geoPipePiers(spur, GEOWELL_PIPE_E * S, S);
+  _geoPipe(spur, GEOWELL_PIPE_E * S, 3.4 * S, S, detail, true);
+  _geoPipe(bleed, GEOWELL_BLEED_E * S * GEOWELL_SIL, 2.6 * S * GEOWELL_SIL, S, detail, false);
+
+  // ── The rendered parts ──
+  const H = GEOWELL_A.head, hs = 320 * k;
+  ctx.drawImage(GeoWellArt.head(rot), hx - H.base[0] * k, hy - H.base[1] * k, hs, hs);
+  ctx.drawImage(GeoWellArt.silencer(), silX - A.base[0] * ks, silY - A.base[1] * ks, 400 * ks, 400 * ks);
+
+  // ── Live bits: gauge needle, lamp, plate ──
+  if (zoom > 1.1) {
+    const gX = hx + (H.gauge[0] - H.base[0]) * k, gY = hy + (H.gauge[1] - H.base[1]) * k;
+    const na = flowing ? -0.4 + 0.12 * Math.sin(t * 3) : (on ? -2.0 : -2.5);
+    ctx.strokeStyle = '#b01808'; ctx.lineWidth = 0.45 * S; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(gX, gY); ctx.lineTo(gX + Math.cos(na) * 1.9 * S, gY + Math.sin(na) * 1.5 * S); ctx.stroke();
+  }
+  // (The mast lamp is lit after the night overlay: GeoWellArt.renderNight.)
+  const label = flowing ? `${e._steamOutput || 0} ST/S` : (on ? 'NO TURBINE' : 'OFFLINE');
+  // On the footprint's bottom edge (see the painted well); a south-facing
+  // well's line comes down the middle, so its plate moves under the silencer.
+  _wfPlate(label, rot === 2 ? silX : cx, py + hFoot - 8 * S, S, flowing ? '#ffb070' : '#a07a5a', on);
+  ctx.restore();
+}
+
+// The insulated lines: aluminium cladding over lagging, drawn segment by
+// segment (they only run along the axes) so each gets a cylinder's shading
+// across it, with joint bands and elbows. pts: the line on the ground; it
+// is drawn raised by e (its height on screen). r: radius, world px.
+// pal (optional): five gradient stops across the pipe, light edge to dark,
+// and grain: the _bldGrain kind (the pump jacks' painted flowlines).
+const _GEO_PIPE_PAL = ['#8d9296', '#e8eaeb', '#c0c3c5', '#878c90', '#575b5f'];
+function _geoPipe(pts, e, r, S, detail, flange, pal = _GEO_PIPE_PAL, grain = 'brushed') {
+  const seg = (x0, y0, x1, y1) => {
+    const horiz = Math.abs(y1 - y0) < 0.01;
+    const xa = Math.min(x0, x1), xb = Math.max(x0, x1), ya = Math.min(y0, y1) - e, yb = Math.max(y0, y1) - e;
+    let rx, ry, rw, rh, g;
+    if (horiz) { rx = xa; ry = ya - r; rw = xb - xa; rh = 2 * r; g = ctx.createLinearGradient(0, ry, 0, ry + rh); }
+    else       { rx = xa - r; ry = ya; rw = 2 * r; rh = yb - ya; g = ctx.createLinearGradient(rx, 0, rx + rw, 0); }
+    if (rw <= 0 || rh <= 0) return;
+    g.addColorStop(0, pal[0]); g.addColorStop(0.18, pal[1]); g.addColorStop(0.5, pal[2]);
+    g.addColorStop(0.85, pal[3]); g.addColorStop(1, pal[4]);
+    ctx.fillStyle = g; ctx.fillRect(rx, ry, rw, rh);
+    if (detail) {
+      _bldGrain(ctx, grain, 0.55, [rx, ry, rw, rh]);
+      // cladding joints
+      ctx.fillStyle = 'rgba(50,54,58,0.45)';
+      const len = horiz ? rw : rh, n = Math.floor(len / (9 * S));
+      for (let i = 1; i <= n; i++) {
+        const o = i * 9 * S;
+        if (horiz) ctx.fillRect(rx + o, ry, 0.6 * S, rh); else ctx.fillRect(rx, ry + o, rw, 0.6 * S);
+      }
+    }
+  };
+  for (let i = 0; i + 1 < pts.length; i++) seg(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]);
+  // elbows
+  for (let i = 1; i + 1 < pts.length; i++) {
+    const [x, y] = pts[i];
+    const g = ctx.createRadialGradient(x - r * 0.4, y - e - r * 0.4, 0, x, y - e, r * 1.05);
+    g.addColorStop(0, pal[1]); g.addColorStop(0.6, pal[2]); g.addColorStop(1, pal[4]);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y - e, r * 1.05, 0, Math.PI * 2); ctx.fill();
+  }
+  if (flange) {
+    // the coupling the turbine's steam header bolts onto
+    const [x1, y1] = pts[pts.length - 1], [x0, y0] = pts[pts.length - 2];
+    const horiz = Math.abs(y1 - y0) < 0.01, fr = r * 1.45;
+    const fw = horiz ? 2.4 * S : fr * 2, fh = horiz ? fr * 2 : 2.4 * S;
+    ctx.fillStyle = '#3e4246'; ctx.fillRect(x1 - fw / 2, y1 - e - fh / 2, fw, fh);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(x1 - fw / 2, y1 - e - fh / 2, horiz ? 0.8 * S : fw, horiz ? fh : 0.8 * S);
+  }
+}
+// Soft shadow of a raised line, cast down and to the right like the
+// rendered parts'. d: the shadow's offset (by the line's height), w: width.
+function _geoPipeShadow(pts, d, w) {
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  const path = () => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x + d, y + d * 1.25) : ctx.moveTo(x + d, y + d * 1.25)); ctx.stroke(); };
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = w * 1.5; path();
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = w; path();
+  ctx.restore();
+}
+// Concrete piers under the line every so often: a footing on the ground
+// and, under a line running across the screen, the post up to it.
+function _geoPipePiers(pts, e, S) {
+  const step = 15 * S;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+    const len = Math.hypot(x1 - x0, y1 - y0), horiz = Math.abs(y1 - y0) < 0.01;
+    for (let s = step * 0.6; s < len - 4 * S; s += step) {
+      const x = x0 + (x1 - x0) * s / len, y = y0 + (y1 - y0) * s / len;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(x - (horiz ? 2 : 4.5) * S + 1.2 * S, y - 1 * S + 1.5 * S, (horiz ? 4 : 9) * S, 2.5 * S);
+      ctx.fillStyle = '#8c877e';
+      ctx.fillRect(x - (horiz ? 2 : 4.5) * S, y - 1 * S, (horiz ? 4 : 9) * S, 2.5 * S);
+      if (horiz) {
+        ctx.fillStyle = '#6f6a62'; ctx.fillRect(x - 1.2 * S, y - e, 2.4 * S, e);
+      }
+    }
+  }
+}
+
+function _renderGeoWellPainted(e, px, py, t) {
     // Geothermal Well (3×3): valve "christmas tree" wellhead with handwheels
     // and a gauge, sitting over the centre of the deposit it taps (the well
     // anchors on the deposit's top-left, and deposits are smaller than 3×3),
@@ -542,7 +796,169 @@ function renderGeoWell(e, px, py, t) {
    shows headroom against the rating. Keys off `_generating`,
    `_currentOutput`, `_linkedWell` and `_hasPower`. No backdrop.
    ───────────────────────────────────────────────────────────────────── */
+/* ── Geothermal Turbine, rendered ────────────────────────────────────────
+   Built and rendered in Blender (scripts/render_geo_turbine.py, Poly Haven
+   scans; same camera as the well): img/geoturbine_base.png holds the plant —
+   separator vessel, turbine and generator on their plinth, the lagged
+   exhaust duct up into an air-cooled condenser on legs, the clad control
+   building, the step-up transformer and a kiosk — and
+   img/geoturbine_fan.png one condenser fan's blades from above. Fans lie
+   flat, and the camera's row stretch keeps flat things true, so they turn
+   with a plain rotation. In code: the insulated line from the well's
+   output port (the tile the turbine covers) to the separator, the fans,
+   status lamps, output dial, bushing sparks, plate and network highlight.
+   GEOTURBINE_LAYOUT is the script's LAYOUT (metres from the footprint's
+   centre; re-paste after a re-render). Static/animated split below. The
+   painted plant (_renderGeoTurbinePainted) stays as the fallback. */
+const GEOTURBINE_LAYOUT = {
+  vessel: [-4.1, -1.2, 0.6, 1.2], roof: [-2.25, 1.8, 2.62],
+  fans: [[3.5, 0.15, 3.36], [3.5, 2.05, 3.36]],
+  bushings: [[3.1, -2.85, 2.48], [3.5, -2.85, 2.48], [3.9, -2.85, 2.48]],
+  dial: [0.8, -3.56, 0.85, 0.22], lamps: [[0.3, -3.56, 1.05], [-1.2, 1.19, 2.2]],
+  res: 720, frame: 12.0, fanRes: 120, fanFrame: 2.0,
+};
+const GeoTurbineArt = (() => {
+  const ims = new Map();
+  let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) {
+      im = new Image();
+      im.onerror = () => { failed = true; };
+      im.src = `img/geoturbine_${name}.png`;
+      ims.set(name, im);
+    }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  return {
+    get,
+    ready() { if (_imageFillsOff) return false; const a = get('base'), b = get('fan'); return !!(a && b); },
+    // Status lamps after dark, over the night overlay (render_main_loop.js).
+    renderNight(g, dark, cStart, cEnd, rStart, rEnd) {
+      if (dark < 0.25 || failed || !this.ready()) return;
+      const a = Math.min(1, (dark - 0.25) / 0.35);
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      for (const e of EntityRegistry.getByType(T.GEOTURBINE)) {
+        if (e.col + 6 < cStart || e.col - 1 > cEnd || e.row + 5 < rStart || e.row - 2 > rEnd) continue;
+        const P = _gtFrame(e.col * TILE, e.row * TILE), S = P.S;
+        const run = !!e._generating;
+        GEOTURBINE_LAYOUT.lamps.forEach(([x, y, z], i) => {
+          if (i === 0 && !run) return;
+          const [lx, ly] = P.proj(x, y, z), r = (i ? 14 : 6) * S;
+          const gr = g.createRadialGradient(lx, ly, 0, lx, ly, r);
+          const c = i ? '255,226,170' : '255,170,90';
+          gr.addColorStop(0, `rgba(${c},${(i ? 0.55 : 0.7) * a})`); gr.addColorStop(1, `rgba(${c},0)`);
+          g.fillStyle = gr; g.fillRect(lx - r, ly - r, r * 2, r * 2);
+        });
+      }
+      g.restore();
+    },
+  };
+})();
+function _gtFrame(px, py) {
+  const S = TILE / 40, M = 20 * S;
+  const cx = px + 2.5 * TILE, cy = py + 2 * TILE;
+  return { S, M, cx, cy, proj: (x, y, z) => [cx + x * M, cy - (y + z * _GT_TAN) * M] };
+}
+const _GT_TAN = Math.tan(Math.PI / 6);
+
 function renderGeoTurbine(e, px, py, t) {
+  if (!GeoTurbineArt.ready()) {
+    if (SplitPhase.cur === 'over') return;            // painted: baked whole until the art loads
+    _renderGeoTurbinePainted(e, px, py, t);
+    return;
+  }
+  const G = GEOTURBINE_LAYOUT, P = _gtFrame(px, py), S = P.S, M = P.M, proj = P.proj;
+  const running = !!e._generating;
+  const rated = e.def?.powerOutput || EntityDefs[T.GEOTURBINE].powerOutput || 35;
+  const outW = e._currentOutput || 0;
+  const duty = running ? Math.max(0, Math.min(1, outW / Math.max(1, rated))) : 0;
+  const detail = Camera.zoom > 0.45;
+  ctx.save();
+
+  if (SplitPhase.wantStatic()) {
+    // ── The well's line: up from its output port, across to the separator ──
+    const well = e._linkedWell;
+    const port = well && typeof GeothermalSystem !== 'undefined' ? GeothermalSystem.wellOutputPort(well) : null;
+    if (port) {
+      const Px = (port.c + 0.5) * TILE, Py = (port.r + 0.5) * TILE;
+      const [vx, vy] = proj(G.vessel[0], G.vessel[1], 0);
+      const vr = G.vessel[2] * M, eh = G.vessel[3] * _GT_TAN * M;      // the line's height on screen
+      const dx = vx - Px, dy = vy - Py;
+      const pts = Math.abs(dx) >= Math.abs(dy)
+        ? [[Px, Py], [Px, vy], [vx - Math.sign(dx) * vr, vy]]
+        : [[Px, Py], [vx, Py], [vx, vy - Math.sign(dy) * vr]];
+      const clean = pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) > 0.5);
+      _geoPipeShadow(clean, eh * 0.66, 6.8 * S);
+      _geoPipe([[Px, Py], [Px, Py - (eh - GEOWELL_PIPE_E * S)]], GEOWELL_PIPE_E * S, 3.4 * S, S, detail, false);   // riser off the well's flange
+      if (clean.length > 1) _geoPipe(clean, eh, 3.4 * S, S, detail, false);
+    }
+    // ── The plant ──
+    const half = G.res / 2 * (M / 60);
+    ctx.drawImage(GeoTurbineArt.get('base'), P.cx - half, P.cy - half, half * 2, half * 2);
+  }
+
+  if (SplitPhase.wantOver()) {
+    // ── Condenser fans: faster with load ──
+    if (e._gtFanA === undefined) { e._gtFanA = (e.col * 0.37) % 6.28; e._gtLastT = t; }
+    const dt = Math.max(0, Math.min(0.1, t - e._gtLastT)); e._gtLastT = t;
+    e._gtFanA += dt * (running ? 1.2 + 4.5 * duty : 0);
+    const fan = GeoTurbineArt.get('fan'), fh = G.fanRes / 2 * (M / 60);
+    G.fans.forEach(([x, y, z], i) => {
+      const [fx, fy] = proj(x, y, z);
+      ctx.save(); ctx.translate(fx, fy); ctx.rotate(e._gtFanA + i * 0.7);
+      ctx.drawImage(fan, -fh, -fh, fh * 2, fh * 2);
+      ctx.restore();
+    });
+    // ── Status lamp on the kiosk ──
+    const [lx, ly] = proj(G.lamps[0][0], G.lamps[0][1], G.lamps[0][2]);
+    const blink = running ? 0.55 + 0.45 * Math.abs(Math.sin(t * 3.2)) : 0;
+    ctx.fillStyle = running ? `rgba(255,120,60,${blink})` : 'rgba(90,70,60,0.8)';
+    ctx.beginPath(); ctx.arc(lx, ly, 1.3 * S, 0, Math.PI * 2); ctx.fill();
+    // ── Output dial on the kiosk face (a vertical face: squashed) ──
+    {
+      const [dX, dY] = proj(G.dial[0], G.dial[1], G.dial[2]);
+      const rx = G.dial[3] * M, ry = rx * _GT_TAN * 1.15;
+      const a0 = Math.PI * 0.75, a1 = a0 + Math.PI * 1.5;
+      const arc = (from, to) => { ctx.beginPath(); ctx.ellipse(dX, dY, rx * 0.8, ry * 0.8, 0, from, to); ctx.stroke(); };
+      ctx.lineWidth = 1.4 * S; ctx.strokeStyle = 'rgba(140,170,185,0.3)'; arc(a0, a1);
+      if (duty > 0) { ctx.strokeStyle = duty > 0.85 ? 'rgba(255,120,80,0.95)' : 'rgba(255,190,110,0.95)'; arc(a0, a0 + (a1 - a0) * duty); }
+      const na = a0 + (a1 - a0) * duty;
+      ctx.strokeStyle = running ? '#ffe8d0' : '#6a7a82'; ctx.lineWidth = 0.8 * S;
+      ctx.beginPath(); ctx.moveTo(dX, dY); ctx.lineTo(dX + Math.cos(na) * rx * 0.65, dY + Math.sin(na) * ry * 0.65); ctx.stroke();
+    }
+    // ── The odd spark at a bushing under load ──
+    if (running && detail) G.bushings.forEach(([x, y, z], i) => {
+      if (Math.sin(t * 11 + i * 2.3) <= 0.93) return;
+      const [bx, by] = proj(x, y, z);
+      ctx.strokeStyle = 'rgba(210,245,255,0.95)'; ctx.lineWidth = 0.8 * S;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + 2.5 * S, by - 3 * S); ctx.lineTo(bx - 1 * S, by - 5 * S); ctx.stroke();
+    });
+    // ── Plate on the building's roof, network highlight ──
+    const label = running ? `GEO TURBINE  ${formatPower(outW)}` : !e._linkedWell ? 'NO WELL' : !e._hasPower ? 'NO WIRE' : 'NO STEAM';
+    const [rx, ry] = proj(G.roof[0], G.roof[1], G.roof[2]);
+    _wfPlate(label, rx, ry, S, running ? '#ffb070' : '#a07a5a', true);
+    drawNetworkHighlight(e, px, py, t);
+  }
+  ctx.restore();
+}
+
+/* Static/animated split: the bitmap holds the plant and the well's line;
+   the fans, lamps, dial, sparks, plate and network highlight are live
+   (alwaysLive, so the fans turn at the frame rate in every tier). */
+RenderSplit.register(T.GEOTURBINE, {
+  alwaysLive: true,
+  key(e) {
+    const w = e._linkedWell;
+    const p = w && typeof GeothermalSystem !== 'undefined' ? GeothermalSystem.wellOutputPort(w) : null;
+    return (p ? p.c + ',' + p.r : '-') + (GeoTurbineArt.ready() ? 'r' : '-') + (Camera.zoom > 0.45 ? 'z' : '-');
+  },
+});
+
+function _renderGeoTurbinePainted(e, px, py, t) {
+    // (The hand-drawn plant, kept as the fallback of the rendered one above.)
     const w  = (e.width  || 5) * TILE;
     const h  = (e.height || 4) * TILE;
     const running = !!e._generating;

@@ -1655,7 +1655,7 @@ const LightningDamageSystem = (() => {
   function checkPlacement(type, col, row, w = 1, h = 1) {
     const c = contaminationAt(col, row, w, h);
     if (c.level === 3) return { ok: false, mult: 1, msg: `☢ Highly contaminated ground; no construction for another ${_fmtHours(c.hoursLeft)}` };
-    if (c.level === 2 && !CONTAM_LINES.has(type)) return { ok: false, mult: 1, msg: `☢ Hazardous ground: only wires, poles, pipes, belts and roads for another ${_fmtHours(c.hoursLeft)}` };
+    if (c.level === 2 && !CONTAM_LINES.has(type)) return { ok: false, mult: 1, msg: `☢ Hazardous ground: only cables, poles, pipes, belts and roads for another ${_fmtHours(c.hoursLeft)}` };
     if (c.level === 1 && !CONTAM_LINES.has(type)) return { ok: true, mult: CONTAM_BUILD_MULT, msg: `☢ Residual contamination: +${Math.round((CONTAM_BUILD_MULT - 1) * 100)}% decontamination cost` };
     return { ok: true, mult: 1, msg: null };
   }
@@ -1715,7 +1715,7 @@ const LightningDamageSystem = (() => {
         showToast('🟢 The blast zone has RECOVERED; normal construction is allowed again', '#60e080', '#001408', '#0a4020', 'contam');
       } else {
         const L = CONTAM_LEVELS[lvl];
-        const what = lvl === 2 ? 'wires, poles, pipes, belts and roads can go back in'
+        const what = lvl === 2 ? 'cables, poles, pipes, belts and roads can go back in'
                    : 'building is allowed again, at a decontamination surcharge';
         showToast(`${L.icon} Blast zone contamination down to ${L.name.toUpperCase()}: ${what}`, '#ffd040', '#141000', '#806020', 'contam');
       }
@@ -2054,7 +2054,7 @@ const LightningDamageSystem = (() => {
       message: `${name} went critical and exploded, levelling everything within ${R} tiles; `
              + `${hit} building${hit === 1 ? '' : 's'} destroyed or burning`
              + (trucks ? `, ${trucks} truck${trucks === 1 ? '' : 's'} lost` : '')
-             + (cleared ? `, ${cleared} pipe/wire/belt tiles gone` : '')
+             + (cleared ? `, ${cleared} pipe/cable/belt tiles gone` : '')
              + (coresChained ? `. ${coresChained} more reactor${coresChained === 1 ? ' is' : 's are'} about to go up with it: never site reactors inside one another’s blast radius.`
                    : '. Always connect a Cooling Tower before bringing a reactor online.'),
       color: '#b0ff60', border: '#50a020', tag: 'lightningdamage', glow: true,
@@ -2911,7 +2911,7 @@ const LightningDamageSystem = (() => {
           const now = _now();
           if (now - _spreadToastAt > 8) {
             _spreadToastAt = now;
-            showToast(`🔥 Fire travelled the wires to ${e.businessName || e.def.label}: ${countDamaged()} burning`,
+            showToast(`🔥 Fire travelled the cables to ${e.businessName || e.def.label}: ${countDamaged()} burning`,
                       '#ff6020', '#140800', '#702010', 'firespread');
           }
         }

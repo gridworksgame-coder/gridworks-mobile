@@ -14,6 +14,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 function renderSteamTurbine2(e, px, py, t) {
+  if (_tb2OK(e)) return _tb2Art(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.STEAMTURBINE2];
   const W = (e.width || def.width) * TILE, H = (e.height || def.height) * TILE;
   const gen = !!e._generating;
@@ -309,5 +310,58 @@ function renderSteamTurbine2(e, px, py, t) {
   _wfPlate('STEAM TURBINE MK2', X(0.42), py + H * 0.03, S, accent, gen || connected);
   _wfLamp(X(0.79), py + H * 0.04, S, t, gen ? accent : (connected ? '#ffb030' : '#ff4040'), true);
   drawNetworkHighlight(e, px, py, t);
+  ctx.restore();
+}
+
+/* ── Steam Turbine MK2, rendered ────────────────────────────────────────
+   Built in Blender (scripts/render_turbine2.py, sharing render_advnuke.py's
+   helpers and palette) at its 24×14 footprint; anything else keeps the
+   painted set. TURBINE2_LAYOUT is the script's tb2_layout.json (re-paste
+   after a re-render). Live: the rotor's spin-up and coast-down (same
+   e._spin / e._phase as the painted set) turning the blade discs in the LP
+   sight windows and the shaft's marks, the generator's cooling bands, the
+   exciter fan, the gantry crane travelling while it runs, the readout. */
+const TURBINE2_LAYOUT = {"tb2": {"shaft": [-20.64, 13.92, -1.0, 2.1], "lp": [[[-6.72, -3.4, 6.68, 1.2], [-6.72, 1.4, 6.68, 1.2]], [[0.0, -3.4, 6.68, 1.2], [0.0, 1.4, 6.68, 1.2]], [[6.72, -3.4, 6.68, 1.2], [6.72, 1.4, 6.68, 1.2]]], "gen": [[10.82, -1.0, 5.5], [11.687, -1.0, 5.5], [12.553, -1.0, 5.5], [13.42, -1.0, 5.5]], "exciter": [14.82, -1.0, 3.52, 0.75], "board": [[4.14, -11.1, 3.2], [12.18, -11.1, 3.2], [4.14, -9.0, 4.4]], "frame": [-24, 24, -14, 14], "craneX": [-20.16, 12.48], "hall": [-23.04, 14.64, -12.2, 11.3], "lamp": [23.4, 13.4, 0.5], "craneRect": [-1.7, 5.997, -18.62, 18.651], "rect": [-24.3, 28.362, -19.329, 20.304]}};
+function _tb2OK(e) {
+  return !!TURBINE2_LAYOUT && (e.width || 24) === 24 && (e.height || 14) === 14 && (e._rotation || 0) === 0
+    && !(typeof _imageFillsOff !== 'undefined' && _imageFillsOff) && !!AdvNukeArt.get('tb2_base') && !!AdvNukeArt.get('tb2_crane') && !!AdvNukeArt.get('hyp_fan');
+}
+function _tb2Art(e, px, py, t) {
+  const L = TURBINE2_LAYOUT.tb2, def = EntityDefs[T.STEAMTURBINE2], F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const gen = !!e._generating, connected = !!e._steamConnected, accent = '#7af5ff';
+  const dtR = Math.max(0, Math.min(0.25, t - (e._spinT ?? t))); e._spinT = t;
+  e._spin = (e._spin ?? (gen ? 1 : 0)) + ((gen ? 1 : 0) - (e._spin ?? 0)) * Math.min(1, dtR / 3.5);
+  e._phase = (e._phase || 0) + dtR * e._spin;
+  const spin = e._spin, ph = e._phase;
+  ctx.save();
+  F.draw(AdvNukeArt.get('tb2_base'), L.rect);
+  // shaft marks turning
+  { const [x0, x1, ay, z] = L.shaft, [a0, y0] = P(x0, ay, z), [a1] = P(x1, ay, z);
+    ctx.strokeStyle = 'rgba(30,36,40,0.55)'; ctx.lineWidth = 0.35 * M; ctx.setLineDash([0.4 * M, 1.2 * M]); ctx.lineDashOffset = -ph * 7 * M;
+    ctx.beginPath(); ctx.moveTo(a0, y0); ctx.lineTo(a1, y0); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0; }
+  // blade discs in each LP's sight windows
+  L.lp.forEach(wins => wins.forEach(([x, y, z, r], i) => {
+    const [wx, wy] = P(x, y, z), R = r * M * 0.9;
+    ctx.save(); ctx.beginPath(); ctx.arc(wx, wy, R, 0, TAU); ctx.clip();
+    if (spin > 0.05) { ctx.fillStyle = `rgba(122,245,255,${(0.12 * spin).toFixed(3)})`; ctx.fillRect(wx - R, wy - R, 2 * R, 2 * R); }
+    ctx.strokeStyle = 'rgba(170,190,200,0.75)'; ctx.lineWidth = 0.12 * M;
+    const a0 = ph * 9 * (i ? 1 : -1);
+    for (let b = 0; b < 14; b++) { const a = a0 + b * TAU / 14; ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + Math.cos(a) * R, wy + Math.sin(a) * R); ctx.stroke(); }
+    if (spin > 0.4) { ctx.fillStyle = `rgba(200,220,230,${(0.25 * spin).toFixed(3)})`; ctx.fillRect(wx - R, wy - R, 2 * R, 2 * R); }
+    ctx.restore();
+  }));
+  // generator cooling bands glowing with load
+  if (spin > 0.05) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.gen.forEach(([x, y, z], i) => { const [gx, gy] = P(x, y, z); ctx.fillStyle = `rgba(122,245,255,${(0.35 * spin * (0.8 + 0.2 * Math.sin(t * 3 + i))).toFixed(3)})`; ctx.fillRect(gx - 0.12 * M, gy - 2.4 * M, 0.24 * M, 4.8 * M); }); ctx.restore(); }
+  { const [x, y, z, r] = L.exciter; _anFan(F, x, y, z, r, ph * 12); }
+  // the gantry crane: travels the hall while the set runs, parks otherwise
+  const [c0, c1] = L.craneX, u = spin > 0.05 ? 0.5 + 0.5 * Math.sin(t * 0.12) : 0.04;
+  e._craneU = (e._craneU ?? u) + (u - (e._craneU ?? u)) * Math.min(1, dtR * 0.8);
+  F.draw(AdvNukeArt.get('tb2_crane'), L.craneRect, c0 + (c1 - c0) * e._craneU);
+  // readout on the kiosk board
+  const mw = gen ? (e._currentOutput || def.powerOutput) / 1000 : 0;
+  _anBoard(F, L.board, [[`${mw.toFixed(2)} MW`, gen ? '#60ff90' : '#7090a0'], [`RPM ${'|'.repeat(Math.round(spin * 10)).padEnd(10, '.')}`, accent]], S, gen || connected ? '122,245,255' : null);
+  _portPipe(_portAnchor(e, px, py, F.W, F.H, SteamTurbineSystem.getStubs(e).steamIn), S, t, { fluid: '#e8f4ff', label: 'STEAM IN', on: connected, out: false, flow: gen });
+  _wfPlate('STEAM TURBINE MK2', px + F.W * 0.42, py + F.H * 0.03, S, accent, gen || connected);
+  { const [lx, ly] = P(...L.lamp); _wfLamp(lx, ly, S, t, accent, gen); }
   ctx.restore();
 }

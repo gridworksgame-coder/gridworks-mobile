@@ -200,7 +200,7 @@ const ScenarioSystem = (() => {
         ['Dig', 'Place a Coal Mine on each of the three coal seams and wire them in.'],
         ['Burn', 'Place Coal Power Generators nearby and run Conveyor Belts from each mine\'s output to the generators. One mine feeds two generators.'],
         ['Cool', 'Put Water Extractors on the tarn (R rotates the outlet) and run Pipes to each generator\'s water inlet. One extractor supplies two generators.'],
-        ['Deliver', 'Run lines east to City Hall and into all three zones. A bare wire network carries 85 kW, so add Surge Protectors or it will burn out.'],
+        ['Deliver', 'Run lines east to City Hall and into all three zones. A bare cable network carries 85 kW, so add Surge Protectors or it will burn out.'],
       ],
     },
     {
@@ -226,7 +226,7 @@ const ScenarioSystem = (() => {
         ['Pump', 'Place a Pump Jack on each of the four oil deposits and wire it in.'],
         ['Store and refine', 'Pipe each Pump Jack into a Liquid Storage Tank, and the tank on into an Oil Refinery. The refinery turns crude into fuel oil.'],
         ['Burn', 'Pipe each refinery\'s fuel outlet into a Fuel Power Generator and wire the generator to your starter grid. Nothing lights until the whole line is joined.'],
-        ['Deliver', 'Run lines east to City Hall and into all three zones, and protect them with Surge Protectors: a bare wire network carries only 85 kW.'],
+        ['Deliver', 'Run lines east to City Hall and into all three zones, and protect them with Surge Protectors: a bare cable network carries only 85 kW.'],
       ],
     },
     {
@@ -386,7 +386,7 @@ const ScenarioSystem = (() => {
         cycleH: 24, spells: [[4.5, 'heatwave', 10]],
       },
       steps: [
-        ['Plant the panels', 'Lay out Solar Panels MK2 in the work area west of City Hall. Panels placed touching share power without a wire. Under this sky each gives about 13 kW from dawn to dusk, so the town at its hottest needs two dozen and more.'],
+        ['Plant the panels', 'Lay out Solar Panels MK2 in the work area west of City Hall. Panels placed touching share power without a cable. Under this sky each gives about 13 kW from dawn to dusk, so the town at its hottest needs two dozen and more.'],
         ['Bank the afternoon', 'Add Batteries to the same network. They fill while the sun is up and carry the town through the evening, when the heat wave is still running and the panels are not.'],
         ['Cover the night', 'There is one oil deposit. Place a Pump Jack on it, pipe it through a Liquid Storage Tank and an Oil Refinery into a Fuel Power Generator, and wire the generator in. It is 165 kW that does not care what time it is, but it will not carry the town alone.'],
         ['Deliver', 'Run lines east to City Hall and into all three zones, and protect them with Surge Protectors.'],
@@ -1150,8 +1150,8 @@ const ScenarioSystem = (() => {
   // How every scenario ends: get the power to town, protect the lines, hold it.
   const deliver = (d, protector, name) => [
     wait('Time to deliver. Run a line east to City Hall with Power Towers: hold the mouse button and drag to set them at full reach. The Town button on the objectives panel jumps there.', T.POWERTOWER, _hallLit, { deliverStart: true }),
-    wait(`A bare wire network carries only 85 kW and burns out above that. Place a ${name} anywhere on the network to raise its limit; they stack.`, protector, () => _n(T.PROTECTOR, T.PROTECTOR2, T.PROTECTOR3) >= 1),
-    say(`Carry the lines on into every zone until each building is lit, then keep them lit for ${d.holdH} hours. Watch the wire colours: red means that network needs more protection.\n\nWhen every objective is green, press Sign off.`),
+    wait(`A bare cable network carries only 85 kW and burns out above that. Place a ${name} anywhere on the network to raise its limit; they stack.`, protector, () => _n(T.PROTECTOR, T.PROTECTOR2, T.PROTECTOR3) >= 1),
+    say(`Carry the lines on into every zone until each building is lit, then keep them lit for ${d.holdH} hours. Watch the cable colours: red means that network needs more protection.\n\nWhen every objective is green, press Sign off.`),
   ];
   // `spots`, if given: [x, y] tiles from the work area's top-left where the
   // card marks a place for each turbine (3×3, as a Wind Turbine MK2). A spot
@@ -1174,7 +1174,7 @@ const ScenarioSystem = (() => {
   const starter = (count, type, name, why, spots) => [
     wait(`${why} Open GENERATION and place ${count} ${name} in the work area west of City Hall${spots ? ', on the marked spots' : ''}.`, type,
          () => _n(T.WIND, T.WIND2, T.WIND3) >= count, { onEnter: _toWork, ...(spots ? { highlightWorld: _spotRects(spots) } : {}) }),
-    wait('Wire the turbines to each other so their output adds up. Turbines placed touching share power without a wire. Three wires in a row at most, then a Power Pole.', T.WIRE, () => _n(T.WIRE) >= 2),
+    wait('Wire the turbines to each other so their output adds up. Turbines placed touching share power without a cable. Three cables in a row at most, then a Power Pole.', T.WIRE, () => _n(T.WIRE) >= 2),
   ];
 
   const GUIDE = {
@@ -1183,12 +1183,12 @@ const ScenarioSystem = (() => {
       // Three touching spots beside the middle coal seam, where the card's camera lands: they share power without a wire.
       ...starter(3, T.WIND2, 'Wind Turbines MK2', 'Mines and pumps need power before they can make anything.', [[16, 36], [19, 36], [22, 36]]),
       wait('Place a Coal Mine on one of the three coal seams. The nearest free one is marked.', T.COALMINE, () => _n(T.COALMINE) >= 1, { highlightWorld: _free(T.COALDEPOSIT) }),
-      wait('Run a wire from your turbines to the mine. It starts digging as soon as it has power.', T.WIRE, () => _works(T.COALMINE)),
+      wait('Run a cable from your turbines to the mine. It starts digging as soon as it has power.', T.WIRE, () => _works(T.COALMINE)),
       wait('Place a Coal Power Generator a few tiles from the mine.', T.COALGENERATOR, () => _n(T.COALGENERATOR) >= 1),
       wait("Run a Conveyor Belt from the mine's output to the generator's coal inlet. Click either building to see where its ports are. This card moves on when coal reaches the generator.", T.CONVEYOR, () => _works(T.COALGENERATOR)),
       wait('Generators need water too. Place a Water Extractor on the tarn at the south end of the work area. R rotates its outlet before you place it.', T.WATEREXTRACTOR, () => _n(T.WATEREXTRACTOR) >= 1),
       wait("Run Pipes from the extractor's outlet to the generator's water inlet, and wire the extractor into your grid. This card moves on when water reaches the generator.", T.PIPE, () => _works(T.WATEREXTRACTOR) && _any(T.COALGENERATOR, g => !!g._hasWater)),
-      wait('Wire the generator in as well. With coal, water and a wire all reaching it, it starts: 100 kW. If it stays dark, click it; its panel says what is missing.', T.WIRE, () => _runs(T.COALGENERATOR)),
+      wait('Wire the generator in as well. With coal, water and a cable all reaching it, it starts: 100 kW. If it stays dark, click it; its panel says what is missing.', T.WIRE, () => _runs(T.COALGENERATOR)),
       wait('That is the whole chain. Now build it out: three mines, three extractors and six generators. One mine feeds two generators, and so does one extractor. The objectives panel keeps count.', T.COALGENERATOR, () => _works(T.COALMINE, 3) && _works(T.WATEREXTRACTOR, 3) && _runs(T.COALGENERATOR, 6)),
       ...deliver(d, T.PROTECTOR, 'Surge Protector'),
     ],
@@ -1271,7 +1271,7 @@ const ScenarioSystem = (() => {
     ],
     heat: d => [
       ask(d),
-      wait('Under this sky a panel gives everything it has. Open GENERATION and place 6 Solar Panels MK2 in the work area west of City Hall, touching, so they share power without a wire.', T.SOLAR2, () => _n(T.SOLAR2) >= 6, { onEnter: _toWork }),
+      wait('Under this sky a panel gives everything it has. Open GENERATION and place 6 Solar Panels MK2 in the work area west of City Hall, touching, so they share power without a cable.', T.SOLAR2, () => _n(T.SOLAR2) >= 6, { onEnter: _toWork }),
       wait('Place a Battery beside the panels and wire it to them. It fills while the sun is up.', T.BATTERY, () => _n(T.BATTERY) >= 1),
       wait('Keep going: twenty-four panels and ten batteries at least. The batteries are for the evening, when the heat wave is still running and the panels have gone dark.', T.SOLAR2, () => _n(T.SOLAR2) >= 24 && _n(T.BATTERY) >= 10),
       wait('Sun will not get the town through the night. Place a Pump Jack on the oil deposit (marked) and wire it in.', T.PUMPJACK, () => _works(T.PUMPJACK), { highlightWorld: _free(T.OILDEPOSIT) }),
@@ -1996,7 +1996,7 @@ const ScenarioSystem = (() => {
                  : r.medal === 'silver' ? `Gold needs building for ${money(d.medals.gold)} or less`
                  : `Silver needs building for ${money(d.medals.silver)} or less`;
     const builtChips = r.built.slice(0, 8).map(x => `<span class="scn-chip"><b>${x.n}</b> ${esc(x.label)}${x.n === 1 ? '' : 's'}</span>`).join('')
-      + (r.runs ? `<span class="scn-chip"><b>${r.runs}</b> pieces of wire, pipe and belt</span>` : '');
+      + (r.runs ? `<span class="scn-chip"><b>${r.runs}</b> pieces of cable, pipe and belt</span>` : '');
     const el = _open(`
       <div class="scn-win-rays" style="--mc:${md.col}"></div>
       <div class="scn-win-in" style="--mc:${md.col};--mg:${md.glow}">

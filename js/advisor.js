@@ -907,8 +907,8 @@ const Advisor = (() => {
       const sevOf = (a) => a.some(e => IMPORTANT_IN.has(e.type) || e.type === T.WATEREXTRACTOR || e.type === T.COOLINGTOWER || e.type === T.CRYOPLANT) ? 3 : 2;
       if (reach.length) add({ key: 'all', sev: sevOf(reach),
         title: `${reach.length} building${reach.length > 1 ? 's aren\'t' : ' isn\'t'} connected to power`,
-        why: `No wire reaches ${reach.length > 1 ? 'them' : 'it'}: ${list(reach)}.`,
-        steps: ['Run a wire from the nearest live pole or tower to each one. On a long run, put a pole partway.'],
+        why: `No cable reaches ${reach.length > 1 ? 'them' : 'it'}: ${list(reach)}.`,
+        steps: ['Run a cable from the nearest live pole or tower to each one. On a long run, put a pole partway.'],
         at: reach[0] });
       for (const [net, a] of shed) {
         const demand = PowerNetwork.getNetworkDemand ? PowerNetwork.getNetworkDemand(net) : 0;
@@ -917,13 +917,13 @@ const Advisor = (() => {
           why: `This network needs ${num(demand)} kW and can't make it, so these are off: ${list(a)}.${a.some(x => x.type === T.WATEREXTRACTOR || x.type === T.COOLINGTOWER) ? ' That includes water or cooling, which reactors need.' : ''}`,
           steps: ['Bring a generator back, build another, or connect this network to one with spare power. Charged batteries cover a short gap.',
                   'If a big generator just stopped, fix its entry here first.',
-                  'Click any wire on the network to see its supply and demand in the Grid Analyzer.'],
+                  'Click any cable on the network to see its supply and demand in the Grid Analyzer.'],
           at: a[0] });
       }
       if (dark.length) add({ key: 'dark', sev: sevOf(dark),
         title: `${dark.length} building${dark.length > 1 ? 's are' : ' is'} on a dead line`,
         why: `${dark.length > 1 ? 'They are' : 'It is'} wired, but nothing on the line is generating, or a span has tripped: ${list(dark)}.`,
-        steps: ['Follow the wire back toward the generators until it goes dark, then re-lay that span or wait for it to re-close.',
+        steps: ['Follow the cable back toward the generators until it goes dark, then re-lay that span or wait for it to re-close.',
                 'If several in one area are out, fix the first dead span and the rest come back.'],
         at: dark[0] });
       if (customers >= 5) add({ key: 'cust', sev: 1,

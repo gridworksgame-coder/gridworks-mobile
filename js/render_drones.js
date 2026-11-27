@@ -30,6 +30,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 function renderDronePort(e, px, py, t) {
+  if (DroneArt.ok(e, 'dport', 9, 9)) return _dportArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.DRONEPORT];
   const W   = (e.width  || def.width)  * TILE;
   const H   = (e.height || def.height) * TILE;
@@ -679,7 +680,12 @@ function drawDrone(d, t, S) {
   const alt  = d.alt  === undefined ? 1 : d.alt;
   const spin = d.spin === undefined ? 1 : d.spin;
   const bob  = Math.sin(d.bob) * 1.6 * alt;     // no bobbing while on the deck
-  const x = d.x, y = d.y + bob;
+  // On (or settling onto) a station pad, the drone stands on the rendered
+  // pad's deck (0.43 m up): lift it by that height in the tilted view so it
+  // sits in the middle of its berth, fading out as it climbs.
+  const onPad = d.state === 'idle' || d.state === 'launch' || d.state === 'land' || !!d._chargingAt;
+  const lift = onPad && typeof _CW_TAN !== 'undefined' && DroneArt.frame() ? 0.43 * _CW_TAN * 20 * (TILE / 40) * (1 - Math.min(1, alt)) : 0;
+  const x = d.x, y = d.y + bob - lift;
 
   // Body half-length, derived so the airframe's outer span matches a
   // touchdown pad: a drone should look like it FITS its berth. Computed off
@@ -698,6 +704,27 @@ function drawDrone(d, t, S) {
   // The shadow slides opposite the tilt: an airframe leaning into a move
   // is no longer directly over its own shadow, and that offset is most of
   // what makes the lean read from directly above.
+  const SIL = DroneArt.silhouette();
+  if (SIL) {
+    // The airframe's own shape thrown on the ground (or the pad's deck):
+    // crisp and dark, just down-right of it, when it sits in its berth;
+    // further off, a size smaller and fainter as it climbs. A soft contact
+    // shade under a parked drone so it stands out against the pad.
+    const sx = (0.18 * r + 14 * alt) - Math.cos(d.angle) * lean * r * 0.5 + Math.sin(d.angle) * roll * r * 0.4;
+    const sy = (0.3 * r + 22 * alt) - bob - Math.sin(d.angle) * lean * r * 0.5 - Math.cos(d.angle) * roll * r * 0.4;
+    if (alt < 0.5) {
+      const ca = 0.5 * (1 - alt * 2), cg = ctx.createRadialGradient(sx * 0.5, sy * 0.5, 0, sx * 0.5, sy * 0.5, r * 1.9);
+      cg.addColorStop(0, `rgba(0,0,0,${ca.toFixed(3)})`); cg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(sx * 0.5, sy * 0.5, r * 1.9, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.save();
+    ctx.translate(sx, sy); ctx.rotate(d.angle + Math.PI / 2);
+    const k = 1 - 0.12 * alt;
+    ctx.globalAlpha = 0.62 - 0.34 * alt;
+    ctx.drawImage(SIL, -1.95 * r * k, -1.95 * r * k, 3.9 * r * k, 3.9 * r * k);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  } else {
   ctx.globalAlpha = 0.16 + 0.22 * (1 - alt);
   ctx.fillStyle = '#000';
   ctx.beginPath();
@@ -706,6 +733,7 @@ function drawDrone(d, t, S) {
               r * (1.15 - 0.2 * alt), r * (0.55 - 0.12 * alt), 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
+  }
 
   // ── Thruster trail ───────────────────────────────────────────────
   // A fading twin streak behind a drone at speed, in the job colour. Length
@@ -758,8 +786,13 @@ function drawDrone(d, t, S) {
     ctx.restore();
   }
 
+  // The rendered airframe (scripts/render_drones.py, drone_frame.png):
+  // arms, duct shrouds and hull, nose north, duct interiors open. It goes
+  // over the live duct floors and rotors and under the live lights.
+  const FRAME = DroneArt.frame();
+
   // ── Arms: tapered carbon spars with a lit edge ───────────────────
-  for (let i = 0; i < 4; i++) {
+  if (!FRAME) for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
     const ca = Math.cos(a), sa = Math.sin(a), nx = -sa, ny = ca;
     const w0 = r * 0.20, w1 = r * 0.09;
@@ -787,8 +820,27 @@ function drawDrone(d, t, S) {
     const duct = rot * 1.14;
     const dirn = i % 2 ? -1 : 1;            // props counter-rotate in pairs
 
-    ctx.fillStyle = '#0d1218';               // duct floor
+    ctx.fillStyle = FRAME ? 'rgba(13,18,24,0.42)' : '#0d1218';   // duct floor (see-through past a rendered prop)
     ctx.beginPath(); ctx.arc(ax, ay, duct, 0, Math.PI * 2); ctx.fill();
+    const PROP = FRAME && DroneArt.prop();
+    if (PROP) {
+      // the rendered three-blade prop: one at rest or spooling, a smear of
+      // fading copies once it is up to speed, over a soft swirl
+      const ba = spin > 0.02 ? t * (5 + spin * 45) * dirn + i * 1.3 : a, pw = 1.2 * r;
+      if (spin > 0.55) {
+        const sw = ctx.createRadialGradient(ax, ay, rot * 0.15, ax, ay, rot);
+        sw.addColorStop(0, 'rgba(200,235,255,0.04)'); sw.addColorStop(0.7, `rgba(200,235,255,${0.14 * spin})`); sw.addColorStop(1, 'rgba(200,235,255,0.02)');
+        ctx.fillStyle = sw; ctx.beginPath(); ctx.arc(ax, ay, rot, 0, Math.PI * 2); ctx.fill();
+      }
+      const copies = spin > 0.55 ? 4 : 1;
+      for (let c2 = 0; c2 < copies; c2++) {
+        ctx.save(); ctx.translate(ax, ay); ctx.rotate(ba - c2 * 0.22 * dirn);
+        ctx.globalAlpha = copies > 1 ? 0.32 * (1 - c2 / copies) : 1;
+        ctx.drawImage(PROP, -pw / 2, -pw / 2, pw, pw); ctx.restore();
+      }
+      ctx.globalAlpha = 1;
+      continue;
+    }
 
     if (spin > 0.55) {
       // up to speed: swirling blur inside the shroud
@@ -824,6 +876,7 @@ function drawDrone(d, t, S) {
     }
     ctx.fillStyle = '#2a3440';               // hub
     ctx.beginPath(); ctx.arc(ax, ay, r * 0.11, 0, Math.PI * 2); ctx.fill();
+    if (FRAME) continue;                     // the rendered shroud, rim glow and nav lights go on after the frame
 
     // shroud: dark ring, glowing inner rim that brightens with rpm
     ctx.strokeStyle = '#26303b'; ctx.lineWidth = r * 0.14;
@@ -850,10 +903,35 @@ function drawDrone(d, t, S) {
     }
   }
 
+  if (FRAME) {
+    ctx.drawImage(FRAME, -1.95 * r, -1.95 * r, 3.9 * r, 3.9 * r);
+    const ACCIM = DroneArt.accent(live ? ACC : '#5a6a78');      // the job's chevron, rendered and tinted
+    if (ACCIM) ctx.drawImage(ACCIM, -1.95 * r, -1.95 * r, 3.9 * r, 3.9 * r);
+    // the shrouds' rims glowing with rpm, nav lights on the forward ducts
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4, ax = Math.cos(a) * arm, ay = Math.sin(a) * arm, duct = rot * 1.14;
+      if (live) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = ACC; ctx.globalAlpha = 0.08 + 0.18 * spin; ctx.lineWidth = r * 0.035;
+        ctx.beginPath(); ctx.arc(ax, ay, duct + r * 0.01, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      if (ay < 0 && live) {
+        const lx = ax + Math.cos(a) * duct * 1.08, ly = ay + Math.sin(a) * duct * 1.08;
+        ctx.fillStyle = ax < 0 ? '#ff4a3a' : '#3cf07a';
+        ctx.beginPath(); ctx.arc(lx, ly, r * 0.08, 0, Math.PI * 2); ctx.fill();
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45;
+        ctx.beginPath(); ctx.arc(lx, ly, r * 0.17, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
   // ── Hull: faceted, pointed nose (local -y is forward) ────────────
   // Drawn a size up from the frame so it reads as the body, not a hub.
   ctx.save();
   ctx.scale(1.2, 1.2);
+  if (!FRAME) {
   const hull = [
     [0, -r * 1.02], [r * 0.30, -r * 0.62], [r * 0.46, -r * 0.05],
     [r * 0.38, r * 0.55], [r * 0.16, r * 0.78], [-r * 0.16, r * 0.78],
@@ -878,8 +956,10 @@ function drawDrone(d, t, S) {
   ctx.fillStyle = 'rgba(210,230,250,0.10)';
   ctx.beginPath(); ctx.moveTo(0, -r * 1.02); ctx.lineTo(-r * 0.30, -r * 0.62);
   ctx.lineTo(-r * 0.46, -r * 0.05); ctx.lineTo(-r * 0.14, r * 0.1); ctx.closePath(); ctx.fill();
+  }
 
-  // accent chevron across the back
+  // accent chevron across the back (the rendered airframe has its own)
+  if (!FRAME) {
   ctx.fillStyle = live ? ACC : '#3a4a5a';
   ctx.globalAlpha = live ? 0.9 : 0.6;
   ctx.beginPath();
@@ -887,8 +967,11 @@ function drawDrone(d, t, S) {
   ctx.lineTo(r * 0.38, r * 0.42); ctx.lineTo(0, r * 0.28); ctx.lineTo(-r * 0.38, r * 0.42);
   ctx.closePath(); ctx.fill();
   ctx.globalAlpha = 1;
+  }
 
-  // visor: glowing wraparound sensor strip across the nose
+  // visor: glowing wraparound sensor strip across the nose (over the rendered
+  // canopy only its glow)
+  if (!FRAME) {
   const vg = ctx.createLinearGradient(0, -r * 0.78, 0, -r * 0.40);
   vg.addColorStop(0, live ? '#e8fbff' : '#4a5a66');
   vg.addColorStop(1, live ? ACC : '#26303a');
@@ -897,8 +980,10 @@ function drawDrone(d, t, S) {
   ctx.moveTo(0, -r * 0.80); ctx.lineTo(r * 0.24, -r * 0.52); ctx.lineTo(r * 0.18, -r * 0.40);
   ctx.lineTo(0, -r * 0.50); ctx.lineTo(-r * 0.18, -r * 0.40); ctx.lineTo(-r * 0.24, -r * 0.52);
   ctx.closePath(); ctx.fill();
+  }
   if (live) {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    if (FRAME) ctx.globalAlpha = 0.6;
     const vgl = ctx.createRadialGradient(0, -r * 0.58, 0, 0, -r * 0.58, r * 0.55);
     vgl.addColorStop(0, ACC + '88'); vgl.addColorStop(1, ACC + '00');
     ctx.fillStyle = vgl;
@@ -909,12 +994,17 @@ function drawDrone(d, t, S) {
   // twin thruster vents at the tail, glowing with speed
   const thr = Math.min(1, (d.v || 0) / 400);
   for (const sx of [-1, 1]) {
-    ctx.fillStyle = '#0a0e12';
-    ctx.fillRect(sx * r * 0.13 - r * 0.06, r * 0.66, r * 0.12, r * 0.12);
+    if (!FRAME) { ctx.fillStyle = '#0a0e12'; ctx.fillRect(sx * r * 0.13 - r * 0.06, r * 0.66, r * 0.12, r * 0.12); }
     if (live) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = ACC; ctx.globalAlpha = 0.4 + 0.6 * thr;
-      ctx.fillRect(sx * r * 0.13 - r * 0.04, r * 0.68, r * 0.08, r * 0.08);
+      if (FRAME) {                                // a soft glow in the rendered vents
+        const vx = sx * r * 0.13, vy = r * 0.72, gr = ctx.createRadialGradient(vx, vy, 0, vx, vy, r * 0.16);
+        gr.addColorStop(0, ACC); gr.addColorStop(1, ACC + '00'); ctx.globalAlpha = 0.25 + 0.55 * thr;
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(vx, vy, r * 0.16, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.fillStyle = ACC; ctx.globalAlpha = 0.4 + 0.6 * thr;
+        ctx.fillRect(sx * r * 0.13 - r * 0.04, r * 0.68, r * 0.08, r * 0.08);
+      }
       ctx.restore();
     }
   }
@@ -926,7 +1016,8 @@ function drawDrone(d, t, S) {
   const pulse = 0.75 + 0.25 * Math.sin(t * 5 + (d.i || 0));
   ctx.globalAlpha = live ? 1 : 0.35;
   ctx.fillStyle = col;
-  ctx.beginPath(); ctx.arc(0, -r * 0.05, r * 0.12, 0, Math.PI * 2); ctx.fill();
+  if (FRAME) { ctx.globalAlpha = live ? 0.9 : 0.25; ctx.beginPath(); ctx.arc(0, r * 0.04, r * 0.05, 0, Math.PI * 2); ctx.fill(); }   // a small lens in the GPS puck
+  else { ctx.beginPath(); ctx.arc(0, -r * 0.05, r * 0.12, 0, Math.PI * 2); ctx.fill(); }
   if (live) {
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.35 * pulse;
@@ -1059,6 +1150,7 @@ function drawDrone(d, t, S) {
 // are. The mast's core burns brighter the more pads are in use. Laid out in
 // fractions of the footprint, with the pads read from DroneSystem.
 function renderDroneCharger(e, px, py, t) {
+  if (DroneArt.ok(e, 'dchg', 5, 5)) return _dchgArt(e, px, py, t);   // rendered (end of this file)
   const def = EntityDefs[T.DRONECHARGER];
   const W = (e.width || def.width) * TILE, H = (e.height || def.height) * TILE;
   const on = e.powered, S = TILE / 40, TAU = Math.PI * 2;
@@ -1217,5 +1309,145 @@ function renderDroneCharger(e, px, py, t) {
   _wfLamp(px + W * 0.9, py + H * 0.9, S, t, busy ? CHG : accent, on);
   _wfPlate('CHARGING PORT', cx, py + H * 0.965, S, accent, on);
   ctx.textAlign = 'left';
+  ctx.restore();
+}
+
+/* ── Drone Port, Charging Port and the airframe, rendered ─────────────────
+   Built in Blender (scripts/render_drones.py, sharing render_advnuke.py's
+   helpers and palette): dport_base (9×9), dchg_base (5×5) and drone_frame
+   (one airframe from straight above, nose north, r = 1 m, its duct
+   interiors open). DRONE_LAYOUT is the script's drone_layout.json (re-paste
+   after a re-render). The stations at their default size use the sprites;
+   drawDrone lays the airframe over its live rotors. Everything that shows
+   the fleet stays live: pad lights, berth glow and charge arcs, downwash,
+   feeder flow, the deck's chase lights, tower glazing, radar and beacon,
+   hangar skylights, battery cells, gantry power, the windsock; on the
+   charger the booms, coils, charge arcs and the mast's core. */
+const DRONE_LAYOUT = {"dport":{"lights":[[-5.15,7.67,0.3],[-2.819,7.67,0.3],[-0.488,7.67,0.3],[1.843,7.67,0.3],[4.174,7.67,0.3],[5.15,6.315,0.3],[5.15,3.985,0.3],[5.15,1.654,0.3],[5.15,-0.677,0.3],[5.15,-3.008,0.3],[5.15,-5.339,0.3],[5.15,-7.67,0.3],[2.819,-7.67,0.3],[0.488,-7.67,0.3],[-1.843,-7.67,0.3],[-4.174,-7.67,0.3],[-5.15,-6.315,0.3],[-5.15,-3.985,0.3],[-5.15,-1.654,0.3],[-5.15,0.677,0.3],[-5.15,3.008,0.3],[-5.15,5.339,0.3]],"pads":[[-2.97,6.57,0.4],[0.0,6.57,0.4],[2.97,6.57,0.4],[-3.69,1.89,0.4],[3.69,1.89,0.4],[-3.69,-1.89,0.4],[3.69,-1.89,0.4],[-2.97,-6.57,0.4],[0.0,-6.57,0.4],[2.97,-6.57,0.4]],"pr":1.116,"tower":[0.0,0.72,2.7,2.111,3.62,1.283,1.651,4.95],"hangar":[-6.93,5.8,1.0,3.35],"arms":[[6.39,6.57,3.2,3.974,2.4],[6.39,1.89,3.2,4.694,2.4],[6.39,-1.89,3.2,4.694,2.4],[6.39,-6.57,3.2,3.974,2.4]],"gantry":[6.39,6.12,-6.48,3.45],"cells":[[7.605,4.9,2.47,0.8],[7.605,3.8,2.47,0.8],[7.605,2.7,2.47,0.8],[7.605,1.6,2.47,0.8],[7.605,0.5,2.47,0.8]],"sock":[8.01,8.01,3.1],"frame":[-9,9,-9,9],"deck":[-5.4,5.4,-7.92,7.92,0.27],"rect":[-9.3,12.503,-13.266,14.034],"radarRect":[-1.3,1.3,-0.58,4.272],"sockRect":[5.31,8.61,7.21,10.831]},"dchg":{"pads":[[0.0,3.2,0.45],[3.04,0.99,0.45],[1.88,-2.59,0.45],[-1.88,-2.59,0.45],[-3.04,0.99,0.45]],"booms":[[[0.0,0.85,1.1],[0.0,2.079,0.7]],[[0.808,0.263,1.1],[1.974,0.643,0.7]],[[0.499,-0.688,1.1],[1.221,-1.683,0.7]],[[-0.499,-0.688,1.1],[-1.221,-1.683,0.7]],[[-0.808,0.263,1.1],[-1.974,0.643,0.7]]],"pr":1.18,"mast":[0,0,3.3,0.55],"frame":[-5,5,-5,5],"rect":[-5.3,6.823,-7.186,7.552]},"drone":{"frame":[-1.95,1.95,-1.95,1.95],"rect":[-1.95,1.95,-1.95,1.95]}};
+const _accTint = new Map(); let _sil = null;
+const DroneArt = (() => {
+  const ims = new Map(); let failed = false;
+  function get(name) {
+    if (failed) return null;
+    let im = ims.get(name);
+    if (!im) { im = new Image(); im.onerror = () => { failed = true; }; im.src = `img/${name}.png`; ims.set(name, im); }
+    return im.complete && im.naturalWidth ? im : null;
+  }
+  const off = () => !DRONE_LAYOUT || (typeof _imageFillsOff !== 'undefined' && _imageFillsOff);
+  return {
+    get,
+    frame() { return off() ? null : get('drone_frame'); },
+    prop() { return off() ? null : get('drone_prop'); },
+    // The airframe as a solid black shape, for its shadow (baked once).
+    silhouette() {
+      if (_sil) return _sil;
+      const im = off() ? null : get('drone_frame'); if (!im) return null;
+      const cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+      const g = cv.getContext('2d'); g.drawImage(im, 0, 0);
+      g.globalCompositeOperation = 'source-in'; g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height);
+      return (_sil = cv);
+    },
+    // The job's accent chevron (drone_accent, rendered white), tinted once per colour.
+    accent(col) {
+      const im = off() ? null : get('drone_accent'); if (!im) return null;
+      let cv = _accTint.get(col); if (cv) return cv;
+      cv = document.createElement('canvas'); cv.width = im.naturalWidth; cv.height = im.naturalHeight;
+      const g = cv.getContext('2d'); g.drawImage(im, 0, 0);
+      g.globalCompositeOperation = 'multiply'; g.fillStyle = col; g.fillRect(0, 0, cv.width, cv.height);
+      g.globalCompositeOperation = 'destination-in'; g.drawImage(im, 0, 0);
+      _accTint.set(col, cv); return cv;
+    },
+    ok(e, kind, w, h) { return !off() && (e._rotation || 0) === 0 && (e.width || w) === w && (e.height || h) === h && !!get(kind + '_base'); },
+  };
+})();
+
+function _dportArt(e, px, py, t) {
+  const L = DRONE_LAYOUT.dport, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const on = e.powered, accent = '#5ad8ff';
+  const drones = (typeof DroneSystem !== 'undefined') ? DroneSystem.fleet(e) : [];
+  const stormy = (typeof DroneSystem !== 'undefined') && !!DroneSystem.slowedBy();
+  const pr = L.pr;
+  // A light on a modelled fixture: a soft glow and a hot core, nothing flat.
+  const lamp = (x, y, rgb, a, rad = 5) => { _anGlow(x, y, rad * S, rgb, a); ctx.fillStyle = `rgba(${rgb},${Math.min(1, a * 1.4).toFixed(3)})`; ctx.beginPath(); ctx.arc(x, y, 0.7 * S, 0, TAU); ctx.fill(); };
+  ctx.save();
+  F.draw(DroneArt.get('dport_base'), L.rect);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // the pads: edge lights, the charge ring's segments, downwash
+  L.pads.forEach((p, i) => {
+    const d = drones[i], home = !d || d.state === 'idle';
+    const moving = on && d && (d.state === 'launch' || d.state === 'land');
+    if (on) for (let q = 0; q < 4; q++) {
+      const aa = q * Math.PI / 2 + Math.PI / 4, [lx, ly] = P(p[0] + Math.cos(aa) * pr * 1.04, p[1] + Math.sin(aa) * pr * 1.04, 0.47);
+      if (moving) { if (Math.sin(t * 12) > 0) lamp(lx, ly, '255,194,74', 0.7, 4); }
+      else lamp(lx, ly, home ? '90,216,255' : '108,240,160', 0.22, 2.6);
+    }
+    if (home && on && d) {
+      const lit = Math.max(1, Math.round(d.battery * 12)), rgb = d.battery >= 1 ? '120,226,255' : d.battery < 0.35 ? '255,128,64' : '108,240,160';
+      for (let k = 0; k < lit; k++) {
+        const aa = Math.PI / 2 - (k + 0.5) / 12 * TAU, [sx, sy] = P(p[0] + Math.cos(aa) * pr * 0.9, p[1] + Math.sin(aa) * pr * 0.9, 0.43);   // clockwise from north
+        lamp(sx, sy, rgb, 0.5 + (k === lit - 1 && d.battery < 1 ? 0.3 * Math.sin(t * 5 + i) : 0), 3.5);
+      }
+    }
+  });
+  ctx.restore();
+  L.pads.forEach((p, i) => {
+    const d = drones[i]; if (!(on && d && (d.state === 'launch' || d.state === 'land'))) return;
+    const wash = 1 - Math.min(1, (d.alt || 0) / 0.75); if (wash <= 0.02) return;
+    const [mx, my] = P(p[0], p[1], 0.45);
+    for (let q = 0; q < 2; q++) { const ph = (t * 1.6 + q * 0.5) % 1; ctx.globalAlpha = 0.3 * wash * (1 - ph); ctx.strokeStyle = '#dce8f0'; ctx.lineWidth = 1.4 * S; ctx.beginPath(); ctx.ellipse(mx, my, pr * M * (0.9 + ph * 0.8), pr * M * (0.9 + ph * 0.8), 0, 0, TAU); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  });
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  // chase lights running round the deck's edge fixtures
+  if (on) L.lights.forEach((q, i) => {
+    const f = i / L.lights.length, hot = ((t * 0.45 + f) % 1) < 0.2, [lx, ly] = P(...q);
+    lamp(lx, ly, '90,216,255', hot ? 0.75 : 0.12, hot ? 6 : 3);
+  });
+  // the tower: glazing lit, the beacon
+  { const [x, y, z, r, zr, bx2, by2, bz] = L.tower, [gx, gy] = P(x, y, z);
+    if (on) _anGlow(gx, gy + r * 0.4 * M, r * 1.3 * M, '90,216,255', 0.2 + 0.05 * Math.sin(t * 1.3));
+    const [lx, ly] = P(bx2, by2, bz); if (on && Math.sin(t * 4) > 0) lamp(lx, ly, '255,90,74', 0.85, 9); }
+  // hangar skylights and the battery container's cell windows
+  if (on) {
+    { const [hx, hy0, hy1, hz] = L.hangar; for (let k = 0; k < 3; k++) { const [sx, sy] = P(hx, hy0 - k * 2.4, hz); _anGlow(sx, sy, 0.9 * M, '255,230,170', 0.3); } }
+    L.cells.forEach(([x, y, z], k) => { const [cx2, cy2] = P(x, y, z), lit = ((t * 1.2 + k * 0.2) % 1) < 0.6; _anGlow(cx2, cy2, 0.55 * M, '108,240,160', lit ? 0.55 : 0.12); });
+  }
+  ctx.restore();
+  // the radar, turning (one of twelve rendered angles over half a turn)
+  { const ra = on ? t * 1.2 : 0.6, k = Math.floor((((ra % Math.PI) + Math.PI) % Math.PI) / Math.PI * 12) % 12;
+    F.draw(DroneArt.get('dport_radar_' + k), L.radarRect); }
+  // the windsock: hanging limp in clear air, streaming out in a storm (why the fleet is crawling)
+  { const im = DroneArt.get('dport_sock_' + (stormy ? 1 : 0));
+    if (im) { const wob = stormy ? Math.sin(t * 9) * 0.6 * S : Math.sin(t * 1.5) * 0.25 * S; ctx.save(); ctx.translate(0, wob); F.draw(im, L.sockRect); ctx.restore(); } }
+  _wfLamp(px + F.W * 0.12, py + F.H * 0.955, S, t, accent, on);
+  _wfPlate('DRONE PORT', px + F.W * 0.5, py + F.H * 0.965, S, accent, on);
+  ctx.restore();
+}
+
+function _dchgArt(e, px, py, t) {
+  const L = DRONE_LAYOUT.dchg, F = _anFrame(e, px, py), { P, M } = F, S = TILE / 40, TAU = Math.PI * 2;
+  const on = e.powered, accent = '#5ad8ff', CHG = '#7df0a4';
+  const DS = typeof DroneSystem !== 'undefined' ? DroneSystem : null;
+  const occ = DS && DS.chargerPads ? DS.chargerPads(e) : L.pads.map(() => null);
+  const busy = occ.filter(d => d && d._chargingAt === e).length, load = on ? busy / L.pads.length : 0, pr = L.pr * M;
+  ctx.save();
+  F.draw(DroneArt.get('dchg_base'), L.rect);
+  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  L.pads.forEach((p, i) => {
+    const d = occ[i], live = on && d && d._chargingAt === e, inbound = on && d && !live, [mx, my] = P(p[0], p[1], p[2]);
+    if (live) {
+      const [[a0, a1, a2], [b0, b1, b2]] = L.booms[i], [ax, ay] = P(a0, a1, a2), [bx, by] = P(b0, b1, b2);
+      ctx.setLineDash([3 * S, 6 * S]); ctx.lineDashOffset = -t * 30 * S; ctx.strokeStyle = 'rgba(125,240,164,0.85)'; ctx.lineWidth = 1.6 * S;
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+      _anGlow(mx, my, pr * 1.2, '125,240,164', 0.3 + 0.12 * Math.sin(t * 5 + i));
+    }
+    for (let q = 0; q < 4; q++) { const a = q * Math.PI / 2 + Math.PI / 4; ctx.fillStyle = !on ? 'rgba(0,0,0,0)' : live ? CHG : inbound && Math.sin(t * 10) > 0 ? '#ffc24a' : 'rgba(90,216,255,0.7)'; ctx.beginPath(); ctx.arc(mx + Math.cos(a) * pr * 1.04, my + Math.sin(a) * pr * 1.04, 1.3 * S, 0, TAU); ctx.fill(); }
+  });
+  ctx.restore();
+  occ.forEach((d, i) => { if (!(on && d && d._chargingAt === e)) return; const [mx, my] = P(...L.pads[i]); ctx.strokeStyle = d.battery < 0.35 ? '#ff8040' : CHG; ctx.lineWidth = 2.2 * S; ctx.lineCap = 'round'; ctx.beginPath(); ctx.arc(mx, my, pr * 1.2, -Math.PI / 2, -Math.PI / 2 + TAU * Math.max(0.02, d.battery)); ctx.stroke(); ctx.lineCap = 'butt'; });
+  // the mast's core burns brighter the more pads are in use
+  { const [x, y, z, r] = L.mast, [cx, cy] = P(x, y, z), pulse = 0.5 + 0.5 * Math.sin(t * (2 + 5 * load)); if (on) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; _anGlow(cx, cy, r * (2 + 2 * load) * M, busy ? '125,240,164' : '90,216,255', 0.35 + 0.4 * load * pulse); ctx.restore(); } }
+  _wfLamp(px + F.W * 0.9, py + F.H * 0.9, S, t, busy ? CHG : accent, on);
+  _wfPlate('CHARGING PORT', px + F.W * 0.5, py + F.H * 0.965, S, accent, on);
   ctx.restore();
 }

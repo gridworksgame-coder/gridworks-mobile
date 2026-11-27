@@ -2119,7 +2119,7 @@ const InputManager = (() => {
 
     // Block wire placement if it would exceed the hop limit
     if (type === T.WIRE && wouldExceedWireHops(col, row)) {
-      flashMessage('Wire too long: place a Power Pole first!');
+      flashMessage('Cable too long: place a Power Pole first!');
       return;
     }
 
@@ -4992,7 +4992,7 @@ const InputManager = (() => {
               GridManager.setEntityFootprint(dragEntity);
               if (_lifted || _liftedLines) {
                 const _parts = [];
-                if (_lifted) _parts.push(`${_lifted} wire tile${_lifted === 1 ? '' : 's'}`);
+                if (_lifted) _parts.push(`${_lifted} cable tile${_lifted === 1 ? '' : 's'}`);
                 if (_liftedLines) _parts.push(`${_liftedLines} of its own pipe/belt tile${_liftedLines === 1 ? '' : 's'}`);
                 showToast(`↷ Moved over ${_parts.join(' and ')}: removed and refunded`, '#f0c040', '#0e0a00', '#604010');
               }

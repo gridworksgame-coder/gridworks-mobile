@@ -183,7 +183,7 @@ const Progression = (() => {
     {
       id:    T.WIRE,
       tier:  1,
-      label: 'Wire',
+      label: 'Cable',
       check: () => BiofuelSystem.getTotalCollected() >= 50,
       hint:  'Collect 50 total biofuel',
     },
@@ -1043,7 +1043,7 @@ const Progression = (() => {
       // an arbitrary grid-wide consumption figure that can be met by a wide,
       // lightly loaded grid that never strains a single line.
       check: () => typeof PowerNetwork !== 'undefined' && PowerNetwork.everRedlined(),
-      hint:  'Push a wire to 90% of its 85 kW capacity; watch for the line turning red',
+      hint:  'Push a cable to 90% of its 85 kW capacity; watch for the line turning red',
     },
     {
       id:    T.PROTECTOR2,
@@ -1653,7 +1653,7 @@ const Progression = (() => {
       if (type === T.POWERTOWER) {
         PowerNetwork.setWireHops(8);
         PowerNetwork.recomputeWireHops();
-        showToast('🗼 Power Tower unlocked; place towers for 8-tile wire runs', '#40c0ff', '#040c14', '#104060');
+        showToast('🗼 Power Tower unlocked; place towers for 8-tile cable runs', '#40c0ff', '#040c14', '#104060');
       }
       if (type === T.AUTODISPATCH) {
         showToast('🤖 Auto-Dispatch unlocked: open a truck to automate waste collection', '#6cb8ff', '#0b1119', '#16304f');
